@@ -1,8 +1,13 @@
 """Migration Dashboard — self-contained server that embeds data into HTML."""
-import json, csv, os
+import json, csv, os, re
 from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+from project_manager import (
+    list_projects, get_project, create_project, delete_project,
+    update_project, list_files, save_file, delete_file, read_enabled_files,
+    ARTIFACTS, LLM_BACKENDS,
+)
 
 try:
     import boto3
@@ -16,8 +21,6 @@ from stories_data import STORIES
 from gates_data import GATES as GATES_DATA
 
 DATA_DIR = Path(__file__).parent
-CSV_DIR = DATA_DIR / "data"
-DIAGRAMS_DIR = DATA_DIR / "diagrams"
 PORT = 8888
 
 def load_csv_json(filepath):
@@ -33,10 +36,10 @@ def load_csv_text(filepath):
     return filepath.read_text()
 
 # Pre-load all data
-EPICS = load_csv_json(CSV_DIR / "migration_epic_plan.csv")
-RESOURCES = load_csv_json(CSV_DIR / "migration_resource_plan.csv")
-TRACKING = load_csv_json(CSV_DIR / "migration_operational_tracking.csv")
-NFRS = load_csv_json(CSV_DIR / "migration_nfr_requirements.csv")
+EPICS = load_csv_json(DATA_DIR / "migration_epic_plan.csv")
+RESOURCES = load_csv_json(DATA_DIR / "migration_resource_plan.csv")
+TRACKING = load_csv_json(DATA_DIR / "migration_operational_tracking.csv")
+NFRS = load_csv_json(DATA_DIR / "migration_nfr_requirements.csv")
 
 # Gantt data: epic → roles with man-days and activities
 GANTT = [
@@ -218,7 +221,7 @@ Key facts:
 Answer concisely. Reference app IDs and epic IDs when relevant."""
 
 
-def chat_with_bedrock(message, history):
+def chat_with_bedrock(message, history, system_override=None):
     if not HAS_BOTO3:
         return "boto3 not available."
     client = boto3.client("bedrock-runtime", region_name="us-east-1")
@@ -227,13 +230,71 @@ def chat_with_bedrock(message, history):
     try:
         resp = client.converse(
             modelId="amazon.nova-pro-v1:0",
-            system=[{"text": SYSTEM_PROMPT}],
+            system=[{"text": system_override or SYSTEM_PROMPT}],
             messages=messages,
-            inferenceConfig={"maxTokens": 2048, "temperature": 0.3},
+            inferenceConfig={"maxTokens": 4096, "temperature": 0.3},
         )
         return resp["output"]["message"]["content"][0]["text"]
     except Exception as e:
         return f"Error: {e}"
+
+
+def chat_with_ollama(message, history, system_override=None, model=None):
+    """Call local OLLAMA API (default: http://localhost:11434)."""
+    import urllib.request
+    ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    model = model or os.environ.get("OLLAMA_MODEL", "llama3")
+    msgs = [{"role": "system", "content": system_override or SYSTEM_PROMPT}]
+    for h in history:
+        msgs.append({"role": h["role"], "content": h["content"]})
+    msgs.append({"role": "user", "content": message})
+    payload = json.dumps({"model": model, "messages": msgs, "stream": False}).encode()
+    req = urllib.request.Request(
+        f"{ollama_url}/api/chat",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            data = json.loads(r.read())
+            return data.get("message", {}).get("content", "No response from OLLAMA.")
+    except Exception as e:
+        return f"OLLAMA error: {e}"
+
+
+def generate_artifact(project_id: str, artifact: str, prompt: str) -> str:
+    """Generate artifact content using the project's LLM backend + enabled files."""
+    project = get_project(project_id)
+    if not project:
+        return json.dumps({"error": "Project not found"})
+
+    backend = project["llm_backend"]
+    ollama_model = project.get("ollama_model", "llama3")
+    file_context = read_enabled_files(project_id, artifact)
+
+    system = (
+        f"You are a project delivery assistant. Generate structured JSON data for the '{artifact}' "
+        f"artifact of a project delivery dashboard. Return ONLY valid JSON, no markdown fences.\n"
+        f"Use the provided project documents as the primary source of truth.\n"
+        f"If documents are insufficient, use reasonable defaults."
+    )
+    if file_context:
+        system += f"\n\nProject Documents:\n{file_context[:12000]}"
+
+    user_prompt = prompt or f"Generate the {artifact} data for this project."
+
+    if backend == "files_only":
+        if not file_context:
+            return json.dumps({"error": "No files enabled for this artifact. Please upload and enable files."})
+        # Summarise from file context only — no LLM call
+        return json.dumps({"summary": f"File context for '{artifact}':\n\n{file_context[:8000]}"})
+    elif backend == "bedrock":
+        return chat_with_bedrock(user_prompt, [], system_override=system)
+    elif backend == "ollama":
+        return chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
+    elif backend == "files+ollama":
+        return chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
+    return json.dumps({"error": f"Unknown backend: {backend}"})
 
 
 def build_html():
@@ -244,10 +305,11 @@ def build_html():
     nfrs_json = json.dumps(NFRS)
     gantt_json = json.dumps(GANTT)
     gates_json = json.dumps(GATES_DATA)
+    artifacts_list = json.dumps(ARTIFACTS)
     # Load drawio XML files
     drawio_files = {}
     for name in ['migration_dependency_diagram', 'data_flow_diagram', 'operational_dependency_diagram']:
-        fp = DIAGRAMS_DIR / f"{name}.drawio"
+        fp = DATA_DIR / f"{name}.drawio"
         if fp.exists():
             drawio_files[name] = fp.read_text()
     drawio_json = json.dumps(drawio_files)
@@ -341,8 +403,52 @@ tr:hover{{background:#f0f4ff}}
 </head>
 <body>
 <div class="header">
-  <h1>☁️ AnyCompany — Migration Assessment Dashboard</h1>
-  <span style="font-size:.75rem;opacity:.7">Nova Pro Chat Agent</span>
+  <h1>☁️ Project Delivery Accelerator</h1>
+  <span style="font-size:.75rem;opacity:.7">Multi-LLM · File Upload · 5 Projects</span>
+</div>
+<div id="projectBar" style="background:#16213e;color:#fff;padding:.4rem 1.5rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;font-size:.8rem">
+  <span style="opacity:.7">Project:</span>
+  <div id="projectTabs" style="display:flex;gap:.4rem;flex-wrap:wrap"></div>
+  <button onclick="showNewProjectDialog()" id="btnNewProject" style="padding:3px 10px;border:1px solid #4caf50;border-radius:12px;background:transparent;color:#4caf50;cursor:pointer;font-size:.75rem">+ New</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:.6rem">
+    <span style="opacity:.7">LLM:</span>
+    <select id="llmSelect" onchange="setLLMBackend(this.value)" style="padding:2px 6px;border-radius:4px;border:1px solid #444;background:#1a1a2e;color:#fff;font-size:.75rem">
+      <option value="bedrock">☁️ Bedrock (Nova Pro)</option>
+      <option value="ollama">🦙 OLLAMA (local)</option>
+      <option value="files_only">📄 Files Only</option>
+      <option value="files+ollama">📄+🦙 Files + OLLAMA</option>
+    </select>
+    <span id="ollamaModelWrap" style="display:none;align-items:center;gap:.3rem">
+      <span style="opacity:.7;font-size:.75rem">Model:</span>
+      <input id="ollamaModelInput" type="text" value="llama3" placeholder="llama3" onchange="setOllamaModel(this.value)" style="padding:2px 6px;border-radius:4px;border:1px solid #444;background:#1a1a2e;color:#fff;font-size:.75rem;width:100px">
+    </span>
+    <button onclick="toggleUploadPanel()" style="padding:3px 10px;border:1px solid #2196f3;border-radius:12px;background:transparent;color:#2196f3;cursor:pointer;font-size:.75rem">📁 Files</button>
+  </div>
+</div>
+<div id="uploadPanel" style="display:none;background:#f0f4ff;border-bottom:2px solid #2196f3;padding:.8rem 1.5rem">
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start">
+    <div style="flex:1;min-width:260px">
+      <div style="font-weight:700;font-size:.82rem;margin-bottom:.4rem">📤 Upload Files (transcripts, SOW, presentations, artefacts…)</div>
+      <input type="file" id="fileInput" multiple accept=".txt,.pdf,.csv,.docx,.pptx,.xlsx,.md,.json,.xml,.drawio" style="font-size:.78rem">
+      <button onclick="uploadFiles()" style="margin-left:.5rem;padding:4px 12px;border:1px solid #1565c0;border-radius:4px;background:#1565c0;color:#fff;cursor:pointer;font-size:.78rem">Upload</button>
+      <div id="uploadStatus" style="font-size:.72rem;color:#1565c0;margin-top:.3rem"></div>
+    </div>
+    <div style="flex:2;min-width:320px">
+      <div style="font-weight:700;font-size:.82rem;margin-bottom:.4rem">📋 Project Files — Enable per Artifact</div>
+      <div id="fileList" style="font-size:.75rem;color:#555">Select a project to see files.</div>
+    </div>
+  </div>
+</div>
+<div id="newProjectDialog" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:2000;display:none;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:10px;padding:1.5rem;min-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="font-weight:700;font-size:1rem;margin-bottom:.8rem">New Project</div>
+    <input id="newProjectName" type="text" placeholder="Project name…" style="width:100%;padding:.4rem .6rem;border:1px solid #ddd;border-radius:4px;font-size:.85rem;margin-bottom:.6rem">
+    <div style="display:flex;gap:.5rem;justify-content:flex-end">
+      <button onclick="document.getElementById('newProjectDialog').style.display='none'" style="padding:5px 14px;border:1px solid #ddd;border-radius:4px;background:#fff;cursor:pointer">Cancel</button>
+      <button onclick="createProject()" style="padding:5px 14px;border:none;border-radius:4px;background:#1a1a2e;color:#fff;cursor:pointer">Create</button>
+    </div>
+    <div id="newProjectError" style="color:#f44336;font-size:.75rem;margin-top:.4rem"></div>
+  </div>
 </div>
 <div class="nav" id="navBar"></div>
 <div class="content" id="contentArea"></div>
@@ -803,41 +909,39 @@ let drawioFrame=null;
 let currentDiagramKey=null;
 function openDrawio(key,label){{
   currentDiagramKey=key;
-  const xml=DATA.drawio[key];
+  const saved=localStorage.getItem('drawio_'+key);
+  const xml=saved||DATA.drawio[key];
   if(!xml){{alert('Diagram not found: '+key);return}}
   const container=document.getElementById('drawioContainer');
-  container.innerHTML='<iframe id="drawioIframe" style="width:100%;height:100%;border:none" src="https://embed.diagrams.net/?embed=1&proto=json&spin=1&libraries=1"></iframe>';
-  drawioFrame=document.getElementById('drawioIframe');
-  // Listen for messages from draw.io
-  window.addEventListener('message',handleDrawioMessage);
-  // Store XML to send once iframe is ready
-  window._pendingDrawioXml=xml;
-  window._pendingDrawioLabel=label;
+  // Local XML viewer — no CDN dependency
+  const escaped=xml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  container.innerHTML=
+    '<div style="display:flex;flex-direction:column;height:100%">'+
+    '<div style="padding:6px 8px;background:#f5f5f5;border-bottom:1px solid #ddd;display:flex;gap:8px;align-items:center;font-size:.78rem">'+
+    '<strong>'+escHtml(label)+'</strong>'+
+    '<span style="opacity:.6">(XML source — paste into draw.io desktop or diagrams.net when online)</span>'+
+    '<button onclick="copyDiagramXml()" style="margin-left:auto;padding:3px 10px;border:1px solid #1565c0;border-radius:4px;background:#e3f2fd;cursor:pointer;font-size:.75rem">📋 Copy XML</button>'+
+    '<button onclick="downloadDiagramXml()" style="padding:3px 10px;border:1px solid #4caf50;border-radius:4px;background:#e8f5e9;cursor:pointer;font-size:.75rem">⬇️ Download .drawio</button>'+
+    '</div>'+
+    '<textarea id="drawioXmlArea" style="flex:1;font-family:monospace;font-size:.72rem;padding:8px;border:none;resize:none;outline:none;background:#fafafa">'+escaped+'</textarea>'+
+    '</div>';
 }}
-function handleDrawioMessage(evt){{
-  if(!evt.data||typeof evt.data!=='string')return;
-  try{{
-    const msg=JSON.parse(evt.data);
-    if(msg.event==='init'){{
-      // Editor ready — load the diagram
-      drawioFrame.contentWindow.postMessage(JSON.stringify({{
-        action:'load',
-        xml:window._pendingDrawioXml,
-        title:window._pendingDrawioLabel
-      }}),'*');
-    }}else if(msg.event==='save'){{
-      // User clicked save — store updated XML
-      DATA.drawio[currentDiagramKey]=msg.xml;
-      localStorage.setItem('drawio_'+currentDiagramKey,msg.xml);
-      drawioFrame.contentWindow.postMessage(JSON.stringify({{action:'status',message:'Saved!',modified:false}}),'*');
-    }}else if(msg.event==='exit'){{
-      // User closed editor
-      const container=document.getElementById('drawioContainer');
-      container.innerHTML='<span style="color:#888;font-size:.9rem">Editor closed. Select a diagram to reopen.</span>';
-      window.removeEventListener('message',handleDrawioMessage);
-      drawioFrame=null;
-    }}
-  }}catch(e){{}}
+function copyDiagramXml(){{
+  const ta=document.getElementById('drawioXmlArea');
+  if(!ta)return;
+  navigator.clipboard.writeText(ta.value).then(()=>alert('XML copied to clipboard!')).catch(()=>{{ta.select();document.execCommand('copy');alert('XML copied!')}});
+}}
+function downloadDiagramXml(){{
+  const ta=document.getElementById('drawioXmlArea');
+  if(!ta)return;
+  const blob=new Blob([ta.value],{{type:'application/xml'}});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(currentDiagramKey||'diagram')+'.drawio';
+  a.click();
+  // Save edits back to DATA
+  DATA.drawio[currentDiagramKey]=ta.value;
+  localStorage.setItem('drawio_'+currentDiagramKey,ta.value);
 }}
 // Load any saved diagrams from localStorage on startup
 Object.keys(DATA.drawio).forEach(k=>{{
@@ -1008,7 +1112,8 @@ async function sendChat(){{
   const el=addMsg('Thinking...','bot');
   try{{
     const base=window.location.pathname.replace(/\\/$/,'');
-    const url=base+'/api/chat?q='+encodeURIComponent(msg)+'&history='+encodeURIComponent(JSON.stringify(chatHistory.slice(-6)));
+    const pid=currentProject?currentProject.id:'';
+    const url=base+'/api/chat?q='+encodeURIComponent(msg)+'&history='+encodeURIComponent(JSON.stringify(chatHistory.slice(-6)))+'&pid='+encodeURIComponent(pid);
     const r=await fetch(url);
     const t=await r.text();
     el.remove();
@@ -1108,11 +1213,13 @@ function renderChangeLog(){{
     h+=' <span class="change-badge '+gf[0].status+'">'+gf[0].status.toUpperCase()+'</span>';
     if(gf[0].impact)h+=' <span style="font-size:.6rem;color:#f44336">'+esc(gf[0].impact.shift)+'</span>';
     h+='</div><div>';
-    gf.forEach(c=>{{
-      h+='<div class="change-entry '+c.status+'" title="'+esc(c.newText||'')+'">';
+    gf.forEach((c,ci)=>{{
+      h+='<div class="change-entry '+c.status+'" title="OLD: '+(esc(c.oldText||''))+'&#10;NEW: '+(esc(c.newText||''))+'">';
       h+='<span class="change-badge '+c.status+'">'+c.status.toUpperCase()+'</span>';
       h+='<span style="color:#888;min-width:85px;font-size:.62rem">'+c.date+'</span>';
-      h+='<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(c.newText||'')+'">'+esc((c.newText||'').substring(0,60))+'</span>';
+      h+='<span style="font-size:.62rem;color:#555;min-width:50px">#'+(c.storyKey||'-')+'</span>';
+      h+='<div style="flex:1;font-size:.65rem;overflow:hidden"><div style="color:#c62828;text-decoration:line-through;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc((c.oldText||'').substring(0,50))+'</div>';
+      h+='<div style="color:#2e7d32;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc((c.newText||'').substring(0,50))+'</div></div>';
       if(c.impact)h+='<span style="font-size:.6rem;color:'+(c.impact.extraDays>5?'#f44336':'#ff9800')+';white-space:nowrap">'+esc(c.impact.shift)+'</span>';
       h+='</div>';
     }});
@@ -1178,6 +1285,177 @@ function exportProgress(){{
   const blob=new Blob([csv],{{type:'text/csv'}});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='migration_progress.csv';a.click();
 }}
+// === PROJECT MANAGEMENT ===
+const ARTIFACTS_LIST = {artifacts_list};
+let currentProject = null;
+let allProjects = [];
+
+async function loadProjects() {{
+  const r = await fetch('/api/projects');
+  allProjects = await r.json();
+  renderProjectBar();
+  if (allProjects.length > 0 && !currentProject) {{
+    await selectProject(allProjects[0].id);
+  }}
+}}
+
+function renderProjectBar() {{
+  const tabs = document.getElementById('projectTabs');
+  if (!tabs) return;
+  tabs.innerHTML = allProjects.map(p =>
+    '<button onclick="selectProject(\\''+p.id+'\\')" style="padding:3px 10px;border-radius:12px;border:1px solid '+(currentProject&&currentProject.id===p.id?'#fff':'#555')+';background:'+(currentProject&&currentProject.id===p.id?'#fff':'transparent')+';color:'+(currentProject&&currentProject.id===p.id?'#1a1a2e':'#ccc')+';cursor:pointer;font-size:.75rem;display:inline-flex;align-items:center;gap:4px">'+
+    escHtml(p.name)+
+    '<span onclick="event.stopPropagation();deleteProject(\\''+p.id+'\\')" style="margin-left:4px;opacity:.6;font-size:.65rem" title="Delete">✕</span></button>'
+  ).join('');
+  const btn = document.getElementById('btnNewProject');
+  if (btn) btn.style.display = allProjects.length >= 5 ? 'none' : '';
+}}
+
+async function selectProject(pid) {{
+  const r = await fetch('/api/projects');
+  allProjects = await r.json();
+  currentProject = allProjects.find(p => p.id === pid) || null;
+  renderProjectBar();
+  if (currentProject) {{
+    const sel = document.getElementById('llmSelect');
+    if (sel) sel.value = currentProject.llm_backend || 'bedrock';
+    const modelInput = document.getElementById('ollamaModelInput');
+    if (modelInput) modelInput.value = currentProject.ollama_model || 'llama3';
+    updateOllamaModelVisibility(currentProject.llm_backend || 'bedrock');
+    await refreshFileList();
+  }}
+}}
+
+async function createProject() {{
+  const name = document.getElementById('newProjectName').value.trim();
+  if (!name) return;
+  const r = await fetch('/api/projects', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{name}})}});
+  const data = await r.json();
+  if (data.error) {{ document.getElementById('newProjectError').textContent = data.error; return; }}
+  document.getElementById('newProjectDialog').style.display = 'none';
+  document.getElementById('newProjectName').value = '';
+  await selectProject(data.id);
+}}
+
+async function deleteProject(pid) {{
+  if (!confirm('Delete this project and all its files?')) return;
+  await fetch('/api/projects/'+pid, {{method:'DELETE'}});
+  if (currentProject && currentProject.id === pid) currentProject = null;
+  await loadProjects();
+}}
+
+async function setLLMBackend(backend) {{
+  if (!currentProject) return;
+  await fetch('/api/projects/'+currentProject.id, {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{llm_backend:backend}})}});
+  currentProject.llm_backend = backend;
+  updateOllamaModelVisibility(backend);
+}}
+
+function updateOllamaModelVisibility(backend) {{
+  const wrap = document.getElementById('ollamaModelWrap');
+  if (wrap) wrap.style.display = (backend === 'ollama' || backend === 'files+ollama') ? 'inline-flex' : 'none';
+}}
+
+async function setOllamaModel(model) {{
+  if (!currentProject) return;
+  await fetch('/api/projects/'+currentProject.id, {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{ollama_model:model}})}});
+  currentProject.ollama_model = model;
+}}
+
+function showNewProjectDialog() {{
+  document.getElementById('newProjectError').textContent = '';
+  document.getElementById('newProjectName').value = '';
+  document.getElementById('newProjectDialog').style.display = 'flex';
+  setTimeout(()=>document.getElementById('newProjectName').focus(), 50);
+}}
+
+function toggleUploadPanel() {{
+  const p = document.getElementById('uploadPanel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  if (p.style.display === 'block') refreshFileList();
+}}
+
+async function uploadFiles() {{
+  if (!currentProject) {{ alert('Select or create a project first.'); return; }}
+  const input = document.getElementById('fileInput');
+  if (!input.files.length) return;
+  const status = document.getElementById('uploadStatus');
+  status.textContent = 'Uploading\u2026';
+  const fd = new FormData();
+  for (const f of input.files) fd.append('files', f);
+  const r = await fetch('/api/upload/'+currentProject.id, {{method:'POST', body:fd}});
+  const data = await r.json();
+  status.textContent = data.uploaded ? 'Uploaded: '+data.uploaded.join(', ') : (data.error||'Error');
+  input.value = '';
+  await refreshFileList();
+}}
+
+async function refreshFileList() {{
+  if (!currentProject) return;
+  const r = await fetch('/api/projects/'+currentProject.id);
+  currentProject = await r.json();
+  const files = currentProject._files || [];
+  const toggles = currentProject.artifact_toggles || {{}};
+  const el = document.getElementById('fileList');
+  if (!el) return;
+  if (!files.length) {{ el.innerHTML = '<span style="color:#999">No files uploaded yet.</span>'; return; }}
+  let h = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:.7rem;width:auto">';
+  h += '<tr><th style="text-align:left;padding:2px 6px;background:#e8eaf6">File</th>';
+  ARTIFACTS_LIST.forEach(a => {{ h += '<th style="padding:2px 4px;background:#e8eaf6;font-size:.6rem;white-space:nowrap">'+a+'</th>'; }});
+  h += '<th style="background:#e8eaf6"></th></tr>';
+  files.forEach(fname => {{
+    h += '<tr><td style="padding:2px 6px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="'+escHtml(fname)+'">'+escHtml(fname)+'</td>';
+    ARTIFACTS_LIST.forEach(a => {{
+      const enabled = (toggles[a]||[]).includes(fname);
+      h += '<td style="text-align:center;padding:2px 4px"><input type="checkbox" '+(enabled?'checked':'')+
+           ' onchange="toggleFile(\\''+escHtml(fname)+'\\',\\''+a+'\\',this.checked)" title="Enable for '+a+'"></td>';
+    }});
+    h += '<td style="padding:2px 4px"><span onclick="deleteFile(\\''+escHtml(fname)+'\\')" style="cursor:pointer;color:#f44336;font-size:.65rem" title="Delete file">🗑</span></td>';
+    h += '</tr>';
+  }});
+  h += '</table></div>';
+  el.innerHTML = h;
+}}
+
+async function toggleFile(fname, artifact, enabled) {{
+  if (!currentProject) return;
+  const toggles = currentProject.artifact_toggles || {{}};
+  let list = [...(toggles[artifact]||[])];
+  if (enabled) {{ if (!list.includes(fname)) list.push(fname); }}
+  else {{ list = list.filter(f => f !== fname); }}
+  const patch = {{artifact_toggles: {{[artifact]: list}}}};
+  await fetch('/api/projects/'+currentProject.id, {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify(patch)}});
+  if (!currentProject.artifact_toggles) currentProject.artifact_toggles = {{}};
+  currentProject.artifact_toggles[artifact] = list;
+}}
+
+async function deleteFile(fname) {{
+  if (!currentProject) return;
+  if (!confirm('Delete '+fname+'?')) return;
+  await fetch('/api/files/'+currentProject.id+'/'+encodeURIComponent(fname), {{method:'DELETE'}});
+  await refreshFileList();
+}}
+
+function escHtml(s) {{ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
+
+async function generateTab(artifact) {{
+  if (!currentProject) {{ alert('Select a project first.'); return; }}
+  const btn = document.getElementById('gen-btn-'+artifact);
+  if (btn) {{ btn.textContent = '\u23f3 Generating\u2026'; btn.disabled = true; }}
+  try {{
+    const r = await fetch('/api/generate', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{project_id: currentProject.id, artifact, prompt: ''}})
+    }});
+    const data = await r.json();
+    if (data.error) {{ alert('Generation error: '+data.error); }}
+    else {{ alert('Generated successfully! The data has been returned by the LLM.'); }}
+  }} catch(e) {{ alert('Error: '+e.message); }}
+  finally {{ if (btn) {{ btn.textContent = '\u23f3 Generating\u2026'; btn.disabled = false; }} }}
+}}
+
+loadProjects();
 render();
 </script>
 </body>
@@ -1185,57 +1463,213 @@ render();
 
 
 class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        path = urlparse(self.path).path
-        query = urlparse(self.path).query
-        # Chat endpoint: any path ending with /api/chat or containing chat= in query
-        if '/api/chat' in path or (query and 'chat=' in query):
-            from urllib.parse import parse_qs, unquote
-            params = parse_qs(query, keep_blank_values=True)
-            message = params.get('chat', params.get('q', ['']))[0]
-            # URL decode in case of double-encoding
-            message = unquote(message).strip()
-            if not message:
-                reply = "Please type a question about the migration plan."
-            else:
-                history_str = params.get('history', ['[]'])[0]
-                try:
-                    history = json.loads(unquote(history_str))
-                except:
-                    history = []
-                reply = chat_with_bedrock(message, history)
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(json.dumps({"reply": reply}).encode())
-        else:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Expires", "0")
-            self.end_headers()
-            self.wfile.write(build_html().encode())
-
-    def do_POST(self):
-        length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length))
-        reply = chat_with_bedrock(body.get("message", ""), body.get("history", []))
-        self.send_response(200)
+    def _json(self, data, status=200):
+        body = json.dumps(data).encode()
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(json.dumps({"reply": reply}).encode())
+        self.wfile.write(body)
 
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
+    def do_GET(self):
+        path = urlparse(self.path).path
+        query = urlparse(self.path).query
+
+        # --- Projects list ---
+        if path == "/api/projects":
+            projects = list_projects()
+            for p in projects:
+                p["_files"] = list_files(p["id"])
+            return self._json(projects)
+
+        # --- Single project ---
+        m = re.match(r"^/api/projects/([a-f0-9]+)$", path)
+        if m:
+            p = get_project(m.group(1))
+            if not p:
+                return self._json({"error": "Not found"}, 404)
+            p["_files"] = list_files(p["id"])
+            return self._json(p)
+
+        # --- Chat ---
+        if "/api/chat" in path or (query and "chat=" in query):
+            from urllib.parse import parse_qs, unquote
+            params = parse_qs(query, keep_blank_values=True)
+            message = params.get("chat", params.get("q", [""]))[0]
+            message = unquote(message).strip()
+            if not message:
+                return self._json({"reply": "Please type a question."})
+            history_str = params.get("history", ["[]"])[0]
+            try:
+                history = json.loads(unquote(history_str))
+            except Exception:
+                history = []
+            pid = params.get("pid", [""])[0]
+            project = get_project(pid) if pid else None
+            if project:
+                backend = project["llm_backend"]
+                ollama_model = project.get("ollama_model", "llama3")
+                file_ctx = read_enabled_files(pid, "chat")
+                sys_prompt = SYSTEM_PROMPT
+                if file_ctx:
+                    sys_prompt += f"\n\nProject Documents:\n{file_ctx[:12000]}"
+                if backend == "bedrock":
+                    reply = chat_with_bedrock(message, history, system_override=sys_prompt)
+                elif backend == "ollama":
+                    reply = chat_with_ollama(message, history, system_override=sys_prompt, model=ollama_model)
+                elif backend == "files+ollama":
+                    reply = chat_with_ollama(message, history, system_override=sys_prompt, model=ollama_model)
+                elif backend == "files_only":
+                    reply = f"[Files Only mode]\n\n{file_ctx[:4000]}" if file_ctx else "No files enabled for chat. Please upload and enable files."
+                else:
+                    reply = chat_with_bedrock(message, history, system_override=sys_prompt)
+            else:
+                reply = chat_with_bedrock(message, history)
+            return self._json({"reply": reply})
+
+        # --- Default: serve HTML ---
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        self.end_headers()
+        self.wfile.write(build_html().encode())
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        length = int(self.headers.get("Content-Length", 0))
+
+        # --- Create project ---
+        if path == "/api/projects":
+            body = json.loads(self.rfile.read(length))
+            p = create_project(body.get("name", "Untitled"))
+            if p is None:
+                return self._json({"error": "Maximum 5 projects reached."}, 400)
+            return self._json(p)
+
+        # --- File upload ---
+        m = re.match(r"^/api/upload/([a-f0-9]+)$", path)
+        if m:
+            pid = m.group(1)
+            if not get_project(pid):
+                return self._json({"error": "Project not found"}, 404)
+            content_type = self.headers.get("Content-Type", "")
+            boundary = None
+            for part in content_type.split(";"):
+                part = part.strip()
+                if part.startswith("boundary="):
+                    boundary = part[9:].strip('"')
+            if not boundary:
+                return self._json({"error": "No boundary in multipart"}, 400)
+            raw = self.rfile.read(length)
+            uploaded = _parse_multipart(raw, boundary, pid)
+            return self._json({"uploaded": uploaded})
+
+        # --- Generate artifact ---
+        if path == "/api/generate":
+            body = json.loads(self.rfile.read(length))
+            result = generate_artifact(
+                body.get("project_id", ""),
+                body.get("artifact", ""),
+                body.get("prompt", ""),
+            )
+            try:
+                return self._json(json.loads(result))
+            except Exception:
+                return self._json({"result": result})
+
+        # --- Legacy chat POST ---
+        body = json.loads(self.rfile.read(length) if length else b"{}")
+        pid = body.get("project_id", "")
+        project = get_project(pid) if pid else None
+        if project:
+            backend = project["llm_backend"]
+            ollama_model = project.get("ollama_model", "llama3")
+            file_ctx = read_enabled_files(pid, "chat")
+            sys_prompt = SYSTEM_PROMPT
+            if file_ctx:
+                sys_prompt += f"\n\nProject Documents:\n{file_ctx[:12000]}"
+            if backend in ("ollama", "files+ollama"):
+                reply = chat_with_ollama(body.get("message", ""), body.get("history", []), system_override=sys_prompt, model=ollama_model)
+            elif backend == "files_only":
+                reply = f"[Files Only mode]\n\n{file_ctx[:4000]}" if file_ctx else "No files enabled."
+            else:
+                reply = chat_with_bedrock(body.get("message", ""), body.get("history", []), system_override=sys_prompt)
+        else:
+            reply = chat_with_bedrock(body.get("message", ""), body.get("history", []))
+        return self._json({"reply": reply})
+
+    def do_PATCH(self):
+        path = urlparse(self.path).path
+        length = int(self.headers.get("Content-Length", 0))
+        m = re.match(r"^/api/projects/([a-f0-9]+)$", path)
+        if m:
+            body = json.loads(self.rfile.read(length))
+            p = update_project(m.group(1), body)
+            if not p:
+                return self._json({"error": "Not found"}, 404)
+            return self._json(p)
+        self._json({"error": "Not found"}, 404)
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+
+        # --- Delete project ---
+        m = re.match(r"^/api/projects/([a-f0-9]+)$", path)
+        if m:
+            ok = delete_project(m.group(1))
+            return self._json({"ok": ok})
+
+        # --- Delete file ---
+        m = re.match(r"^/api/files/([a-f0-9]+)/(.+)$", path)
+        if m:
+            from urllib.parse import unquote
+            pid, fname = m.group(1), unquote(m.group(2))
+            ok = delete_file(pid, fname)
+            return self._json({"ok": ok})
+
+        self._json({"error": "Not found"}, 404)
+
     def log_message(self, format, *args):
         pass
+
+
+def _parse_multipart(raw: bytes, boundary: str, pid: str) -> list:
+    """Minimal multipart/form-data parser — extracts files and saves them."""
+    uploaded = []
+    sep = ("--" + boundary).encode()
+    parts = raw.split(sep)
+    for part in parts[1:]:
+        if part.strip() in (b"", b"--", b"--\r\n"):
+            continue
+        # Split headers from body
+        if b"\r\n\r\n" in part:
+            headers_raw, body = part.split(b"\r\n\r\n", 1)
+        elif b"\n\n" in part:
+            headers_raw, body = part.split(b"\n\n", 1)
+        else:
+            continue
+        # Strip trailing boundary marker
+        body = body.rstrip(b"\r\n")
+        if body.endswith(b"--"):
+            body = body[:-2].rstrip(b"\r\n")
+        headers_text = headers_raw.decode("utf-8", errors="replace")
+        # Extract filename
+        fn_match = re.search(r'filename="([^"]+)"', headers_text)
+        if not fn_match:
+            continue
+        filename = fn_match.group(1)
+        saved = save_file(pid, filename, body)
+        uploaded.append(saved)
+    return uploaded
 
 
 def main():
