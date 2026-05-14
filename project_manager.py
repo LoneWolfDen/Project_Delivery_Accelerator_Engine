@@ -103,6 +103,33 @@ def delete_file(pid: str, filename: str) -> bool:
     return False
 
 
+def get_project_data(pid: str) -> dict:
+    """Return saved per-project tab data, or empty dict if none."""
+    fp = UPLOADS_DIR / pid / "_project_data.json"
+    if fp.exists():
+        try:
+            return json.loads(fp.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def save_project_data(pid: str, artifact: str, data) -> bool:
+    """Persist generated tab data for a project artifact."""
+    proj_dir = UPLOADS_DIR / pid
+    proj_dir.mkdir(exist_ok=True)
+    fp = proj_dir / "_project_data.json"
+    existing = {}
+    if fp.exists():
+        try:
+            existing = json.loads(fp.read_text())
+        except Exception:
+            pass
+    existing[artifact] = data
+    fp.write_text(json.dumps(existing))
+    return True
+
+
 def read_enabled_files(pid: str, artifact: str) -> str:
     """Return concatenated text of all enabled files for an artifact."""
     project = get_project(pid)

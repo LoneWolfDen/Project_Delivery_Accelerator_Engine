@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from project_manager import (
     list_projects, get_project, create_project, delete_project,
     update_project, list_files, save_file, delete_file, read_enabled_files,
+    get_project_data, save_project_data,
     ARTIFACTS, LLM_BACKENDS,
 )
 
@@ -286,15 +287,23 @@ def generate_artifact(project_id: str, artifact: str, prompt: str) -> str:
     if backend == "files_only":
         if not file_context:
             return json.dumps({"error": "No files enabled for this artifact. Please upload and enable files."})
-        # Summarise from file context only — no LLM call
-        return json.dumps({"summary": f"File context for '{artifact}':\n\n{file_context[:8000]}"})
+        result = json.dumps({"summary": f"File context for '{artifact}':\n\n{file_context[:8000]}"})
     elif backend == "bedrock":
-        return chat_with_bedrock(user_prompt, [], system_override=system)
+        result = chat_with_bedrock(user_prompt, [], system_override=system)
     elif backend == "ollama":
-        return chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
+        result = chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
     elif backend == "files+ollama":
-        return chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
-    return json.dumps({"error": f"Unknown backend: {backend}"})
+        result = chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
+    else:
+        return json.dumps({"error": f"Unknown backend: {backend}"})
+
+    # Save generated data per project
+    try:
+        parsed = json.loads(result)
+        save_project_data(project_id, artifact, parsed)
+    except Exception:
+        pass
+    return result
 
 
 def build_html():
@@ -468,23 +477,56 @@ const DATA={{
   gates:{gates_json},
   drawio:{drawio_json}
 }};
+// Per-project data overrides static defaults when available
+const PROJECT_DATA = {{}};
+function mergeProjectData(pd) {{
+  ['epics','resources','tracking','nfrs','gantt','gates'].forEach(k => {{
+    if (pd[k] !== undefined) DATA[k] = pd[k];
+    else {{
+      // restore static defaults
+      DATA.epics = {epics_json};
+      DATA.resources = {resources_json};
+      DATA.tracking = {tracking_json};
+      DATA.nfrs = {nfrs_json};
+      DATA.gantt = {gantt_json};
+      DATA.gates = {gates_json};
+    }}
+  }});
+}}
+const STATIC_DATA = {{
+  epics: {epics_json},
+  resources: {resources_json},
+  tracking: {tracking_json},
+  nfrs: {nfrs_json},
+  gantt: {gantt_json},
+  gates: {gates_json},
+  drawio: {drawio_json}
+}};
+function applyProjectData(pd) {{
+  ['epics','resources','tracking','nfrs','gantt','gates'].forEach(k => {{
+    DATA[k] = (pd && pd[k] !== undefined) ? pd[k] : STATIC_DATA[k];
+  }});
+}}
 const TABS=[
   {{id:'overview',label:'Overview'}},
-  {{id:'gantt',label:'📊 Gantt Chart'}},
-  {{id:'gates',label:'🚦 NFR Gates ('+DATA.gates.length+')'}},
+  {{id:'gantt',label:'📊 Gantt Chart',artifact:'gantt'}},
+  {{id:'gates',label:'🚦 NFR Gates ('+DATA.gates.length+')',artifact:'gates'}},
   {{id:'deps',label:'🔗 Dependencies'}},
   {{id:'dataflow',label:'💾 Data Flow'}},
   {{id:'diagrams',label:'✏️ Diagram Editor'}},
-  {{id:'epics',label:'Epic Plan ('+DATA.epics.length+')'}},
-  {{id:'resources',label:'Resources ('+DATA.resources.length+')'}},
-  {{id:'tracking',label:'Tracking ('+DATA.tracking.length+')'}},
-  {{id:'nfrs',label:'NFRs ('+DATA.nfrs.length+')'}}
+  {{id:'epics',label:'Epic Plan ('+DATA.epics.length+')',artifact:'epics'}},
+  {{id:'resources',label:'Resources ('+DATA.resources.length+')',artifact:'resources'}},
+  {{id:'tracking',label:'Tracking ('+DATA.tracking.length+')',artifact:'tracking'}},
+  {{id:'nfrs',label:'NFRs ('+DATA.nfrs.length+')',artifact:'nfrs'}}
 ];
 let activeTab='overview';
 function render(){{
   // Nav
   document.getElementById('navBar').innerHTML=TABS.map(t=>
-    '<button class="'+(t.id===activeTab?'active':'')+'" onclick="showTab(\\''+t.id+'\\')">'+t.label+'</button>'
+    '<span style="display:inline-flex;align-items:center;gap:2px">'+
+    '<button class="'+(t.id===activeTab?'active':'')+'" onclick="showTab(\\''+t.id+'\\')">'+t.label+'</button>'+
+    (t.artifact?'<button id="gen-btn-'+t.artifact+'" onclick="generateTabData(\\''+t.artifact+'\\')" title="Generate from uploaded files" style="padding:2px 5px;border:1px solid #4caf50;border-radius:4px;background:#e8f5e9;cursor:pointer;font-size:.65rem;color:#2e7d32">⚡</button>':'')
+    +'</span>'
   ).join('');
   // Content
   let html='';
@@ -1323,6 +1365,10 @@ async function selectProject(pid) {{
     if (modelInput) modelInput.value = currentProject.ollama_model || 'llama3';
     updateOllamaModelVisibility(currentProject.llm_backend || 'bedrock');
     await refreshFileList();
+    // Load project-specific tab data
+    const pd = await fetch('/api/project-data/'+pid).then(r=>r.json()).catch(()=>({{}}));
+    applyProjectData(pd);
+    render();
   }}
 }}
 
@@ -1438,10 +1484,10 @@ async function deleteFile(fname) {{
 
 function escHtml(s) {{ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
 
-async function generateTab(artifact) {{
+async function generateTabData(artifact) {{
   if (!currentProject) {{ alert('Select a project first.'); return; }}
   const btn = document.getElementById('gen-btn-'+artifact);
-  if (btn) {{ btn.textContent = '\u23f3 Generating\u2026'; btn.disabled = true; }}
+  if (btn) {{ btn.textContent = '⏳'; btn.disabled = true; }}
   try {{
     const r = await fetch('/api/generate', {{
       method: 'POST',
@@ -1449,10 +1495,16 @@ async function generateTab(artifact) {{
       body: JSON.stringify({{project_id: currentProject.id, artifact, prompt: ''}})
     }});
     const data = await r.json();
-    if (data.error) {{ alert('Generation error: '+data.error); }}
-    else {{ alert('Generated successfully! The data has been returned by the LLM.'); }}
+    if (data.error) {{
+      alert('Generation error: ' + data.error);
+    }} else {{
+      // Update DATA in-place and re-render
+      if (Array.isArray(data)) DATA[artifact] = data;
+      else if (data[artifact]) DATA[artifact] = data[artifact];
+      render();
+    }}
   }} catch(e) {{ alert('Error: '+e.message); }}
-  finally {{ if (btn) {{ btn.textContent = '\u23f3 Generating\u2026'; btn.disabled = false; }} }}
+  finally {{ if (btn) {{ btn.textContent = '⚡'; btn.disabled = false; }} }}
 }}
 
 loadProjects();
@@ -1488,6 +1540,12 @@ class Handler(BaseHTTPRequestHandler):
             for p in projects:
                 p["_files"] = list_files(p["id"])
             return self._json(projects)
+
+        # --- Project data (per-project tab data) ---
+        m = re.match(r"^/api/project-data/([a-f0-9]+)$", path)
+        if m:
+            data = get_project_data(m.group(1))
+            return self._json(data)
 
         # --- Single project ---
         m = re.match(r"^/api/projects/([a-f0-9]+)$", path)
@@ -1546,6 +1604,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         length = int(self.headers.get("Content-Length", 0))
+
+        # --- Save project data ---
+        if path.startswith("/api/project-data/"):
+            m = re.match(r"^/api/project-data/([a-f0-9]+)$", path)
+            if m:
+                body = json.loads(self.rfile.read(length))
+                artifact = body.get("artifact", "")
+                data = body.get("data")
+                if artifact and data is not None:
+                    save_project_data(m.group(1), artifact, data)
+                    return self._json({"ok": True})
+                return self._json({"error": "Missing artifact or data"}, 400)
 
         # --- Create project ---
         if path == "/api/projects":
