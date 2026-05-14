@@ -239,11 +239,11 @@ def chat_with_bedrock(message, history, system_override=None):
         return f"Error: {e}"
 
 
-def chat_with_ollama(message, history, system_override=None):
+def chat_with_ollama(message, history, system_override=None, model=None):
     """Call local OLLAMA API (default: http://localhost:11434)."""
     import urllib.request
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-    model = os.environ.get("OLLAMA_MODEL", "llama3")
+    model = model or os.environ.get("OLLAMA_MODEL", "llama3")
     msgs = [{"role": "system", "content": system_override or SYSTEM_PROMPT}]
     for h in history:
         msgs.append({"role": h["role"], "content": h["content"]})
@@ -269,6 +269,7 @@ def generate_artifact(project_id: str, artifact: str, prompt: str) -> str:
         return json.dumps({"error": "Project not found"})
 
     backend = project["llm_backend"]
+    ollama_model = project.get("ollama_model", "llama3")
     file_context = read_enabled_files(project_id, artifact)
 
     system = (
@@ -285,13 +286,14 @@ def generate_artifact(project_id: str, artifact: str, prompt: str) -> str:
     if backend == "files_only":
         if not file_context:
             return json.dumps({"error": "No files enabled for this artifact. Please upload and enable files."})
-        return chat_with_bedrock(user_prompt, [], system_override=system)
+        # Summarise from file context only — no LLM call
+        return json.dumps({"summary": f"File context for '{artifact}':\n\n{file_context[:8000]}"})
     elif backend == "bedrock":
         return chat_with_bedrock(user_prompt, [], system_override=system)
     elif backend == "ollama":
-        return chat_with_ollama(user_prompt, [], system_override=system)
+        return chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
     elif backend == "files+ollama":
-        return chat_with_ollama(user_prompt, [], system_override=system)
+        return chat_with_ollama(user_prompt, [], system_override=system, model=ollama_model)
     return json.dumps({"error": f"Unknown backend: {backend}"})
 
 
@@ -416,6 +418,10 @@ tr:hover{{background:#f0f4ff}}
       <option value="files_only">📄 Files Only</option>
       <option value="files+ollama">📄+🦙 Files + OLLAMA</option>
     </select>
+    <span id="ollamaModelWrap" style="display:none;align-items:center;gap:.3rem">
+      <span style="opacity:.7;font-size:.75rem">Model:</span>
+      <input id="ollamaModelInput" type="text" value="llama3" placeholder="llama3" onchange="setOllamaModel(this.value)" style="padding:2px 6px;border-radius:4px;border:1px solid #444;background:#1a1a2e;color:#fff;font-size:.75rem;width:100px">
+    </span>
     <button onclick="toggleUploadPanel()" style="padding:3px 10px;border:1px solid #2196f3;border-radius:12px;background:transparent;color:#2196f3;cursor:pointer;font-size:.75rem">📁 Files</button>
   </div>
 </div>
@@ -903,41 +909,39 @@ let drawioFrame=null;
 let currentDiagramKey=null;
 function openDrawio(key,label){{
   currentDiagramKey=key;
-  const xml=DATA.drawio[key];
+  const saved=localStorage.getItem('drawio_'+key);
+  const xml=saved||DATA.drawio[key];
   if(!xml){{alert('Diagram not found: '+key);return}}
   const container=document.getElementById('drawioContainer');
-  container.innerHTML='<iframe id="drawioIframe" style="width:100%;height:100%;border:none" src="https://embed.diagrams.net/?embed=1&proto=json&spin=1&libraries=1"></iframe>';
-  drawioFrame=document.getElementById('drawioIframe');
-  // Listen for messages from draw.io
-  window.addEventListener('message',handleDrawioMessage);
-  // Store XML to send once iframe is ready
-  window._pendingDrawioXml=xml;
-  window._pendingDrawioLabel=label;
+  // Local XML viewer — no CDN dependency
+  const escaped=xml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  container.innerHTML=
+    '<div style="display:flex;flex-direction:column;height:100%">'+
+    '<div style="padding:6px 8px;background:#f5f5f5;border-bottom:1px solid #ddd;display:flex;gap:8px;align-items:center;font-size:.78rem">'+
+    '<strong>'+escHtml(label)+'</strong>'+
+    '<span style="opacity:.6">(XML source — paste into draw.io desktop or diagrams.net when online)</span>'+
+    '<button onclick="copyDiagramXml()" style="margin-left:auto;padding:3px 10px;border:1px solid #1565c0;border-radius:4px;background:#e3f2fd;cursor:pointer;font-size:.75rem">📋 Copy XML</button>'+
+    '<button onclick="downloadDiagramXml()" style="padding:3px 10px;border:1px solid #4caf50;border-radius:4px;background:#e8f5e9;cursor:pointer;font-size:.75rem">⬇️ Download .drawio</button>'+
+    '</div>'+
+    '<textarea id="drawioXmlArea" style="flex:1;font-family:monospace;font-size:.72rem;padding:8px;border:none;resize:none;outline:none;background:#fafafa">'+escaped+'</textarea>'+
+    '</div>';
 }}
-function handleDrawioMessage(evt){{
-  if(!evt.data||typeof evt.data!=='string')return;
-  try{{
-    const msg=JSON.parse(evt.data);
-    if(msg.event==='init'){{
-      // Editor ready — load the diagram
-      drawioFrame.contentWindow.postMessage(JSON.stringify({{
-        action:'load',
-        xml:window._pendingDrawioXml,
-        title:window._pendingDrawioLabel
-      }}),'*');
-    }}else if(msg.event==='save'){{
-      // User clicked save — store updated XML
-      DATA.drawio[currentDiagramKey]=msg.xml;
-      localStorage.setItem('drawio_'+currentDiagramKey,msg.xml);
-      drawioFrame.contentWindow.postMessage(JSON.stringify({{action:'status',message:'Saved!',modified:false}}),'*');
-    }}else if(msg.event==='exit'){{
-      // User closed editor
-      const container=document.getElementById('drawioContainer');
-      container.innerHTML='<span style="color:#888;font-size:.9rem">Editor closed. Select a diagram to reopen.</span>';
-      window.removeEventListener('message',handleDrawioMessage);
-      drawioFrame=null;
-    }}
-  }}catch(e){{}}
+function copyDiagramXml(){{
+  const ta=document.getElementById('drawioXmlArea');
+  if(!ta)return;
+  navigator.clipboard.writeText(ta.value).then(()=>alert('XML copied to clipboard!')).catch(()=>{{ta.select();document.execCommand('copy');alert('XML copied!')}});
+}}
+function downloadDiagramXml(){{
+  const ta=document.getElementById('drawioXmlArea');
+  if(!ta)return;
+  const blob=new Blob([ta.value],{{type:'application/xml'}});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(currentDiagramKey||'diagram')+'.drawio';
+  a.click();
+  // Save edits back to DATA
+  DATA.drawio[currentDiagramKey]=ta.value;
+  localStorage.setItem('drawio_'+currentDiagramKey,ta.value);
 }}
 // Load any saved diagrams from localStorage on startup
 Object.keys(DATA.drawio).forEach(k=>{{
@@ -1108,7 +1112,8 @@ async function sendChat(){{
   const el=addMsg('Thinking...','bot');
   try{{
     const base=window.location.pathname.replace(/\\/$/,'');
-    const url=base+'/api/chat?q='+encodeURIComponent(msg)+'&history='+encodeURIComponent(JSON.stringify(chatHistory.slice(-6)));
+    const pid=currentProject?currentProject.id:'';
+    const url=base+'/api/chat?q='+encodeURIComponent(msg)+'&history='+encodeURIComponent(JSON.stringify(chatHistory.slice(-6)))+'&pid='+encodeURIComponent(pid);
     const r=await fetch(url);
     const t=await r.text();
     el.remove();
@@ -1314,6 +1319,9 @@ async function selectProject(pid) {{
   if (currentProject) {{
     const sel = document.getElementById('llmSelect');
     if (sel) sel.value = currentProject.llm_backend || 'bedrock';
+    const modelInput = document.getElementById('ollamaModelInput');
+    if (modelInput) modelInput.value = currentProject.ollama_model || 'llama3';
+    updateOllamaModelVisibility(currentProject.llm_backend || 'bedrock');
     await refreshFileList();
   }}
 }}
@@ -1340,6 +1348,18 @@ async function setLLMBackend(backend) {{
   if (!currentProject) return;
   await fetch('/api/projects/'+currentProject.id, {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{llm_backend:backend}})}});
   currentProject.llm_backend = backend;
+  updateOllamaModelVisibility(backend);
+}}
+
+function updateOllamaModelVisibility(backend) {{
+  const wrap = document.getElementById('ollamaModelWrap');
+  if (wrap) wrap.style.display = (backend === 'ollama' || backend === 'files+ollama') ? 'inline-flex' : 'none';
+}}
+
+async function setOllamaModel(model) {{
+  if (!currentProject) return;
+  await fetch('/api/projects/'+currentProject.id, {{method:'PATCH', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{ollama_model:model}})}});
+  currentProject.ollama_model = model;
 }}
 
 function showNewProjectDialog() {{
@@ -1491,7 +1511,27 @@ class Handler(BaseHTTPRequestHandler):
                 history = json.loads(unquote(history_str))
             except Exception:
                 history = []
-            reply = chat_with_bedrock(message, history)
+            pid = params.get("pid", [""])[0]
+            project = get_project(pid) if pid else None
+            if project:
+                backend = project["llm_backend"]
+                ollama_model = project.get("ollama_model", "llama3")
+                file_ctx = read_enabled_files(pid, "chat")
+                sys_prompt = SYSTEM_PROMPT
+                if file_ctx:
+                    sys_prompt += f"\n\nProject Documents:\n{file_ctx[:12000]}"
+                if backend == "bedrock":
+                    reply = chat_with_bedrock(message, history, system_override=sys_prompt)
+                elif backend == "ollama":
+                    reply = chat_with_ollama(message, history, system_override=sys_prompt, model=ollama_model)
+                elif backend == "files+ollama":
+                    reply = chat_with_ollama(message, history, system_override=sys_prompt, model=ollama_model)
+                elif backend == "files_only":
+                    reply = f"[Files Only mode]\n\n{file_ctx[:4000]}" if file_ctx else "No files enabled for chat. Please upload and enable files."
+                else:
+                    reply = chat_with_bedrock(message, history, system_override=sys_prompt)
+            else:
+                reply = chat_with_bedrock(message, history)
             return self._json({"reply": reply})
 
         # --- Default: serve HTML ---
@@ -1548,7 +1588,23 @@ class Handler(BaseHTTPRequestHandler):
 
         # --- Legacy chat POST ---
         body = json.loads(self.rfile.read(length) if length else b"{}")
-        reply = chat_with_bedrock(body.get("message", ""), body.get("history", []))
+        pid = body.get("project_id", "")
+        project = get_project(pid) if pid else None
+        if project:
+            backend = project["llm_backend"]
+            ollama_model = project.get("ollama_model", "llama3")
+            file_ctx = read_enabled_files(pid, "chat")
+            sys_prompt = SYSTEM_PROMPT
+            if file_ctx:
+                sys_prompt += f"\n\nProject Documents:\n{file_ctx[:12000]}"
+            if backend in ("ollama", "files+ollama"):
+                reply = chat_with_ollama(body.get("message", ""), body.get("history", []), system_override=sys_prompt, model=ollama_model)
+            elif backend == "files_only":
+                reply = f"[Files Only mode]\n\n{file_ctx[:4000]}" if file_ctx else "No files enabled."
+            else:
+                reply = chat_with_bedrock(body.get("message", ""), body.get("history", []), system_override=sys_prompt)
+        else:
+            reply = chat_with_bedrock(body.get("message", ""), body.get("history", []))
         return self._json({"reply": reply})
 
     def do_PATCH(self):

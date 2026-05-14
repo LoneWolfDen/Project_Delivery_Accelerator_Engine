@@ -41,6 +41,7 @@ def create_project(name: str) -> dict | None:
         "id": pid,
         "name": name,
         "llm_backend": "bedrock",
+        "ollama_model": "llama3",
         "artifact_toggles": {a: [] for a in ARTIFACTS},  # list of enabled filenames per artifact
     }
     projects.append(project)
@@ -69,6 +70,8 @@ def update_project(pid: str, patch: dict) -> dict | None:
                 p["name"] = patch["name"]
             if "llm_backend" in patch and patch["llm_backend"] in LLM_BACKENDS:
                 p["llm_backend"] = patch["llm_backend"]
+            if "ollama_model" in patch:
+                p["ollama_model"] = str(patch["ollama_model"]).strip() or "llama3"
             if "artifact_toggles" in patch:
                 p["artifact_toggles"].update(patch["artifact_toggles"])
             _save(projects)
