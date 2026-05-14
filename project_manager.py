@@ -73,6 +73,16 @@ def update_project(pid: str, patch: dict) -> dict | None:
             if "ollama_model" in patch:
                 p["ollama_model"] = str(patch["ollama_model"]).strip() or "llama3"
             if "artifact_toggles" in patch:
+                import datetime
+                if "toggle_history" not in p:
+                    p["toggle_history"] = []
+                for artifact, files in patch["artifact_toggles"].items():
+                    old = set(p["artifact_toggles"].get(artifact, []))
+                    new = set(files)
+                    for f in new - old:
+                        p["toggle_history"].append({"ts": datetime.datetime.utcnow().isoformat(), "artifact": artifact, "file": f, "action": "enabled"})
+                    for f in old - new:
+                        p["toggle_history"].append({"ts": datetime.datetime.utcnow().isoformat(), "artifact": artifact, "file": f, "action": "disabled"})
                 p["artifact_toggles"].update(patch["artifact_toggles"])
             _save(projects)
             return p

@@ -487,22 +487,31 @@ const STATIC_DATA = {{
   drawio: {drawio_json}
 }};
 function applyProjectData(pd) {{
+  // Only use project-specific data — never fall back to static datasets
   ['epics','resources','tracking','nfrs','gantt','gates'].forEach(k => {{
-    DATA[k] = (pd && pd[k] !== undefined) ? pd[k] : STATIC_DATA[k];
+    DATA[k] = (pd && pd[k] !== undefined) ? pd[k] : null;
   }});
+}}
+function emptyState(artifact) {{
+  return '<div style="text-align:center;padding:3rem;color:#888">'+
+    '<div style="font-size:2rem;margin-bottom:.5rem">📭</div>'+
+    '<div style="font-size:.9rem;margin-bottom:1rem">No data yet for <strong>'+artifact+'</strong> in this project.</div>'+
+    '<div style="font-size:.8rem;color:#aaa;margin-bottom:1rem">Upload files, enable them for this artifact, then click ⚡ Generate.</div>'+
+    '<button onclick="generateTabData(\\''+artifact+'\\')" style="padding:6px 18px;border:1px solid #4caf50;border-radius:6px;background:#e8f5e9;color:#2e7d32;cursor:pointer;font-size:.85rem">⚡ Generate '+artifact+'</button>'+
+    '</div>';
 }}
 function getTabs() {{
   return [
     {{id:'overview',label:'Overview'}},
-    {{id:'gantt',label:'📊 Gantt Chart',artifact:'gantt'}},
-    {{id:'gates',label:'🚦 NFR Gates ('+DATA.gates.length+')',artifact:'gates'}},
-    {{id:'deps',label:'🔗 Dependencies'}},
-    {{id:'dataflow',label:'💾 Data Flow'}},
-    {{id:'diagrams',label:'✏️ Diagram Editor'}},
-    {{id:'epics',label:'Epic Plan ('+DATA.epics.length+')',artifact:'epics'}},
-    {{id:'resources',label:'Resources ('+DATA.resources.length+')',artifact:'resources'}},
-    {{id:'tracking',label:'Tracking ('+DATA.tracking.length+')',artifact:'tracking'}},
-    {{id:'nfrs',label:'NFRs ('+DATA.nfrs.length+')',artifact:'nfrs'}}
+    {{id:'gantt',label:'📊 Gantt',artifact:'gantt'}},
+    {{id:'gates',label:'🚦 Gates'+(DATA.gates?'('+DATA.gates.length+')':''),artifact:'gates'}},
+    {{id:'deps',label:'🔗 Dependencies',artifact:'deps'}},
+    {{id:'dataflow',label:'💾 Data Flow',artifact:'dataflow'}},
+    {{id:'diagrams',label:'✏️ Diagrams'}},
+    {{id:'epics',label:'Epics'+(DATA.epics?'('+DATA.epics.length+')':''),artifact:'epics'}},
+    {{id:'resources',label:'Resources'+(DATA.resources?'('+DATA.resources.length+')':''),artifact:'resources'}},
+    {{id:'tracking',label:'Tracking'+(DATA.tracking?'('+DATA.tracking.length+')':''),artifact:'tracking'}},
+    {{id:'nfrs',label:'NFRs'+(DATA.nfrs?'('+DATA.nfrs.length+')':''),artifact:'nfrs'}}
   ];
 }}
 let activeTab='overview';
@@ -523,15 +532,15 @@ function render(){{
 function showTab(id){{activeTab=id;render()}}
 function renderTab(id){{
   if(id==='overview')return renderOverview();
-  if(id==='gantt')return renderGantt();
-  if(id==='gates')return renderGates();
-  if(id==='deps')return renderDeps();
-  if(id==='dataflow')return renderDataFlow();
+  if(id==='gantt')return DATA.gantt?renderGantt():emptyState('gantt');
+  if(id==='gates')return DATA.gates?renderGates():emptyState('gates');
+  if(id==='deps')return DATA.deps?renderDeps():emptyState('deps');
+  if(id==='dataflow')return DATA.dataflow?renderDataFlow():emptyState('dataflow');
   if(id==='diagrams')return renderDiagramEditor();
-  if(id==='epics')return renderTable(DATA.epics);
-  if(id==='resources')return renderTable(DATA.resources);
-  if(id==='tracking')return renderTable(DATA.tracking);
-  if(id==='nfrs')return renderTable(DATA.nfrs);
+  if(id==='epics')return DATA.epics?renderTable(DATA.epics):emptyState('epics');
+  if(id==='resources')return DATA.resources?renderTable(DATA.resources):emptyState('resources');
+  if(id==='tracking')return DATA.tracking?renderTable(DATA.tracking):emptyState('tracking');
+  if(id==='nfrs')return DATA.nfrs?renderTable(DATA.nfrs):emptyState('nfrs');
 }}
 const PHASE_COLORS={{'Phase 0':'#607d8b','Phase 1':'#4caf50','Phase 2':'#2196f3','Phase 3':'#ff9800','Phase 4':'#f44336'}};
 const ROLE_COLORS={{'Cloud Solutions Architect':'#5c6bc0','Data Engineer / Big Data Specialist':'#26a69a','Database Migration Specialist':'#8e24aa','Java/Spring Boot Developer':'#e65100','Node.js / React Developer':'#2e7d32','.NET / C# Developer':'#c62828','Python / ML Engineer':'#1565c0','DevOps / Platform Engineer':'#4e342e','Senior DevOps / SRE':'#37474f','QA / Test Automation Engineer':'#00838f','Security Engineer':'#ad1457','Network Engineer':'#6d4c41','Migration Programme Manager':'#283593','Scrum Master / Delivery Lead':'#00695c','Business Analyst':'#4527a0','Change Manager / Training Lead':'#bf360c','Vendor / Integration Specialist':'#1b5e20','DBA (Production Support)':'#880e4f'}};
@@ -1011,6 +1020,7 @@ function renderGates(){{
   return h;
 }}
 function renderOverview(){{
+  if(!DATA.gantt||!DATA.gates)return '<div style="padding:2rem;text-align:center;color:#888"><div style="font-size:2rem">📭</div><div style="margin:.5rem 0">No project data yet.</div><div style="font-size:.8rem;color:#aaa">Upload files and use ⚡ Generate on each tab.</div></div>';
   let allDone=0,allTotal=0;
   DATA.gantt.forEach((e,ei)=>{{const p=getEpicProgress(ei);allDone+=p.done;allTotal+=p.total}});
   const overallPct=allTotal?Math.round(allDone/allTotal*100):0;
@@ -1323,8 +1333,10 @@ async function loadProjects() {{
   const r = await fetch('/api/projects');
   allProjects = await r.json();
   renderProjectBar();
-  if (allProjects.length > 0 && !currentProject) {{
-    await selectProject(allProjects[0].id);
+  if (allProjects.length > 0) {{
+    const saved = localStorage.getItem('selectedProjectId');
+    const target = allProjects.find(p => p.id === saved) || allProjects[0];
+    await selectProject(target.id);
   }}
 }}
 
@@ -1344,6 +1356,7 @@ async function selectProject(pid) {{
   const r = await fetch('/api/projects');
   allProjects = await r.json();
   currentProject = allProjects.find(p => p.id === pid) || null;
+  if (currentProject) localStorage.setItem('selectedProjectId', pid);
   renderProjectBar();
   if (currentProject) {{
     const sel = document.getElementById('llmSelect');
