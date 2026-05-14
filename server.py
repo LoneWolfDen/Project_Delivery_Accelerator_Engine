@@ -477,22 +477,6 @@ const DATA={{
   gates:{gates_json},
   drawio:{drawio_json}
 }};
-// Per-project data overrides static defaults when available
-const PROJECT_DATA = {{}};
-function mergeProjectData(pd) {{
-  ['epics','resources','tracking','nfrs','gantt','gates'].forEach(k => {{
-    if (pd[k] !== undefined) DATA[k] = pd[k];
-    else {{
-      // restore static defaults
-      DATA.epics = {epics_json};
-      DATA.resources = {resources_json};
-      DATA.tracking = {tracking_json};
-      DATA.nfrs = {nfrs_json};
-      DATA.gantt = {gantt_json};
-      DATA.gates = {gates_json};
-    }}
-  }});
-}}
 const STATIC_DATA = {{
   epics: {epics_json},
   resources: {resources_json},
@@ -507,20 +491,23 @@ function applyProjectData(pd) {{
     DATA[k] = (pd && pd[k] !== undefined) ? pd[k] : STATIC_DATA[k];
   }});
 }}
-const TABS=[
-  {{id:'overview',label:'Overview'}},
-  {{id:'gantt',label:'📊 Gantt Chart',artifact:'gantt'}},
-  {{id:'gates',label:'🚦 NFR Gates ('+DATA.gates.length+')',artifact:'gates'}},
-  {{id:'deps',label:'🔗 Dependencies'}},
-  {{id:'dataflow',label:'💾 Data Flow'}},
-  {{id:'diagrams',label:'✏️ Diagram Editor'}},
-  {{id:'epics',label:'Epic Plan ('+DATA.epics.length+')',artifact:'epics'}},
-  {{id:'resources',label:'Resources ('+DATA.resources.length+')',artifact:'resources'}},
-  {{id:'tracking',label:'Tracking ('+DATA.tracking.length+')',artifact:'tracking'}},
-  {{id:'nfrs',label:'NFRs ('+DATA.nfrs.length+')',artifact:'nfrs'}}
-];
+function getTabs() {{
+  return [
+    {{id:'overview',label:'Overview'}},
+    {{id:'gantt',label:'📊 Gantt Chart',artifact:'gantt'}},
+    {{id:'gates',label:'🚦 NFR Gates ('+DATA.gates.length+')',artifact:'gates'}},
+    {{id:'deps',label:'🔗 Dependencies'}},
+    {{id:'dataflow',label:'💾 Data Flow'}},
+    {{id:'diagrams',label:'✏️ Diagram Editor'}},
+    {{id:'epics',label:'Epic Plan ('+DATA.epics.length+')',artifact:'epics'}},
+    {{id:'resources',label:'Resources ('+DATA.resources.length+')',artifact:'resources'}},
+    {{id:'tracking',label:'Tracking ('+DATA.tracking.length+')',artifact:'tracking'}},
+    {{id:'nfrs',label:'NFRs ('+DATA.nfrs.length+')',artifact:'nfrs'}}
+  ];
+}}
 let activeTab='overview';
 function render(){{
+  const TABS=getTabs();
   // Nav
   document.getElementById('navBar').innerHTML=TABS.map(t=>
     '<span style="display:inline-flex;align-items:center;gap:2px">'+
