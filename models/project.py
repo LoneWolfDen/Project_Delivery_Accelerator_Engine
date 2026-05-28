@@ -1,6 +1,7 @@
 """Core project data models.
 
-Defines the structure for projects, context packs, and review outputs.
+Defines the structure for projects, context packs, review outputs,
+and iteration tracking.
 """
 
 from dataclasses import dataclass, field
@@ -36,6 +37,23 @@ class ReviewOutput:
 
 
 @dataclass
+class IterationMetadata:
+    """Tracks iteration state for a project.
+
+    Records which context version is current, how many reviews have been run,
+    and the phase progression history.
+    """
+
+    current_version: str = ""  # e.g. "v3"
+    total_builds: int = 0
+    total_reviews: int = 0
+    last_build_at: str = ""
+    last_review_at: str = ""
+    phase_history: List[Dict[str, str]] = field(default_factory=list)
+    # Each entry: {"phase": "discovery", "entered_at": "...", "exited_at": "..."}
+
+
+@dataclass
 class Project:
     """Top-level project entity."""
 
@@ -50,3 +68,4 @@ class Project:
     reviews: List[ReviewOutput] = field(default_factory=list)
     files: List[str] = field(default_factory=list)
     settings: Dict[str, Any] = field(default_factory=dict)
+    iteration: Optional[IterationMetadata] = None
