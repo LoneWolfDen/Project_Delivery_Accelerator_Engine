@@ -1,0 +1,36 @@
+AnyCompany is a forward-thinking organisation specialising in revolutionising enterprise data management through intelligent automation and a comprehensive semantic data platform. The company's principal offering empowers organisations to consolidate, analyse, and act upon data from varied sources with remarkable speed and efficiency, thereby removing the constraints inherent in traditional manual data engineering processes. AnyCompany's platform is engineered to support large multinational corporations with intricate data ecosystems whilst also serving non-profit healthcare organisations, delivering bespoke solutions that tackle challenges related to scale, regulatory compliance, and cost optimisation.
+
+Migration Drivers
+- 4 legacy/EOL applications (Java 7/8 J2EE, VB.NET 4.8, ASP.NET 4.8, MS SQL Server 2016/2017) requiring modernisation
+- Scalability for digital commerce, demand planning, and real-time analytics workloads
+- Cost optimisation of on-premises infrastructure (800TB+ storage, VMware licensing)
+- Data platform consolidation across multiple database engines and big data systems
+
+Application Portfolio Summary
+- 20 applications total
+- Critical/Tier 1: 5 (E-Commerce Platform, Loyalty & Rewards Engine, Demand Planning & Forecasting, Customer Data Platform, Master Data Management)
+- High/Tier 2: 8
+- Medium/Tier 3: 5
+- Low/Tier 3: 2
+- Types: 12 Home Grown, 4 Legacy, 3 Third Party
+
+Key Technology Domains
+- Databases: Oracle 19c/12c, MS SQL Server 2016/2017/2019, PostgreSQL 14/15, MySQL 5.7/8.0, MongoDB 5.0/6.0, Cassandra 4.1
+- Big Data: Hadoop 3.3, Apache Spark 3.3/3.4, Apache Hive 3.1, Apache NiFi 1.23
+- Middleware: Apache Kafka 3.3/3.4, IBM MQ 8.0/9.0, RabbitMQ 3.11/3.12, WebLogic 12.2, Informatica PowerCenter
+- Search: Elasticsearch 8.5/8.6
+- Cache: Redis 7.0/7.2
+- Orchestration: Apache Airflow 2.6
+- Storage: SAN 100TB, NAS 200TB, Object (MinIO) 500TB
+- Integrations: REST API, SOAP, EDI, FTP/SFTP, gRPC, Kafka, JDBC
+
+Compliance/Regulatory
+- EDI (electronic data interchange for supply chain and logistics)
+- Data governance and master data management standards
+- Financial reporting and audit compliance (FP&A, trade promotions)
+- Document management and legal compliance (CMIS, WebDAV)
+
+Third-Party Systems (retain/integrate)
+- Kinaxis — Demand Planning & Forecasting
+- Dassault Systèmes — Product Lifecycle Management
+- IBM — Financial Planning & Analysis

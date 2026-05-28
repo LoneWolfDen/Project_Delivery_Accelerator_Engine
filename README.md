@@ -1,192 +1,280 @@
-# Project Delivery Accelerator Engine
+# Project Delivery Accelerator Engine (v2)
 
-An interactive project delivery dashboard that helps you track epics, stories, resources, NFR gates, and timelines — with an AI assistant that can answer questions about your project using your own uploaded documents.
+A **context-aware delivery intelligence platform** that helps teams move from **pre-sales → proposal → delivery → review** using structured AI workflows.
 
-Supports up to **5 projects**, runs entirely on your laptop (no internet required), and works with local AI via OLLAMA, AWS Bedrock, or your uploaded files alone.
+This platform converts **documents, discussions, and decisions into reusable project intelligence**, enabling better planning, faster reviews, and consistent delivery outcomes.
 
----
-
-## What You Can Do
-
-- Track up to 5 projects, each with their own files and settings
-- Upload your project artefacts (SOW, transcripts, CSVs, presentations, etc.)
-- Choose which uploaded files feed into each dashboard tab
-- Ask the AI assistant questions about your project
-- Choose your AI mode: local OLLAMA model, AWS Bedrock, or files-only (no AI)
-- View Gantt charts, NFR gates, dependency diagrams, resource plans, and more
-- Everything persists on your machine until you delete it
+Runs locally. Supports multiple AI backends. Preserves project memory across iterations.
 
 ---
 
-## Installation (Step by Step)
+## What This Product Does
 
-### Step 1 — Install Python
+### 1. Turn documents into structured project context
 
-1. Go to https://www.python.org/downloads/
-2. Click **Download Python 3.11** (or newer)
-3. Run the installer
-   - ✅ On Windows: tick **"Add Python to PATH"** before clicking Install
-4. Open a terminal (search "Terminal" on Mac, "Command Prompt" or "PowerShell" on Windows)
-5. Verify it worked:
-   ```
-   python --version
-   ```
-   You should see something like `Python 3.11.x`
+- Upload SoW, proposals, transcripts, pricing sheets, diagrams
+- Automatically extract:
+  - Scope
+  - Risks
+  - Assumptions
+  - Dependencies
+  - Resource needs
+- Store as reusable project intelligence
 
----
+### 2. Enable persona-driven reviews (out-of-the-box)
 
-### Step 2 — Download This Project
+Run structured analysis using different roles:
 
-**Option A — If you have Git installed:**
-```
-git clone https://github.com/LoneWolfDen/Project_Delivery_Accelerator_Engine.git
-cd Project_Delivery_Accelerator_Engine
-```
+- **Solution Architect** → Architecture gaps, design risks
+- **Delivery Manager** → Execution risks, timelines, dependencies
+- **Product Owner** → Scope clarity, backlog quality
+- **Resource Manager** → Skill gaps, allocation risk
 
-**Option B — Download as ZIP:**
-1. Go to https://github.com/LoneWolfDen/Project_Delivery_Accelerator_Engine
-2. Click the green **Code** button → **Download ZIP**
-3. Unzip the file
-4. Open a terminal and navigate into the folder:
-   ```
-   cd Project_Delivery_Accelerator_Engine
-   ```
+Each persona uses a pre-defined prompt + format, so users do not need to write prompts.
 
----
+### 3. Support multi-version pre-sales proposals
 
-### Step 3 — Start the Dashboard
+- Store multiple proposal versions per project
+- Track:
+  - What changed
+  - What risks increased/decreased
+  - What assumptions evolved
+- Reuse past insights instead of restarting analysis
+
+### 4. Act as a default entry point for SDLC
+
+From first discussion to delivery:
 
 ```
-python server.py
+Discovery → Proposal → SoW review → Planning → Execution → Review
 ```
 
-Then open your browser and go to:
+The system:
+
+- Carries forward context
+- Avoids repeated document parsing
+- Maintains continuity across phases
+
+### 5. Optimise AI usage and cost (token discipline built-in)
+
+- Only loads **minimum required context** per request
+- Uses:
+  - Structured extraction instead of long text
+  - Summaries + evidence separation
+- Supports:
+  - Local models (Ollama)
+  - Cloud models (AWS Bedrock)
+  - Files-only analysis mode
+
+---
+
+## Core Concept
+
+Instead of asking AI every time from scratch:
+
+- Build a **project memory**
+- Store **intermediate findings**
+- Reuse them intelligently
+
+Result:
+
+- Faster responses
+- Lower token usage
+- More consistent outputs
+
+---
+
+## Key Features
+
+### Project Management
+
+- Up to 5 active projects (local)
+- Each project has:
+  - Files
+  - Settings
+  - AI configuration
+  - Historical outputs
+
+### Context Builder
+
+- Converts uploaded files into:
+  - Structured context packs
+  - Extracted facts and constraints
+  - Summarised sections
+
+### Persona Review Engine
+
+- Runs reviews using predefined personas
+- Generates:
+  - Risks
+  - Assumptions
+  - Gaps
+  - Recommendations
+  - Questions to resolve
+
+### Iteration & History
+
+- Save outputs from each run
+- Compare results across versions
+- See impact of changes
+
+### AI Flexibility
+
+| Mode        | Description                 |
+| ----------- | --------------------------- |
+| Ollama      | Local models, fully offline |
+| AWS Bedrock | Scalable cloud models       |
+| Files-only  | No AI, raw evidence view    |
+
+---
+
+## Architecture
+
 ```
-http://localhost:8888
+[ Uploaded Files ]
+        |
+[ Ingestion Layer ]
+        |
+[ Context Builder ]
+        |
+[ Project Memory (JSON) ]
+        |
+[ Persona Engine ]
+        |
+[ API / Outputs ]
 ```
-
-That's it — the dashboard is running locally on your machine.
-
-To stop it, press `Ctrl + C` in the terminal.
-
----
-
-## Using OLLAMA (Local AI — No Internet Required)
-
-OLLAMA lets you run AI models entirely on your own machine. No data leaves your computer.
-
-### Install OLLAMA
-
-1. Go to https://ollama.com/download
-2. Download and install for your operating system (Mac, Windows, or Linux)
-3. Once installed, open a terminal and download a model. We recommend starting with:
-   ```
-   ollama pull llama3
-   ```
-   This downloads the Llama 3 model (~4 GB). Other good options:
-   - `ollama pull mistral` — fast and lightweight
-   - `ollama pull phi3` — very small, good for low-spec machines
-   - `ollama pull llama3:70b` — most capable, needs 32 GB+ RAM
-
-4. OLLAMA runs automatically in the background after installation. You can verify it's running by visiting http://localhost:11434 in your browser — you should see `Ollama is running`.
-
-### Connect OLLAMA to the Dashboard
-
-1. Start the dashboard (`python server.py`)
-2. Open http://localhost:8888
-3. Create or select a project
-4. In the top bar, change the **LLM** dropdown from `Bedrock` to **🦙 OLLAMA (local)**
-5. A **Model** input box will appear — type the model name you downloaded (e.g. `llama3`)
-6. The AI chat and content generation will now use your local model
-
-> **Tip:** If OLLAMA is running on a different machine or port, set the environment variable before starting the server:
-> ```
-> OLLAMA_URL=http://192.168.1.10:11434 python server.py
-> ```
-
----
-
-## AI Modes Explained
-
-| Mode | What it does | Needs internet? |
-|------|-------------|-----------------|
-| ☁️ **Bedrock (Nova Pro)** | Uses AWS Bedrock (Amazon Nova Pro model). Requires AWS credentials configured. | Yes |
-| 🦙 **OLLAMA (local)** | Uses a model running on your machine via OLLAMA. | No |
-| 📄 **Files Only** | No AI — shows the raw content of your enabled files. | No |
-| 📄+🦙 **Files + OLLAMA** | Uses OLLAMA with your uploaded files as context. | No |
-
----
-
-## Uploading Project Files
-
-1. Select your project from the top bar
-2. Click **📁 Files** in the top right
-3. Click **Choose Files** and select your documents (SOW, transcripts, CSVs, etc.)
-4. Click **Upload**
-5. Once uploaded, tick the checkboxes next to each file to enable them for specific dashboard tabs (Gantt, Gates, Resources, etc.)
-
-Supported file types: `.txt`, `.pdf`, `.csv`, `.docx`, `.pptx`, `.xlsx`, `.md`, `.json`, `.xml`, `.drawio`
-
----
-
-## Managing Projects
-
-- Click **+ New** in the top bar to create a project (max 5)
-- Click a project name to switch to it
-- Click the **✕** next to a project name to delete it and all its files
-- Each project remembers its own LLM setting, uploaded files, and artifact toggles
-
----
-
-## Diagram Viewer
-
-The **Diagram Editor** tab shows your `.drawio` diagrams as XML. You can:
-- **Copy XML** to clipboard and paste into [draw.io desktop](https://github.com/jgraph/drawio-desktop/releases) or https://app.diagrams.net
-- **Download .drawio** to open directly in draw.io desktop
-
-This works fully offline.
 
 ---
 
 ## Project Structure
 
 ```
-Project_Delivery_Accelerator_Engine/
-├── server.py                   # Main server — run this
-├── project_manager.py          # Project persistence (5 projects, file uploads)
-├── projects.json               # Your saved projects (auto-created)
-├── uploads/                    # Your uploaded files (auto-created)
-├── stories_data.py             # Story definitions
-├── gates_data.py               # NFR gate matrix
-├── migration_dashboard/        # Alternate entry point (same server)
-├── tests/                      # Automated tests
-└── sample_data/                # Example input files
+project-accelerator/
+├── README.md                       # This file
+├── pyproject.toml                   # Project config and dependencies
+├── server.py                        # Main API server
+├── project_manager.py               # Project persistence & file management
+├── processors/
+│   ├── ingestion.py                 # File parsing (SoW, transcripts, CSVs)
+│   └── context_builder.py           # Structured context extraction
+├── personas/
+│   ├── engine.py                    # Persona review engine
+│   └── definitions/                 # Persona configs (YAML)
+│       ├── solution_architect.yaml
+│       ├── delivery_manager.yaml
+│       ├── product_owner.yaml
+│       └── resource_manager.yaml
+├── models/
+│   └── project.py                   # Core data models
+├── sample_data/                     # Example input files for testing
+├── outputs/                         # Generated results (gitignored)
+├── docs/                            # Specs, reference documentation
+├── tests/                           # Test suite
+└── _archive/                        # Legacy migration demo (reference only)
 ```
 
 ---
 
-## Troubleshooting
+## How It Works (User Flow)
 
-**"python: command not found"**
-Try `python3 server.py` instead. On some systems Python 3 is called `python3`.
-
-**Port 8888 already in use**
-Change the port by editing `PORT = 8888` near the top of `server.py` to any free port (e.g. `8080`).
-
-**OLLAMA not responding**
-Make sure OLLAMA is running. Open a terminal and run `ollama serve` if it isn't started automatically.
-
-**AWS Bedrock errors**
-You need AWS credentials configured. Run `aws configure` and enter your Access Key, Secret Key, and region (`us-east-1`). Bedrock must be enabled in your AWS account.
-
-**Dashboard shows old version after update**
-Hard-refresh your browser: `Ctrl + Shift + R` (Windows/Linux) or `Cmd + Shift + R` (Mac).
+1. Create or select a project
+2. Upload documents
+3. Build context automatically
+4. Choose a persona (e.g. Delivery Manager)
+5. Run analysis
+6. Review outputs
+7. Save and iterate
 
 ---
 
-## Running Tests
+## Setup
+
+### Prerequisites
+
+- Python 3.9+
+- (Optional) Ollama for local AI
+- (Optional) AWS credentials for Bedrock
+
+### Install
 
 ```bash
-pip install pytest
-pytest tests/ -v
+pip install -e .
 ```
+
+### Run
+
+```bash
+python server.py
+```
+
+Server starts at `http://localhost:8080`
+
+### API Endpoints
+
+| Method | Path            | Description              |
+| ------ | --------------- | ------------------------ |
+| GET    | /api/health     | Health check             |
+| GET    | /api/projects   | List projects            |
+| POST   | /api/projects   | Create project           |
+| POST   | /api/ingest     | Upload and ingest files  |
+| POST   | /api/review     | Run persona review       |
+
+---
+
+## What Makes This Different
+
+Typical tools:
+
+- Chat-based
+- Stateless
+- Repetitive
+
+This platform:
+
+- Context-aware
+- Stateful
+- Version-controlled
+- Persona-driven
+
+---
+
+## Roadmap
+
+### v2 (In progress)
+
+- Context packs
+- Persona system
+- Iteration history
+- Structured outputs
+
+### v3
+
+- Diagram generation (.drawio)
+- Proposal auto-drafts
+- Export to Word / PowerPoint
+- Pre-sales → delivery feedback loop
+
+### v4 (Vision)
+
+- Multi-project intelligence
+- Cross-project learning
+- Delivery benchmarking
+- Copilot-style assistant layer
+
+---
+
+## End Goal
+
+Create a **standard operating system for delivery teams**, where:
+
+- AI provides structure, not just answers
+- Humans refine, not reinvent
+- Projects build on past intelligence, not restart
+
+---
+
+## Positioning
+
+> **Context Operating System for Delivery**
+
+Not a dashboard with AI. A platform that builds, stores, and reuses delivery intelligence.
