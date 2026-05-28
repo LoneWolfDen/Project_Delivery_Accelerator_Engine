@@ -129,8 +129,14 @@ def ingest_files_to_project(
 
     results: Dict[str, Any] = {"ingested": 0, "errors": [], "documents": []}
 
+    # Resolve relative paths against the project root (where server.py lives)
+    project_root = Path(__file__).parent
+
     for file_path in file_paths:
         path = Path(file_path)
+        # If path is not absolute, resolve relative to project root
+        if not path.is_absolute():
+            path = project_root / path
         try:
             doc = ingest_file(path)
             # Store ingested document as JSON
