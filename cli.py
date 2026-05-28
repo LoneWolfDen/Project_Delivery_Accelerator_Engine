@@ -68,9 +68,20 @@ def main() -> None:
     review_parser.add_argument("persona", help="Persona ID (e.g. solution_architect)")
     review_parser.add_argument(
         "-b", "--backend", default="files_only",
-        choices=["files_only", "ollama", "bedrock"],
+        choices=["files_only", "ollama", "bedrock", "gemini"],
         help="AI backend (default: files_only)",
     )
+    review_parser.add_argument(
+        "-c", "--custom-prompt", default=None,
+        help="Additional context/instructions for the AI to consider during review",
+    )
+    review_parser.add_argument(
+        "--show-prompt", action="store_true",
+        help="Display the full prompt that was sent to the AI",
+    )
+
+    # ── backends ──
+    subparsers.add_parser("backends", help="List available AI backends and their status")
 
     # ── summary ──
     summary_parser = subparsers.add_parser("summary", help="Show context summary")
@@ -185,6 +196,7 @@ def main() -> None:
             "review": cmd_review,
             "summary": cmd_summary,
             "personas": cmd_personas,
+            "backends": cmd_backends,
             "versions": cmd_versions,
             "compare": cmd_compare,
             "evolution": cmd_evolution,
@@ -277,13 +289,24 @@ def cmd_build(args) -> None:
 def cmd_review(args) -> None:
     """Run a persona review."""
     result = project_manager.run_persona_review(
-        args.project_id, args.persona, args.backend
+        args.project_id, args.persona, args.backend,
+        custom_prompt=args.custom_prompt,
     )
 
     _header(f"{result['persona']} Review – {args.project_id}")
     print(f"  Backend: {result['ai_backend']}")
     print(f"  Time:    {result['timestamp']}")
+    if args.custom_prompt:
+        print(f"  Custom context: ✓ (included)")
     print()
+
+    # Show prompt if requested
+    if args.show_prompt and result.get("prompt_used"):
+        print("  ┌─── Prompt Sent ───────────────────────────────────────────")
+        for line in result["prompt_used"].splitlines():
+            print(f"  │ {line}")
+        print("  └──────────────────────────────────────────────────────────────")
+        print()
 
     findings = result.get("findings", {})
     for section, items in findings.items():
@@ -301,6 +324,12 @@ def cmd_review(args) -> None:
 
     print(f"  Summary: {result.get('summary', '')}")
 
+    # Show AI metadata if available
+    ai_meta = result.get("ai_metadata")
+    if ai_meta and ai_meta.get("success"):
+        print(f"\n  AI Stats: {ai_meta.get('tokens_used', '?')} tokens, "
+              f"{ai_meta.get('latency_ms', '?')}ms latency")
+
 
 def cmd_summary(args) -> None:
     """Show context summary."""
@@ -315,6 +344,21 @@ def cmd_personas(args) -> None:
     _header("Available Personas")
     for p in list_personas():
         print(f"  {p['id']:<22} {p['name']:<22} {p['role'][:60]}")
+
+
+def cmd_backends(args) -> None:
+    """List available AI backends and their status."""
+    from ai_backends import list_backends
+
+    _header("AI Backends")
+    for b in list_backends():
+        status = "✓ available" if b["available"] else "✗ not configured"
+        print(f"  {b['name']:<14} {b['display_name']:<30} {status}")
+
+    print()
+    _info("Configure Gemini: export GEMINI_API_KEY='your-key'")
+    _info("Configure Ollama: ensure ollama is running on localhost:11434")
+    _info("Configure Bedrock: set up AWS credentials (aws configure)")
 
 
 def cmd_versions(args) -> None:
