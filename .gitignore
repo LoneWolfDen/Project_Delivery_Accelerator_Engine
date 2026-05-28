@@ -1,12 +1,32 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
 *.egg-info/
 dist/
 build/
 .venv/
-.env
-*.log
+venv/
 
+# Environment
+.env
+.env.local
+
+# Project data (local only)
 projects.json
+projects_data/
 uploads/
+outputs/*
+!outputs/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
