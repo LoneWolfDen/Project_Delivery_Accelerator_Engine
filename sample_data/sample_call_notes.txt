@@ -1,0 +1,44 @@
+Call Notes - Discovery Session with FinServ Client
+Date: 2024-04-02
+Attendees: Mark Thompson (CTO), Lisa Wang (Head of Engineering), David Park (Consultant)
+
+Context
+Initial discovery call to understand their modernisation goals and constraints.
+
+Current State
+- Running 15 microservices on Kubernetes (EKS)
+- 3 legacy monoliths still on EC2 (Java 8, .NET Framework 4.6)
+- Monthly AWS spend approximately $180K
+- Team of 12 engineers, 2 dedicated to platform/infra
+- Using Jenkins for CI/CD, considering move to GitHub Actions
+
+Pain Points
+- Deployment frequency limited to bi-weekly due to manual testing
+- No automated rollback capability
+- Observability gaps: logs in CloudWatch but no distributed tracing
+- Secret management inconsistent across services
+- Database migrations are manual and error-prone
+
+Goals
+- Achieve daily deployments within 6 months
+- Reduce incident response time from 45min to under 15min
+- Decompose the 3 remaining monoliths
+- Implement proper GitOps workflow
+- Reduce cloud spend by 20% through right-sizing
+
+Constraints
+- Cannot disrupt production during business hours (AU market: 9am-5pm AEST)
+- PCI-DSS compliance required for payment processing services
+- Board has approved $500K budget for modernisation (12 month horizon)
+- Must maintain SOC2 certification throughout transformation
+
+Risks Identified
+- Key person dependency: only 1 engineer understands the payment monolith
+- No comprehensive test suite for legacy applications
+- Vendor lock-in concerns with proprietary message queue
+
+Next Steps
+- David to prepare initial assessment report by April 10
+- Mark to share architecture diagrams and runbooks
+- Lisa to provide access to monitoring dashboards
+- Follow-up call scheduled April 9 to review preliminary findings
