@@ -7,6 +7,8 @@ from ai_backends.files_only import FilesOnlyBackend
 from ai_backends.ollama_backend import OllamaBackend
 from ai_backends.bedrock_backend import BedrockBackend
 from ai_backends.gemini_backend import GeminiBackend
+from ai_backends.groq_backend import GroqBackend
+from ai_backends.openrouter_backend import OpenRouterBackend
 
 
 # Registry of all available backends
@@ -15,6 +17,8 @@ _BACKENDS: Dict[str, type] = {
     "ollama": OllamaBackend,
     "bedrock": BedrockBackend,
     "gemini": GeminiBackend,
+    "groq": GroqBackend,
+    "openrouter": OpenRouterBackend,
 }
 
 
