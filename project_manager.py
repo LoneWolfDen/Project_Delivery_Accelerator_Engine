@@ -1475,3 +1475,27 @@ def get_hierarchy_metrics(
     from models.hierarchy import HierarchyStore
     store = HierarchyStore(project_id)
     return store.get_metrics(version_id=version_id, review_id=review_id)
+
+
+def set_active_review(project_id: str, version_id: str, review_id: str) -> Dict[str, Any]:
+    """Set the active review for a version."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.set_active_review(version_id, review_id)
+
+
+def delete_hierarchy_review(project_id: str, review_id: str) -> Dict[str, Any]:
+    """Delete a review from the hierarchy."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.delete_review(review_id)
+
+
+def get_active_review_for_version(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
+    """Get the active review for a specific version."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    review = store.get_active_review_for_version(version_id)
+    if review:
+        return review.to_dict()
+    return None

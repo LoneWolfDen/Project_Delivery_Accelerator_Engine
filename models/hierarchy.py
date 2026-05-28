@@ -95,6 +95,9 @@ class Version:
     # Reviews executed against this version
     review_ids: List[str] = field(default_factory=list)
 
+    # Active review for this version (defaults to latest)
+    active_review_id: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["review_count"] = len(self.review_ids)
@@ -112,6 +115,7 @@ class Version:
             "artifact_count": len(self.included_artifacts),
             "persona": self.persona,
             "stats": self.stats,
+            "active_review_id": self.active_review_id,
         }
 
 
@@ -178,6 +182,8 @@ class Review:
             "created_at": self.created_at,
             "total_findings": total_findings,
             "summary": self.summary[:120] if self.summary else "",
+            "included_files": self.included_files,
+            "categories": self.categories,
         }
 
 
@@ -402,6 +408,8 @@ class HierarchyStore:
         version = self.get_version(version_id)
         if version:
             version.review_ids.append(review_id)
+            # Set as active review (latest by default)
+            version.active_review_id = review_id
             version_file = self.base_dir / "versions" / f"{version_id}.json"
             with open(version_file, "w") as f:
                 json.dump(asdict(version), f, indent=2)
@@ -410,6 +418,7 @@ class HierarchyStore:
             for vi in v_index:
                 if vi["version_id"] == version_id:
                     vi["review_count"] = len(version.review_ids)
+                    vi["active_review_id"] = review_id
                     break
             self._save_version_index(v_index)
 
@@ -450,6 +459,108 @@ class HierarchyStore:
         with open(index_file, "w") as f:
             json.dump(index, f, indent=2)
 
+    def set_active_review(self, version_id: str, review_id: str) -> Dict[str, Any]:
+        """Set the active review for a version.
+
+        Args:
+            version_id: The version to update.
+            review_id: The review to mark as active.
+
+        Returns:
+            Updated version summary or error dict.
+        """
+        version = self.get_version(version_id)
+        if version is None:
+            return {"error": f"Version not found: {version_id}"}
+        if review_id not in version.review_ids:
+            return {"error": f"Review {review_id} not linked to version {version_id}"}
+
+        version.active_review_id = review_id
+        version_file = self.base_dir / "versions" / f"{version_id}.json"
+        with open(version_file, "w") as f:
+            json.dump(asdict(version), f, indent=2)
+
+        # Update index
+        v_index = self._load_version_index()
+        for vi in v_index:
+            if vi["version_id"] == version_id:
+                vi["active_review_id"] = review_id
+                break
+        self._save_version_index(v_index)
+
+        return {"version_id": version_id, "active_review_id": review_id, "status": "updated"}
+
+    def delete_review(self, review_id: str) -> Dict[str, Any]:
+        """Delete a review and unlink it from its parent version.
+
+        Args:
+            review_id: The review to delete.
+
+        Returns:
+            Confirmation dict or error.
+        """
+        review = self.get_review(review_id)
+        if review is None:
+            return {"error": f"Review not found: {review_id}"}
+
+        version_id = review.version_id
+
+        # Remove review file
+        review_file = self.base_dir / "reviews" / f"{review_id}.json"
+        if review_file.exists():
+            review_file.unlink()
+
+        # Remove from review index
+        r_index = self._load_review_index()
+        r_index = [r for r in r_index if r.get("review_id") != review_id]
+        self._save_review_index(r_index)
+
+        # Unlink from version
+        version = self.get_version(version_id)
+        if version and review_id in version.review_ids:
+            version.review_ids.remove(review_id)
+            # If deleted review was active, set active to latest remaining or empty
+            if version.active_review_id == review_id:
+                version.active_review_id = version.review_ids[-1] if version.review_ids else ""
+            version_file = self.base_dir / "versions" / f"{version_id}.json"
+            with open(version_file, "w") as f:
+                json.dump(asdict(version), f, indent=2)
+            # Update version index
+            v_index = self._load_version_index()
+            for vi in v_index:
+                if vi["version_id"] == version_id:
+                    vi["review_count"] = len(version.review_ids)
+                    vi["active_review_id"] = version.active_review_id
+                    break
+            self._save_version_index(v_index)
+
+        # Decrement phase review count
+        self._decrement_phase_count(review.phase_id, "review_count")
+
+        return {"review_id": review_id, "deleted": True, "version_id": version_id}
+
+    def _decrement_phase_count(self, phase_id: str, field: str) -> None:
+        """Decrement version_count or review_count for a phase."""
+        phases = self.get_phases()
+        for p in phases:
+            if p["id"] == phase_id:
+                p[field] = max(0, p.get(field, 0) - 1)
+                break
+        self._save_phases(phases)
+
+    def get_active_review_for_version(self, version_id: str) -> Optional[Review]:
+        """Get the active review for a version (or latest if none set)."""
+        version = self.get_version(version_id)
+        if version is None:
+            return None
+        active_id = version.active_review_id
+        if active_id:
+            return self.get_review(active_id)
+        # Fallback: latest review for this version
+        if version.review_ids:
+            return self.get_review(version.review_ids[-1])
+        return None
+
     # ── Dashboard Metrics ──
 
     def get_metrics(
@@ -457,10 +568,10 @@ class HierarchyStore:
     ) -> Dict[str, Any]:
         """Get dashboard metrics, optionally scoped to a version/review.
 
-        Default: latest version + latest review.
+        Default: latest version + its active review.
+        Reviews are always scoped to the selected version.
         """
         versions = self.list_versions()
-        reviews = self.list_reviews()
         phases = self.get_phases()
 
         # Select context
@@ -472,15 +583,24 @@ class HierarchyStore:
         elif versions:
             target_version = self.get_version(versions[0]["version_id"])
 
+        # Reviews scoped to selected version
+        scoped_reviews = []
+        if target_version:
+            scoped_reviews = self.list_reviews(version_id=target_version.version_id)
+
         if review_id:
             target_review = self.get_review(review_id)
-        elif reviews:
-            target_review = self.get_review(reviews[0]["review_id"])
+        elif target_version:
+            # Use active review for this version
+            target_review = self.get_active_review_for_version(target_version.version_id)
+
+        all_reviews = self.list_reviews()
 
         # Build metrics
         metrics: Dict[str, Any] = {
             "total_versions": len(versions),
-            "total_reviews": len(reviews),
+            "total_reviews": len(all_reviews),
+            "version_reviews": len(scoped_reviews),
             "current_phase": self.get_current_phase(),
             "phases": phases,
         }
@@ -495,7 +615,7 @@ class HierarchyStore:
             metrics["action_items"] = target_version.stats.get("action_items", 0)
             metrics["artifact_count"] = len(target_version.included_artifacts)
 
-        # Review context
+        # Review context (scoped to version)
         if target_review:
             metrics["selected_review"] = target_review.to_summary()
             metrics["gaps_identified"] = len(target_review.findings.get("gaps", []))
@@ -511,12 +631,17 @@ class HierarchyStore:
             for v in recent
         ]
 
-        # Data source context
+        # Data source context (for display)
         metrics["data_source"] = {
             "version": target_version.version_id if target_version else None,
             "review": target_review.review_id if target_review else None,
             "phase": self.get_current_phase(),
+            "version_label": target_version.label if target_version else None,
+            "review_persona": target_review.persona if target_review else None,
         }
+
+        # Available reviews for selected version (for dropdown population)
+        metrics["available_reviews"] = scoped_reviews
 
         return metrics
 

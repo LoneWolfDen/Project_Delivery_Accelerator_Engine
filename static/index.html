@@ -149,43 +149,52 @@ async function viewDashboard() {
   if (!state.current) return viewNoProject();
   const pid = state.current.id;
 
-  // Load hierarchy metrics (defaults to latest version + latest review)
+  // Use stored version/review state if user made a selection
+  const selVersion = state._dashVersion || '';
+  const selReview = state._dashReview || '';
+
+  // Load hierarchy metrics scoped to selection
+  let metricsUrl = `/api/projects/${pid}/hierarchy/metrics`;
+  const params = [];
+  if (selVersion) params.push(`version_id=${selVersion}`);
+  if (selReview) params.push(`review_id=${selReview}`);
+  if (params.length) metricsUrl += '?' + params.join('&');
+
   let metrics = {};
-  try { metrics = await api('GET',`/api/projects/${pid}/hierarchy/metrics`); } catch(e){}
+  try { metrics = await api('GET', metricsUrl); } catch(e){}
 
-  // Also load raw intel for backwards compat
-  let intel = {};
-  try { const r = await api('GET',`/api/projects/${pid}/intelligence`); intel = r.intelligence || r; } catch(e){}
-
-  // Load versions + reviews for selectors
-  let versions = [], reviews = [];
+  // Load all versions for selector
+  let versions = [];
   try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = r.versions || []; } catch(e){}
-  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews`); reviews = r.reviews || []; } catch(e){}
 
-  const meta = intel._build_metadata || {};
-  const sv = metrics.selected_version || {};
-  const sr = metrics.selected_review || {};
+  // Available reviews are scoped to the selected version from metrics response
+  const availableReviews = metrics.available_reviews || [];
+
   const ds = metrics.data_source || {};
 
-  // Version / Review selectors
+  // Version / Review selectors – Reviews FILTERED by selected version
   const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===ds.version?'selected':''}>${v.version_id} ${v.label||''} (${v.created_at?.slice(0,10)||''})</option>`).join('');
-  const rOpts = reviews.map(r => `<option value="${r.review_id}" ${r.review_id===ds.review?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
+  const rOpts = availableReviews.map(r => `<option value="${r.review_id}" ${r.review_id===ds.review?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
 
-  const selectorHtml = (versions.length || reviews.length) ? `<div class="card"><h2>Data Context</h2>
-    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Metrics update based on selected version and review</p>
+  const selectorHtml = (versions.length) ? `<div class="card"><h2>Data Context</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Select a version and review to scope all dashboard data</p>
     <div class="flex">
-      ${versions.length ? `<select id="dashVersion" onchange="updateDashMetrics()" style="min-width:180px"><option value="">Latest Version</option>${vOpts}</select>` : ''}
-      ${reviews.length ? `<select id="dashReview" onchange="updateDashMetrics()" style="min-width:200px"><option value="">Latest Review</option>${rOpts}</select>` : ''}
+      <label style="font-size:11px;color:var(--text-dim)">Version:</label>
+      <select id="dashVersion" onchange="onVersionChange()" style="min-width:180px"><option value="">Latest Version</option>${vOpts}</select>
+      <label style="font-size:11px;color:var(--text-dim)">Review:</label>
+      <select id="dashReview" onchange="updateDashMetrics()" style="min-width:200px"><option value="">Active Review</option>${rOpts}</select>
     </div>
-    <p style="font-size:10px;color:var(--text-dim);margin-top:6px">Showing: ${ds.version||'latest'} → ${ds.review||'latest'} | Phase: ${ds.phase||'–'}</p>
+    <p id="contextLabel" style="font-size:11px;color:var(--accent);margin-top:8px;font-weight:600">
+      Showing: ${ds.version_label||ds.version||'latest'} > ${ds.review_persona ? ds.review_persona + ' (' + ds.review + ')' : ds.review||'latest'} | Phase: ${ds.phase||'-'}
+    </p>
   </div>` : '';
 
-  // Use hierarchy metrics if available, fallback to legacy
-  const risks = metrics.risks_identified || meta.total_risks || 0;
-  const constraints = metrics.constraints || meta.total_constraints || 0;
-  const deps = metrics.dependencies || meta.total_dependencies || 0;
-  const assumptions = metrics.assumptions || meta.total_assumptions || 0;
-  const actions = metrics.action_items || meta.total_action_items || 0;
+  // Use hierarchy metrics
+  const risks = metrics.risks_identified || 0;
+  const constraints = metrics.constraints || 0;
+  const deps = metrics.dependencies || 0;
+  const assumptions = metrics.assumptions || 0;
+  const actions = metrics.action_items || 0;
   const totalVersions = metrics.total_versions || versions.length;
   const totalReviews = metrics.total_reviews || 0;
   const gaps = metrics.gaps_identified || 0;
@@ -197,7 +206,7 @@ async function viewDashboard() {
   if (trend.length > 1) {
     trendHtml = `<div class="card"><h2>Trend (Last ${trend.length} Versions)</h2>
       <div style="display:flex;gap:12px;overflow-x:auto;padding:8px 0">
-        ${trend.map(t => `<div style="text-align:center;min-width:70px">
+        ${trend.map(t => `<div style="text-align:center;min-width:70px;cursor:pointer" onclick="navigateToVersion('${t.version_id}')">
           <div style="font-size:10px;color:var(--text-dim)">${t.version_id}</div>
           <div style="font-size:16px;font-weight:700;color:var(--accent)">${t.stats?.risks||0}</div>
           <div style="font-size:9px;color:var(--text-dim)">risks</div>
@@ -206,36 +215,73 @@ async function viewDashboard() {
       </div></div>`;
   }
 
+  // Debug state visibility (M8)
+  const debugHtml = state._debugMode ? `<div class="card" style="border-color:var(--warn)">
+    <h2 style="color:var(--warn)">Debug State</h2>
+    <div style="font-size:11px;font-family:monospace;color:var(--text-dim)">
+      <div>projectId: <strong>${pid}</strong></div>
+      <div>versionId: <strong>${ds.version||'(latest)'}</strong></div>
+      <div>reviewId: <strong>${ds.review||'(active)'}</strong></div>
+      <div>phase: <strong>${ds.phase||'-'}</strong></div>
+      <div>version_reviews: <strong>${metrics.version_reviews||0}</strong></div>
+    </div>
+  </div>` : '';
+
+  // Clickable tiles (M2 T2.4) - each tile routes to relevant detail view
   return selectorHtml + `
     <div class="grid">
-      <div class="stat"><div class="num">${risks}</div><div class="label">Risks</div></div>
-      <div class="stat"><div class="num">${constraints}</div><div class="label">Constraints</div></div>
-      <div class="stat"><div class="num">${deps}</div><div class="label">Dependencies</div></div>
-      <div class="stat"><div class="num">${assumptions}</div><div class="label">Assumptions</div></div>
-      <div class="stat"><div class="num">${totalVersions}</div><div class="label">Versions</div></div>
-      <div class="stat"><div class="num">${totalReviews}</div><div class="label">Reviews</div></div>
+      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('risks')"><div class="num">${risks}</div><div class="label">Risks</div></div>
+      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('constraints')"><div class="num">${constraints}</div><div class="label">Constraints</div></div>
+      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('dependencies')"><div class="num">${deps}</div><div class="label">Dependencies</div></div>
+      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('assumptions')"><div class="num">${assumptions}</div><div class="label">Assumptions</div></div>
+      <div class="stat" style="cursor:pointer" onclick="switchTab('versions')"><div class="num">${totalVersions}</div><div class="label">Versions</div></div>
+      <div class="stat" style="cursor:pointer" onclick="switchTab('reviews')"><div class="num">${totalReviews}</div><div class="label">Reviews</div></div>
     </div>
-    ${findings ? `<div class="grid mt"><div class="stat"><div class="num">${findings}</div><div class="label">Findings</div></div><div class="stat"><div class="num">${gaps}</div><div class="label">Gaps</div></div></div>` : ''}
+    ${findings ? `<div class="grid mt"><div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="label">Findings</div></div><div class="stat"><div class="num">${gaps}</div><div class="label">Gaps</div></div></div>` : ''}
     <div class="card mt"><h2>Quick Actions</h2>
       <div class="flex mt">
         <button class="btn" onclick="switchTab('ingest')">Ingest Artefacts</button>
         <button class="btn btn-outline" onclick="buildContext()">Run Intelligence</button>
         <button class="btn btn-outline" onclick="switchTab('reviews')">Run Review</button>
         <button class="btn btn-outline" onclick="switchTab('versions')">Browse History</button>
+        <button class="btn btn-sm" style="margin-left:auto;background:var(--warn);color:#000" onclick="toggleDebug()">Debug</button>
       </div>
-    </div>` + trendHtml +
-    (intel.risks?.length ? `<div class="card"><h2>Top Risks</h2><ul class="items">${intel.risks.slice(0,5).map(r=>`<li>${escHtml(r)}</li>`).join('')}</ul></div>` : '') +
-    (intel.action_items?.length ? `<div class="card"><h2>Action Items</h2><ul class="items">${intel.action_items.slice(0,5).map(a=>`<li>${escHtml(a)}</li>`).join('')}</ul></div>` : '');
+    </div>` + trendHtml + debugHtml;
+}
+
+// Navigate to version detail from trend chart
+function navigateToVersion(versionId) {
+  state._dashVersion = versionId;
+  state._dashReview = '';
+  state.tab = 'dashboard';
+  render();
+}
+
+// Navigate to intelligence view with category focus
+function navigateToIntelligence(category) {
+  state._intelCategory = category;
+  switchTab('intelligence');
+}
+
+// Toggle debug mode (M8)
+function toggleDebug() {
+  state._debugMode = !state._debugMode;
+  render();
+}
+
+// On version change, reset review selection (M1: filter reviews by version)
+function onVersionChange() {
+  const vEl = document.getElementById('dashVersion');
+  state._dashVersion = vEl ? vEl.value : '';
+  state._dashReview = ''; // Reset review since it depends on version
+  render();
 }
 
 async function updateDashMetrics() {
   const vEl = document.getElementById('dashVersion');
   const rEl = document.getElementById('dashReview');
-  const vId = vEl ? vEl.value : '';
-  const rId = rEl ? rEl.value : '';
-  // Re-render dashboard with selected filters (store in state)
-  state._dashVersion = vId;
-  state._dashReview = rId;
+  state._dashVersion = vEl ? vEl.value : '';
+  state._dashReview = rEl ? rEl.value : '';
   render();
 }
 
@@ -639,29 +685,90 @@ async function doIngest() {
   document.getElementById('ingestResult').innerHTML = html;
 }
 
-// ─── Intelligence View ───
+// ─── Intelligence View (M3: Scoped to selected Version and Review) ───
 async function viewIntelligence() {
   if (!state.current) return viewNoProject();
-  const data = await api('GET',`/api/projects/${state.current.id}/intelligence`);
+  const pid = state.current.id;
+
+  // Use the current version/review context from dashboard selection
+  const selVersion = state._dashVersion || '';
+  const selReview = state._dashReview || '';
+
+  // Load scoped metrics to get the right review's findings
+  let metricsUrl = `/api/projects/${pid}/hierarchy/metrics`;
+  const params = [];
+  if (selVersion) params.push(`version_id=${selVersion}`);
+  if (selReview) params.push(`review_id=${selReview}`);
+  if (params.length) metricsUrl += '?' + params.join('&');
+
+  let metrics = {};
+  try { metrics = await api('GET', metricsUrl); } catch(e){}
+
+  // Load intelligence data (raw)
+  const data = await api('GET',`/api/projects/${pid}/intelligence`);
   const i = data.intelligence || data;
+
   if (!i.risks && !i.constraints && !i.scope) return `<div class="card empty"><p>No intelligence built yet.</p><button class="btn mt" onclick="buildContext()">Build Now</button></div>`;
+
+  // If we have a selected review, load its specific findings
+  let reviewFindings = {};
+  const ds = metrics.data_source || {};
+  if (ds.review) {
+    try {
+      const rd = await api('GET', `/api/projects/${pid}/hierarchy/reviews/${ds.review}`);
+      if (rd && rd.findings) reviewFindings = rd.findings;
+    } catch(e){}
+  }
+
+  // Context header showing what data is being displayed
+  const contextHtml = `<div class="card"><h2>Project Intelligence</h2>
+    <p style="font-size:11px;color:var(--accent);margin-bottom:8px">
+      Scope: ${ds.version||'latest'} > ${ds.review||'latest'} | Phase: ${ds.phase||'-'}
+    </p>
+    <div class="flex">
+      <button class="btn btn-sm btn-outline" onclick="buildContext()">Rebuild</button>
+      <button class="btn btn-sm btn-outline" onclick="switchTab('versions')">View Versions</button>
+      <button class="btn btn-sm btn-outline" onclick="switchTab('dashboard')">Back to Dashboard</button>
+    </div></div>`;
+
+  // If review has findings, show review-scoped data
   const cats = ['risks','assumptions','dependencies','constraints','action_items'];
-  return `<div class="card"><h2>Project Intelligence</h2>
-    <div class="flex"><button class="btn btn-sm btn-outline" onclick="buildContext()">Rebuild</button>
-    <button class="btn btn-sm btn-outline" onclick="switchTab('versions')">View Versions</button></div></div>` +
-    cats.map(c => { const items = i[c]||[]; if(!items.length) return '';
-      return `<div class="card"><h2>${c.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())} (${items.length})</h2><ul class="items">${items.map(x=>`<li>${typeof x==='object'?(x.description||JSON.stringify(x)):x}</li>`).join('')}</ul></div>`;
-    }).join('') + (i.scope?`<div class="card"><h2>Scope</h2><p style="font-size:12px;white-space:pre-wrap">${i.scope.slice(0,1500)}</p></div>`:'');
+  let dataHtml = '';
+
+  if (Object.keys(reviewFindings).length) {
+    // Show review-scoped findings
+    for (const c of Object.keys(reviewFindings)) {
+      const items = reviewFindings[c] || [];
+      if (!items.length) continue;
+      const highlighted = state._intelCategory === c;
+      dataHtml += `<div class="card" ${highlighted?'style="border-color:var(--accent)"':''}><h2>${c.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())} (${items.length})</h2><ul class="items">${items.map(x=>`<li>${typeof x==='object'?(x.description||JSON.stringify(x)):escHtml(x)}</li>`).join('')}</ul></div>`;
+    }
+  } else {
+    // Fallback: show global intelligence data
+    for (const c of cats) {
+      const items = i[c]||[];
+      if (!items.length) continue;
+      const highlighted = state._intelCategory === c;
+      dataHtml += `<div class="card" ${highlighted?'style="border-color:var(--accent)"':''}><h2>${c.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())} (${items.length})</h2><ul class="items">${items.map(x=>`<li>${typeof x==='object'?(x.description||JSON.stringify(x)):escHtml(x)}</li>`).join('')}</ul></div>`;
+    }
+  }
+
+  dataHtml += i.scope ? `<div class="card"><h2>Scope</h2><p style="font-size:12px;white-space:pre-wrap">${escHtml(i.scope.slice(0,1500))}</p></div>` : '';
+
+  // Clear the highlight after rendering
+  state._intelCategory = null;
+
+  return contextHtml + dataHtml;
 }
 </script>
 
 <script>
-// ─── Versions View (V3: Collapsible Phase → Version → Review hierarchy) ───
+// ─── Versions View (M4: Full Phase → Version → Review hierarchy, no limits) ───
 async function viewVersions() {
   if (!state.current) return viewNoProject();
   const pid = state.current.id;
 
-  // Load full hierarchy tree
+  // Load full hierarchy tree (no limit on versions)
   let hierarchy = {};
   try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
   const tree = hierarchy.tree || [];
@@ -671,16 +778,18 @@ async function viewVersions() {
   if (!totalV) return `<div class="card empty"><p>No versions yet. Build intelligence to create the first version.</p>
     <button class="btn mt" onclick="buildContext()">Run Intelligence</button></div>`;
 
-  // Build collapsible tree: Phase → Version → Review
+  // Build collapsible tree: Phase → Version → Review (M4 T4.2, T4.3)
   let treeHtml = '';
   for (const phase of tree) {
     const phaseVersions = phase.versions || [];
     if (!phaseVersions.length && !phase.is_current) continue;
     const phaseActive = phase.is_current ? ' style="border-left:3px solid var(--accent)"' : '';
+    const phaseReviewCount = phaseVersions.reduce((sum, v) => sum + (v.reviews||[]).length, 0);
     treeHtml += `<div class="card"${phaseActive}>
       <details ${phase.is_current ? 'open' : ''}>
         <summary style="cursor:pointer;font-size:13px;font-weight:600;color:${phase.is_current?'var(--accent)':'var(--text)'}">
           ${phase.label} <span class="tag">${phaseVersions.length} versions</span>
+          <span class="tag">${phaseReviewCount} reviews</span>
           ${phase.is_current ? '<span class="tag tag-ok">current</span>' : ''}
         </summary>
         <p style="font-size:11px;color:var(--text-dim);margin:4px 0 8px">${phase.description||''}</p>`;
@@ -690,7 +799,8 @@ async function viewVersions() {
     } else {
       for (const ver of phaseVersions) {
         const verReviews = ver.reviews || [];
-        treeHtml += `<details style="margin:6px 0;padding-left:12px;border-left:2px solid var(--border)">
+        const activeReviewId = ver.active_review_id || '';
+        treeHtml += `<details open style="margin:6px 0;padding-left:12px;border-left:2px solid var(--border)">
           <summary style="cursor:pointer;font-size:12px">
             <strong>${ver.version_id}</strong> – ${ver.label||''}
             <span style="color:var(--text-dim);font-size:10px">${ver.created_at?.slice(0,10)||''}</span>
@@ -699,14 +809,16 @@ async function viewVersions() {
             ${ver.stats?.risks ? `<span style="font-size:10px;color:var(--warn)">${ver.stats.risks} risks</span>` : ''}
           </summary>
           <div style="padding:8px 0 4px 16px">
-            <p style="font-size:11px;color:var(--text-dim)">Persona: ${ver.persona||'–'} | Backend: files_only</p>`;
+            <p style="font-size:11px;color:var(--text-dim)">Persona: ${ver.persona||'–'} | Backend: files_only</p>
+            <div class="flex mt"><button class="btn btn-sm btn-outline" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button></div>`;
 
         if (verReviews.length) {
           treeHtml += `<div style="margin-top:6px">`;
           for (const rev of verReviews) {
-            treeHtml += `<div style="padding:6px 10px;margin:4px 0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
+            const isActive = rev.review_id === activeReviewId;
+            treeHtml += `<div style="padding:6px 10px;margin:4px 0;background:var(--bg);border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:var(--radius);cursor:pointer" onclick="viewReviewDetail('${rev.review_id}')">
               <div class="flex" style="justify-content:space-between">
-                <span style="font-size:11px;font-weight:600">${rev.review_id}</span>
+                <span style="font-size:11px;font-weight:600">${rev.review_id} ${isActive?'<span class="tag tag-ok">active</span>':''}</span>
                 <span style="font-size:10px;color:var(--text-dim)">${rev.created_at?.slice(0,16)||''}</span>
               </div>
               <div style="font-size:11px;color:var(--text-dim);margin-top:3px">
@@ -714,7 +826,11 @@ async function viewVersions() {
                 | Findings: ${rev.total_findings||0}
               </div>
               ${rev.summary ? `<p style="font-size:11px;margin-top:3px">${escHtml(rev.summary.slice(0,100))}</p>` : ''}
-              <button class="btn btn-sm btn-outline mt" onclick="viewReviewDetail('${rev.review_id}')">View Details</button>
+              <div class="flex mt">
+                <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();viewReviewDetail('${rev.review_id}')">Details</button>
+                ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();setActiveReview('${ver.version_id}','${rev.review_id}')">Set Active</button>` : ''}
+                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteReview('${rev.review_id}')">Delete</button>
+              </div>
             </div>`;
           }
           treeHtml += `</div>`;
@@ -727,20 +843,45 @@ async function viewVersions() {
     treeHtml += `</details></div>`;
   }
 
-  // Compare Versions section
-  let legacyVersions = [];
-  try { const r = await api('GET',`/api/projects/${pid}/versions`); legacyVersions = r.versions || []; } catch(e){}
-  const compareHtml = legacyVersions.length >= 2 ? `<div class="card"><h2>Compare Versions</h2>
+  // Compare Versions section (M5: all versions available, review context included)
+  let allVersions = [];
+  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); allVersions = r.versions || []; } catch(e){}
+  const compareHtml = allVersions.length >= 2 ? `<div class="card"><h2>Compare Versions</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Compare intelligence output between any two versions</p>
     <div class="flex">
-      <select id="cmpA">${legacyVersions.map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''}</option>`).join('')}</select>
+      <select id="cmpA">${allVersions.map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''} (${v.review_count||0} reviews)</option>`).join('')}</select>
       <span style="color:var(--text-dim)">vs</span>
-      <select id="cmpB">${legacyVersions.slice().reverse().map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''}</option>`).join('')}</select>
+      <select id="cmpB">${allVersions.slice().reverse().map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''} (${v.review_count||0} reviews)</option>`).join('')}</select>
       <button class="btn btn-sm" onclick="compareVersions()">Compare</button>
     </div><div id="cmpResult" class="mt"></div></div>` : '';
 
   return `<div class="card"><h2>Project History</h2>
-    <p style="font-size:12px;color:var(--text-dim)">Navigate: Phase → Version → Review. ${totalV} versions, ${totalR} reviews.</p></div>`
+    <p style="font-size:12px;color:var(--text-dim)">Navigate: Phase > Version > Review. ${totalV} versions, ${totalR} reviews total.</p></div>`
     + treeHtml + compareHtml;
+}
+
+// Select a version context from the tree and navigate to dashboard
+function selectVersionContext(versionId) {
+  state._dashVersion = versionId;
+  state._dashReview = '';
+  switchTab('dashboard');
+}
+
+// Set active review for a version (M6)
+async function setActiveReview(versionId, reviewId) {
+  const pid = state.current.id;
+  const r = await api('POST', `/api/projects/${pid}/hierarchy/versions/${versionId}/set-active-review`, {review_id: reviewId});
+  if (r.error) { alert(r.error); return; }
+  render();
+}
+
+// Delete a review (M6)
+async function deleteReview(reviewId) {
+  if (!confirm('Delete this review? This cannot be undone.')) return;
+  const pid = state.current.id;
+  const r = await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/delete`);
+  if (r.error) { alert(r.error); return; }
+  render();
 }
 
 async function viewReviewDetail(reviewId) {
@@ -784,31 +925,87 @@ async function compareVersions() {
   const a = document.getElementById('cmpA').value;
   const b = document.getElementById('cmpB').value;
   if (a===b) { document.getElementById('cmpResult').innerHTML='<p style="color:var(--warn)">Select different versions</p>'; return; }
-  const r = await api('POST',`/api/projects/${state.current.id}/compare-versions`,{version_a:a,version_b:b});
+  const pid = state.current.id;
+
+  // Get review context for display (M5 T5.2)
+  let reviewA = '', reviewB = '';
+  try {
+    const va = await api('GET',`/api/projects/${pid}/hierarchy/versions/${a}`);
+    const vb = await api('GET',`/api/projects/${pid}/hierarchy/versions/${b}`);
+    if (va.active_review_id) reviewA = va.active_review_id;
+    else if (va.review_ids?.length) reviewA = va.review_ids[va.review_ids.length-1];
+    if (vb.active_review_id) reviewB = vb.active_review_id;
+    else if (vb.review_ids?.length) reviewB = vb.review_ids[vb.review_ids.length-1];
+  } catch(e){}
+
+  const r = await api('POST',`/api/projects/${pid}/compare-versions`,{version_a:a,version_b:b});
   if (r.error) { document.getElementById('cmpResult').innerHTML=`<p style="color:var(--danger)">${r.error}</p>`; return; }
   const cats = r.categories || {};
-  let html = '<div class="card mt"><h3>Changes: '+a+' → '+b+'</h3>';
+  let html = `<div class="card mt"><h3>Changes: ${a}${reviewA?' ('+reviewA+')':''} > ${b}${reviewB?' ('+reviewB+')':''}</h3>`;
   for (const [cat, data] of Object.entries(cats)) {
-    const dir = data.net_change>0?'↑':data.net_change<0?'↓':'→';
-    html += `<div style="margin:6px 0;font-size:12px"><strong>${cat}</strong> ${data.count_before}→${data.count_after} ${dir} (${data.net_change>=0?'+':''}${data.net_change})`;
-    if (data.added?.length) html += data.added.slice(0,3).map(i=>`<div style="color:var(--accent2);margin-left:12px">+ ${i.slice(0,80)}</div>`).join('');
-    if (data.removed?.length) html += data.removed.slice(0,3).map(i=>`<div style="color:var(--danger);margin-left:12px">- ${i.slice(0,80)}</div>`).join('');
+    const dir = data.net_change>0?'&#x2191;':data.net_change<0?'&#x2193;':'&#x2192;';
+    html += `<div style="margin:6px 0;font-size:12px"><strong>${cat}</strong> ${data.count_before}&#x2192;${data.count_after} ${dir} (${data.net_change>=0?'+':''}${data.net_change})`;
+    if (data.added?.length) html += data.added.slice(0,3).map(i=>`<div style="color:var(--accent2);margin-left:12px">+ ${escHtml(i.slice(0,80))}</div>`).join('');
+    if (data.removed?.length) html += data.removed.slice(0,3).map(i=>`<div style="color:var(--danger);margin-left:12px">- ${escHtml(i.slice(0,80))}</div>`).join('');
     html += '</div>';
   }
   const s = r.summary||{};
-  html += `<p class="mt" style="font-size:11px;color:var(--text-dim)">Trend: ${s.trend||'?'} | +${s.total_added||0} added, -${s.total_removed||0} removed</p></div>`;
+  html += `<p class="mt" style="font-size:11px;color:var(--text-dim)">Trend: ${s.trend||'?'} | +${s.total_added||0} added, <span style="color:var(--danger)">-${s.total_removed||0} resolved</span></p></div>`;
   document.getElementById('cmpResult').innerHTML = html;
 }
 </script>
 
 <script>
-// ─── Reviews View ───
+// ─── Reviews View (M7: Review selection, expansion, version-scoped) ───
 async function viewReviews() {
   if (!state.current) return viewNoProject();
+  const pid = state.current.id;
   const personas = await api('POST','/api/personas');
-  const history = await api('GET',`/api/projects/${state.current.id}/reviews`);
-  const reviews = history.reviews || [];
-  const backendOpts = state.backends.map(b=>`<option value="${b.name}">${b.display_name} ${b.available?'':'(not configured)'}</option>`).join('');
+  const backendOpts = state.backends.map(b=>`<option value="${b.name}">${b.display_name||b.name} ${b.available?'':'(not configured)'}</option>`).join('');
+
+  // Load hierarchy reviews (all reviews, grouped by version)
+  let versions = [];
+  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = r.versions || []; } catch(e){}
+
+  // Build version-scoped review list (M7 T7.1: clickable, expandable)
+  let reviewListHtml = '';
+  if (versions.length) {
+    reviewListHtml = `<div class="card"><h2>Reviews by Version</h2>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Click a review to expand details (prompt, files, output)</p>`;
+
+    for (const ver of versions) {
+      let verReviews = [];
+      try { const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews?version_id=${ver.version_id}`); verReviews = r.reviews || []; } catch(e){}
+      if (!verReviews.length) continue;
+
+      reviewListHtml += `<details open style="margin:8px 0;border-left:2px solid var(--border);padding-left:12px">
+        <summary style="cursor:pointer;font-size:12px;font-weight:600">${ver.version_id} – ${ver.label||''} <span class="tag">${verReviews.length} reviews</span></summary>`;
+
+      for (const rev of verReviews) {
+        const isActive = rev.review_id === ver.active_review_id;
+        reviewListHtml += `<details style="margin:4px 0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+          <summary style="cursor:pointer;font-size:11px">
+            <strong>${rev.review_id}</strong> ${isActive?'<span class="tag tag-ok">active</span>':''}
+            – ${rev.persona} (${rev.ai_backend}) | ${rev.total_findings||0} findings
+            <span style="float:right;font-size:10px;color:var(--text-dim)">${rev.created_at?.slice(0,16)||''}</span>
+          </summary>
+          <div style="padding:8px 0;font-size:11px">
+            ${rev.summary ? `<p style="margin-bottom:6px">${escHtml(rev.summary)}</p>` : ''}
+            ${rev.included_files?.length ? `<div style="margin:4px 0">Files: ${rev.included_files.map(f=>`<span class="tag">${escHtml(f)}</span>`).join(' ')}</div>` : ''}
+            ${rev.categories?.length ? `<div style="margin:4px 0">Categories: ${rev.categories.map(c=>`<span class="tag">${c}</span>`).join(' ')}</div>` : ''}
+            <div class="flex mt">
+              <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rev.review_id}')">Full Details</button>
+              ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="setActiveReview('${ver.version_id}','${rev.review_id}')">Set Active</button>` : ''}
+              <button class="btn btn-sm btn-danger" onclick="deleteReview('${rev.review_id}')">Delete</button>
+            </div>
+          </div>
+        </details>`;
+      }
+      reviewListHtml += `</details>`;
+    }
+    reviewListHtml += `</div>`;
+  }
+
   return `<div class="card"><h2>Run Persona Review</h2>
     <div class="flex">
       <select id="personaSelect">${(personas.personas||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
@@ -818,8 +1015,7 @@ async function viewReviews() {
     <div class="form-row mt"><label>Custom Prompt (optional – additional context for AI)</label>
       <textarea id="customPrompt" rows="3" placeholder="e.g. Budget is capped at 500K. Must use only AWS services. Team has 3 senior engineers."></textarea>
     </div>
-    <div id="reviewResult" class="mt"></div></div>` +
-    (reviews.length ? `<div class="card"><h2>Review History (${reviews.length})</h2><ul class="items">${reviews.map(r=>`<li><strong>${r.persona}</strong> ${r.timestamp?.slice(0,16)||''} <span class="tag">${r.ai_backend}</span> ${r.total_findings||0} findings</li>`).join('')}</ul></div>` : '');
+    <div id="reviewResult" class="mt"></div></div>` + reviewListHtml;
 }
 
 async function runReview() {
@@ -1184,64 +1380,9 @@ async function restoreProject(projectId) {
 </script>
 
 <script>
-// ─── Enhanced Reviews View (V3: File Visibility) ───
-// Override the reviews view to include file visibility per version
-const _originalViewReviews = viewReviews;
-viewReviews = async function() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
-  const personas = await api('POST','/api/personas');
-  const history = await api('GET',`/api/projects/${pid}/reviews`);
-  const reviews = history.reviews || [];
-  const backendOpts = state.backends.map(b=>`<option value="${b.name}">${b.display_name||b.name} ${b.available?'':'(not configured)'}</option>`).join('');
-
-  // File Visibility section (V3)
-  let fileVisHtml = '';
-  try {
-    const ctx = await api('GET',`/api/projects/${pid}/context`);
-    const docs = ctx.documents || [];
-    const toggles = ctx.file_toggles || {};
-    if (docs.length) {
-      const activeCount = docs.filter(d => toggles[(d.filename||d.metadata?.filename||'')] !== false).length;
-      fileVisHtml = `<div class="card"><h2>File Visibility (Current Version)</h2>
-        <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${activeCount} of ${docs.length} files included. Files are frozen per version for reproducibility.</p>
-        <div style="max-height:200px;overflow-y:auto">`;
-      for (const d of docs) {
-        const fname = d.filename || d.metadata?.filename || '';
-        const isActive = toggles[fname] !== false;
-        const icon = isActive ? '●' : '○';
-        const color = isActive ? 'var(--accent2)' : 'var(--text-dim)';
-        fileVisHtml += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
-          <span style="color:${color}">${icon}</span>
-          <span>${escHtml(fname)}</span>
-          <span style="margin-left:auto;font-size:10px;color:${color}">${isActive?'ON':'OFF'}</span>
-          <span class="file-toggle ${isActive?'toggle-on':'toggle-off'}" onclick="toggleFileActive('${escHtml(fname)}',${!isActive})">${isActive?'Included':'Excluded'}</span>
-        </div>`;
-      }
-      fileVisHtml += `</div></div>`;
-    }
-  } catch(e) {}
-
-  // Run Intelligence button (explicit trigger, V3)
-  const runIntelHtml = `<div class="card"><h2>Run Intelligence</h2>
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Explicit action: builds intelligence from active files. Creates a versioned snapshot.</p>
-    <div class="flex">
-      <button class="btn" onclick="buildContext()">Run Intelligence</button>
-      <button class="btn btn-outline" onclick="runDeepDive()">Deep Dive Analysis</button>
-    </div><div id="deepDiveResult" class="mt"></div></div>`;
-
-  return fileVisHtml + runIntelHtml + `<div class="card"><h2>Run Persona Review</h2>
-    <div class="flex">
-      <select id="personaSelect">${(personas.personas||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
-      <select id="backendSelect">${backendOpts}</select>
-      <button class="btn" onclick="runReview()">Run Review</button>
-    </div>
-    <div class="form-row mt"><label>Custom Prompt (optional – additional context for AI)</label>
-      <textarea id="customPrompt" rows="3" placeholder="e.g. Budget is capped at 500K. Must use only AWS services. Team has 3 senior engineers."></textarea>
-    </div>
-    <div id="reviewResult" class="mt"></div></div>` +
-    (reviews.length ? `<div class="card"><h2>Review History (${reviews.length})</h2><ul class="items">${reviews.map(r=>`<li><strong>${r.persona}</strong> ${r.timestamp?.slice(0,16)||''} <span class="tag">${r.ai_backend}</span> ${r.total_findings||0} findings</li>`).join('')}</ul></div>` : '');
-};
+// ─── Enhanced Reviews View (V3: File Visibility + Deep Dive) ───
+// The viewReviews function above already includes version-scoped reviews.
+// This section adds Deep Dive and file visibility as supplemental features.
 
 async function runDeepDive() {
   if (!state.current) return;
@@ -1357,11 +1498,6 @@ async function addSelectedToPrompt() {
 }
 
 // Old feedback functions removed – replaced by toggle-based versions above
-</script>
-
-<script>
-// ─── Init ───
-(async () => { await Promise.all([loadProjects(), loadBackends()]); render(); })();
 </script>
 </body>
 </html>
