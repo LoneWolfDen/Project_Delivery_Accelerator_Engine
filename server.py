@@ -25,7 +25,26 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         """Handle GET requests."""
-        if self.path == "/api/health":
+        if self.path == "/" or self.path == "":
+            self._json_response({
+                "name": "Project Delivery Accelerator Engine",
+                "version": "2.0.0",
+                "status": "running",
+                "endpoints": {
+                    "GET /": "This page",
+                    "GET /api/health": "Health check",
+                    "GET /api/projects": "List projects",
+                    "GET /api/projects/{id}/context": "Get ingested documents",
+                    "GET /api/projects/{id}/intelligence": "Get built intelligence",
+                    "GET /api/projects/{id}/summary": "Get token-efficient summary",
+                    "POST /api/projects": "Create project (body: {name, description})",
+                    "POST /api/ingest": "Ingest files (body: {project_id, file_paths})",
+                    "POST /api/projects/{id}/build-context": "Build intelligence from docs",
+                    "POST /api/review": "Run persona review (body: {project_id, persona, ai_backend})",
+                    "POST /api/personas": "List available personas",
+                },
+            })
+        elif self.path == "/api/health":
             self._json_response({"status": "ok", "version": "2.0.0"})
         elif self.path == "/api/projects":
             projects = project_manager.list_projects()
