@@ -150,3 +150,127 @@ def validate_file_extension(filename: str) -> bool:
     """Validate that file extension is supported."""
     ext = Path(filename).suffix.lower()
     return ext in SUPPORTED_EXTENSIONS
+
+
+# ──────────────────────────────────────────────────────────────
+# Section B: Category-Specific Metadata Schema
+# ──────────────────────────────────────────────────────────────
+
+# Defines adaptive metadata fields per category.
+# Each category has 0–4 fields. All optional except client_context.source.
+CATEGORY_METADATA_SCHEMA: Dict[str, Dict[str, Any]] = {
+    "project_artefact": {
+        "fields": [
+            {"name": "version", "type": "string", "label": "Version", "required": False},
+            {"name": "owner", "type": "string", "label": "Owner", "required": False},
+        ],
+    },
+    "meetings_comms": {
+        "fields": [
+            {"name": "date", "type": "date", "label": "Date", "required": False},
+            {
+                "name": "participants",
+                "type": "array",
+                "label": "Participants (comma-separated)",
+                "required": False,
+            },
+        ],
+    },
+    "delivery_notes": {
+        "fields": [
+            {"name": "sprint", "type": "string", "label": "Sprint / Iteration", "required": False},
+            {"name": "date", "type": "date", "label": "Date", "required": False},
+        ],
+    },
+    "client_context": {
+        "fields": [
+            {
+                "name": "source",
+                "type": "enum",
+                "label": "Source",
+                "required": True,
+                "options": ["retrospective", "historical", "lessons_learned", "other"],
+            },
+            {
+                "name": "relevance",
+                "type": "enum",
+                "label": "Relevance",
+                "required": False,
+                "options": ["delivery", "operations", "commercial", "security", "other"],
+            },
+        ],
+    },
+    "architecture_design": {
+        "fields": [
+            {"name": "systemName", "type": "string", "label": "System Name", "required": False},
+            {
+                "name": "layer",
+                "type": "enum",
+                "label": "Layer",
+                "required": False,
+                "options": ["frontend", "backend", "data", "platform", "integration", "other"],
+            },
+        ],
+    },
+    "external_data": {
+        "fields": [
+            {"name": "sourceUrl", "type": "string", "label": "Source URL", "required": False},
+            {"name": "retrievedAt", "type": "date", "label": "Retrieved At", "required": False},
+        ],
+    },
+}
+
+
+def get_metadata_schema_for_category(category: str) -> Dict[str, Any]:
+    """Get the metadata field schema for a given category.
+
+    Args:
+        category: Artifact category string.
+
+    Returns:
+        Schema dict with 'fields' list. Empty fields list if category unknown.
+    """
+    return CATEGORY_METADATA_SCHEMA.get(category, {"fields": []})
+
+
+def validate_metadata_for_category(
+    category: str, metadata: Dict[str, Any]
+) -> tuple:
+    """Validate metadata against category-specific schema.
+
+    Checks required fields. All fields are optional in V1 except
+    client_context.source which is required.
+
+    Args:
+        category: Artifact category.
+        metadata: Metadata dict to validate.
+
+    Returns:
+        Tuple of (is_valid: bool, errors: List[str]).
+    """
+    errors: List[str] = []
+    schema = CATEGORY_METADATA_SCHEMA.get(category, {"fields": []})
+
+    for field_def in schema["fields"]:
+        name = field_def["name"]
+        required = field_def.get("required", False)
+
+        if required and (name not in metadata or not metadata[name]):
+            errors.append(
+                f"Field '{field_def['label']}' is required for category '{category}'"
+            )
+
+        # Validate enum values if provided
+        if (
+            field_def.get("type") == "enum"
+            and name in metadata
+            and metadata[name]
+        ):
+            options = field_def.get("options", [])
+            if metadata[name] not in options:
+                errors.append(
+                    f"Invalid value '{metadata[name]}' for '{field_def['label']}'. "
+                    f"Must be one of: {', '.join(options)}"
+                )
+
+    return (len(errors) == 0, errors)

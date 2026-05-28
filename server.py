@@ -145,8 +145,14 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             parts = self.path.split("/")
             project_id = parts[4]
             self._handle_list_artifacts(project_id)
+        # ── Job Status (Section C) ──
+        elif self.path.startswith("/api/v1/jobs/"):
+            # GET /api/v1/jobs/{jobId}
+            parts = self.path.split("/")
+            job_id = parts[4] if len(parts) > 4 else parts[3]
+            self._handle_get_job(job_id)
         else:
-            self._json_response({"error": "Not found"}, status=404)
+            self._json_response({"errorCode": "NOT_FOUND", "message": "Not found"}, status=404)
 
     def do_POST(self) -> None:
         """Handle POST requests."""
@@ -222,16 +228,52 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = parts[4]
             artifact_id = parts[6]
             self._handle_artifact_delete(project_id, artifact_id)
+        # ── Processing Pipeline (Section C) ──
+        elif "/artifacts/process" in self.path and self.path.startswith("/api/v1/projects/") and not self.path.rstrip("/").split("/")[-1].startswith("a_"):
+            # POST /api/v1/projects/{projectId}/artifacts/process  (process ALL)
+            parts = self.path.split("/")
+            project_id = parts[4]
+            self._handle_process_all_artifacts(project_id)
+        elif "/artifacts/" in self.path and "/process" in self.path and self.path.startswith("/api/v1/projects/"):
+            # POST /api/v1/projects/{projectId}/artifacts/{artifactId}/process
+            parts = self.path.split("/")
+            project_id = parts[4]
+            artifact_id = parts[6]
+            self._handle_process_artifact(project_id, artifact_id)
+        # ── PATCH endpoint (Section D) ──
+        elif "/artifacts/" in self.path and self.path.startswith("/api/v1/projects/") and "/toggle" not in self.path and "/delete" not in self.path and "/process" not in self.path:
+            # PATCH /api/v1/projects/{projectId}/artifacts/{artifactId} (update include/title/metadata)
+            parts = self.path.split("/")
+            if len(parts) >= 7:
+                project_id = parts[4]
+                artifact_id = parts[6]
+                self._handle_patch_artifact(project_id, artifact_id)
+            else:
+                self._json_response({"errorCode": "INVALID_REQUEST", "message": "Invalid artifact path"}, status=400)
         else:
-            self._json_response({"error": "Not found"}, status=404)
+            self._json_response({"errorCode": "NOT_FOUND", "message": "Not found"}, status=404)
 
     def do_OPTIONS(self) -> None:
         """Handle CORS preflight."""
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
+
+    def do_PATCH(self) -> None:
+        """Handle PATCH requests – routed same as POST for artifact updates."""
+        # PATCH /api/v1/projects/{projectId}/artifacts/{artifactId}
+        if "/artifacts/" in self.path and self.path.startswith("/api/v1/projects/"):
+            parts = self.path.split("/")
+            if len(parts) >= 7:
+                project_id = parts[4]
+                artifact_id = parts[6]
+                self._handle_patch_artifact(project_id, artifact_id)
+            else:
+                self._json_response({"errorCode": "INVALID_REQUEST", "message": "Invalid path"}, status=400)
+        else:
+            self._json_response({"errorCode": "NOT_FOUND", "message": "Not found"}, status=404)
 
     def _handle_create_project(self) -> None:
         """Handle project creation."""
@@ -581,6 +623,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
     def _handle_artifact_text(self, project_id: str) -> None:
         """POST /api/v1/projects/{projectId}/artifacts/text"""
         from processors.artifact_store import store_text_artifact
+        from models.artifact import validate_metadata_for_category
 
         body = self._read_body() or {}
         text = body.get("text", "")
@@ -589,11 +632,18 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         metadata = body.get("metadata", {})
 
         if not category:
-            self._json_response({"error": "category is required"}, status=400)
+            self._json_response({"errorCode": "INVALID_REQUEST", "message": "category is required"}, status=400)
             return
         if not text or not text.strip():
-            self._json_response({"error": "text is required"}, status=400)
+            self._json_response({"errorCode": "INVALID_REQUEST", "message": "text is required"}, status=400)
             return
+
+        # Validate metadata against category schema
+        if metadata and isinstance(metadata, dict):
+            valid, errors = validate_metadata_for_category(category, metadata)
+            if not valid:
+                self._json_response({"errorCode": "INVALID_REQUEST", "message": "; ".join(errors)}, status=400)
+                return
 
         try:
             artifact = store_text_artifact(
@@ -627,7 +677,86 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         if deleted:
             self._json_response({"status": "deleted", "artifactId": artifact_id})
         else:
-            self._json_response({"error": "Artifact not found"}, status=404)
+            self._json_response({"errorCode": "NOT_FOUND", "message": "Artifact not found"}, status=404)
+
+    def _handle_process_artifact(self, project_id: str, artifact_id: str) -> None:
+        """POST /api/v1/projects/{projectId}/artifacts/{artifactId}/process"""
+        from processors.pipeline import process_artifact
+
+        try:
+            job = process_artifact(project_id, artifact_id)
+            self._json_response({"job": job}, status=202)
+        except Exception as e:
+            self._json_response({"errorCode": "INTERNAL_ERROR", "message": str(e)}, status=500)
+
+    def _handle_process_all_artifacts(self, project_id: str) -> None:
+        """POST /api/v1/projects/{projectId}/artifacts/process"""
+        from processors.pipeline import process_all_artifacts
+
+        body = self._read_body() or {}
+        only_included = body.get("onlyIncluded", True)
+
+        try:
+            queued_ids = process_all_artifacts(project_id, only_included)
+            self._json_response({"queuedArtifactIds": queued_ids}, status=202)
+        except Exception as e:
+            self._json_response({"errorCode": "INTERNAL_ERROR", "message": str(e)}, status=500)
+
+    def _handle_get_job(self, job_id: str) -> None:
+        """GET /api/v1/jobs/{jobId}"""
+        from processors.pipeline import JobStore
+
+        job = JobStore.get_job(job_id)
+        if job:
+            self._json_response(job)
+        else:
+            self._json_response({"errorCode": "NOT_FOUND", "message": f"Job not found: {job_id}"}, status=404)
+
+    def _handle_patch_artifact(self, project_id: str, artifact_id: str) -> None:
+        """PATCH /api/v1/projects/{projectId}/artifacts/{artifactId}
+
+        Update include flag, title, or metadata.
+        """
+        from processors.artifact_store import (
+            get_artifact,
+            _load_registry,
+            _save_registry,
+        )
+        from models.artifact import Artifact, validate_metadata_for_category
+
+        body = self._read_body() or {}
+        if not body:
+            self._json_response({"errorCode": "INVALID_REQUEST", "message": "Request body required"}, status=400)
+            return
+
+        registry = _load_registry(project_id)
+        updated = False
+        result_artifact = None
+
+        for entry in registry:
+            if entry.get("artifact_id") == artifact_id:
+                if "include" in body:
+                    entry["include"] = bool(body["include"])
+                if "title" in body:
+                    entry["title"] = body["title"]
+                if "metadata" in body and isinstance(body["metadata"], dict):
+                    # Validate metadata against category schema
+                    category = entry.get("category", "")
+                    valid, errors = validate_metadata_for_category(category, body["metadata"])
+                    if not valid:
+                        self._json_response({"errorCode": "INVALID_REQUEST", "message": "; ".join(errors)}, status=400)
+                        return
+                    entry["metadata"] = body["metadata"]
+                updated = True
+                result_artifact = Artifact.from_storage_dict(entry)
+                break
+
+        if not updated:
+            self._json_response({"errorCode": "NOT_FOUND", "message": "Artifact not found"}, status=404)
+            return
+
+        _save_registry(project_id, registry)
+        self._json_response({"artifact": result_artifact.to_api_dict()})
 
     def _parse_multipart_upload(self, content_type: str, content_length: int):
         """Parse multipart/form-data for file upload.
