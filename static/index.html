@@ -163,7 +163,7 @@ async function viewIngest() {
 }
 
 async function doIngest() {
-  const paths = document.getElementById('ingestPaths').value.split('\\n').map(p=>p.trim()).filter(Boolean);
+  const paths = document.getElementById('ingestPaths').value.split('\n').map(p=>p.trim()).filter(Boolean);
   if (!paths.length) return;
   const r = await api('POST','/api/ingest',{project_id:state.current.id,file_paths:paths});
   let html = `<div class="card"><h3>Ingested: ${r.ingested||0} file(s)</h3>`;
