@@ -94,9 +94,136 @@ def list_projects() -> List[Dict[str, Any]]:
             "name": p["name"],
             "phase": p.get("phase", "discovery"),
             "file_count": len(p.get("files", [])),
+            "status": p.get("status", "active"),
         }
         for p in projects
+        if p.get("status", "active") not in ("deleted", "archived")
     ]
+
+
+def list_all_projects() -> List[Dict[str, Any]]:
+    """List all projects including archived (for settings view)."""
+    projects = load_projects()
+    return [
+        {
+            "id": p["id"],
+            "name": p["name"],
+            "phase": p.get("phase", "discovery"),
+            "file_count": len(p.get("files", [])),
+            "status": p.get("status", "active"),
+        }
+        for p in projects
+        if p.get("status", "active") != "deleted"
+    ]
+
+
+# Default PIN for destructive operations
+ADMIN_PIN = "1234"
+
+
+def archive_project(project_id: str, pin: str) -> Dict[str, Any]:
+    """Archive a project (soft-delete, recoverable).
+
+    Args:
+        project_id: Project ID.
+        pin: Admin PIN for authorization.
+
+    Returns:
+        Dict with status confirmation.
+
+    Raises:
+        ValueError: If PIN is wrong or project not found.
+    """
+    if pin != ADMIN_PIN:
+        raise ValueError("Invalid PIN")
+
+    projects = load_projects()
+    for p in projects:
+        if p["id"] == project_id:
+            p["status"] = "archived"
+            save_projects(projects)
+            return {"id": project_id, "status": "archived", "message": "Project archived"}
+    raise ValueError(f"Project not found: {project_id}")
+
+
+def delete_project(project_id: str, pin: str) -> Dict[str, Any]:
+    """Permanently delete a project and all its data.
+
+    Args:
+        project_id: Project ID.
+        pin: Admin PIN for authorization.
+
+    Returns:
+        Dict with deletion confirmation.
+
+    Raises:
+        ValueError: If PIN is wrong or project not found.
+    """
+    if pin != ADMIN_PIN:
+        raise ValueError("Invalid PIN")
+
+    projects = load_projects()
+    found = False
+    for p in projects:
+        if p["id"] == project_id:
+            p["status"] = "deleted"
+            found = True
+            break
+
+    if not found:
+        raise ValueError(f"Project not found: {project_id}")
+
+    save_projects(projects)
+
+    # Remove project data directory
+    project_dir = PROJECTS_DIR / project_id
+    if project_dir.exists():
+        shutil.rmtree(project_dir)
+
+    return {"id": project_id, "status": "deleted", "message": "Project permanently deleted"}
+
+
+def toggle_file_active(project_id: str, filename: str, active: bool) -> Dict[str, Any]:
+    """Toggle whether a file is included in the next review cycle.
+
+    Args:
+        project_id: Project ID.
+        filename: Name of the ingested file (stem, without path).
+        active: True to include in reviews, False to exclude.
+
+    Returns:
+        Updated file status dict.
+
+    Raises:
+        ValueError: If project or file not found.
+    """
+    project = get_project(project_id)
+    if project is None:
+        raise ValueError(f"Project not found: {project_id}")
+
+    # Load/update file toggles stored in project metadata
+    projects = load_projects()
+    for p in projects:
+        if p["id"] == project_id:
+            file_toggles = p.get("file_toggles", {})
+            file_toggles[filename] = active
+            p["file_toggles"] = file_toggles
+            break
+    save_projects(projects)
+
+    return {"filename": filename, "active": active}
+
+
+def get_file_toggles(project_id: str) -> Dict[str, bool]:
+    """Get the active/inactive status of all files for a project.
+
+    Returns:
+        Dict mapping filename → bool (True = active/included).
+    """
+    project = get_project(project_id)
+    if project is None:
+        return {}
+    return project.get("file_toggles", {})
 
 
 

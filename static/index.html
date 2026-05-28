@@ -78,6 +78,26 @@ textarea { resize:vertical; min-height:60px; font-family:inherit; }
 .backend-chip { padding:6px 10px; border-radius:var(--radius); font-size:11px;
   background:var(--surface2); border:1px solid var(--border); text-align:center; }
 .backend-chip.available { border-color:var(--accent2); }
+/* File Explorer */
+.file-explorer { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+.file-item { border-bottom:1px solid var(--border); }
+.file-item:last-child { border-bottom:none; }
+.file-header { display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer;
+  font-size:12px; transition:background 0.15s; }
+.file-header:hover { background:var(--surface2); }
+.file-chevron { font-size:9px; color:var(--text-dim); transition:transform 0.2s; width:12px; }
+.file-item.expanded .file-chevron { transform:rotate(90deg); }
+.file-icon { font-size:14px; }
+.file-name { font-weight:600; color:var(--text); }
+.file-body { display:none; padding:0 12px 10px 34px; }
+.file-item.expanded .file-body { display:block; }
+.file-section { padding:3px 0; font-size:11px; color:var(--text-dim);
+  border-left:2px solid var(--border); padding-left:8px; margin:3px 0; }
+.section-title { color:var(--text); font-weight:500; }
+.file-toggle { font-size:10px; padding:3px 8px; border-radius:10px; cursor:pointer;
+  margin-left:auto; font-weight:600; user-select:none; white-space:nowrap; }
+.toggle-on { background:rgba(63,185,80,0.15); color:var(--accent2); border:1px solid var(--accent2); }
+.toggle-off { background:rgba(248,81,73,0.1); color:var(--danger); border:1px solid var(--danger); }
 </style>
 
 <script>
@@ -173,14 +193,62 @@ async function viewIngest() {
   if (!state.current) return viewNoProject();
   const ctx = await api('GET',`/api/projects/${state.current.id}/context`);
   const docs = ctx.documents || [];
-  return `<div class="card"><h2>Ingest Documents</h2>
+  const toggles = ctx.file_toggles || {};
+  const ingestForm = `<div class="card"><h2>Ingest Documents</h2>
     <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">Enter file paths (one per line) relative to project root. Supports: .txt, .md, .csv, .eml</p>
     <div class="form-row"><label>File Paths</label>
       <textarea id="ingestPaths" rows="4" placeholder="sample_data/scope.txt&#10;sample_data/scope_cpg.txt"></textarea>
     </div>
     <button class="btn" onclick="doIngest()">Ingest Files</button>
-    <div id="ingestResult" class="mt"></div></div>
-    ${docs.length ? `<div class="card"><h2>Ingested Documents (${docs.length})</h2><ul class="items">${docs.map(d=>`<li>${d.filename||d.metadata?.filename||'doc'} – ${d.metadata?.source_type||'unknown'} (${d.metadata?.word_count||0} words)</li>`).join('')}</ul></div>` : ''}`;
+    <div id="ingestResult" class="mt"></div></div>`;
+
+  if (!docs.length) return ingestForm;
+
+  // Build file explorer with expandable rows and toggles
+  const fileRows = docs.map((d, i) => {
+    const fname = d.filename || d.metadata?.filename || `doc-${i}`;
+    const srcType = d.metadata?.source_type || 'unknown';
+    const words = d.metadata?.word_count || 0;
+    const sections = d.sections || [];
+    const sectionCount = sections.length;
+    const ingestedAt = d.metadata?.ingested_at || d.metadata?.created_at || '';
+    const isActive = toggles[fname] !== false; // default active
+    const toggleClass = isActive ? 'toggle-on' : 'toggle-off';
+    const toggleLabel = isActive ? 'Included' : 'Excluded';
+
+    const sectionHtml = sections.length ? sections.map(s =>
+      `<div class="file-section"><span class="section-title">${escHtml(s.title || s.heading || 'Section')}</span> <span style="color:var(--text-dim);font-size:10px">${(s.content||'').length} chars</span></div>`
+    ).join('') : '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">No section data available</div>';
+
+    return `<div class="file-item">
+      <div class="file-header" onclick="toggleFileExpand(this)">
+        <span class="file-chevron">▶</span>
+        <span class="file-icon">${srcType==='csv'?'📊':srcType==='email'?'📧':srcType==='transcript'?'🎙️':'📄'}</span>
+        <span class="file-name">${escHtml(fname)}</span>
+        <span class="tag">${srcType}</span>
+        <span style="font-size:10px;color:var(--text-dim)">${words} words · ${sectionCount} sections</span>
+        ${ingestedAt ? `<span style="font-size:10px;color:var(--text-dim);margin-left:auto">${ingestedAt.slice(0,16)}</span>` : ''}
+        <span class="file-toggle ${toggleClass}" onclick="event.stopPropagation();toggleFileActive('${escHtml(fname)}',${!isActive})">${toggleLabel}</span>
+      </div>
+      <div class="file-body">${sectionHtml}</div>
+    </div>`;
+  }).join('');
+
+  const activeCount = docs.filter(d => toggles[(d.filename||d.metadata?.filename||'')] !== false).length;
+
+  return ingestForm + `<div class="card"><h2>Ingested Documents (${docs.length})</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${activeCount} of ${docs.length} files included in next review cycle. Toggle to exclude/include.</p>
+    <div class="file-explorer">${fileRows}</div></div>`;
+}
+
+function toggleFileExpand(el) {
+  const item = el.closest('.file-item');
+  item.classList.toggle('expanded');
+}
+
+async function toggleFileActive(filename, active) {
+  await api('POST', `/api/projects/${state.current.id}/toggle-file`, {filename, active});
+  render();
 }
 
 async function doIngest() {
@@ -369,18 +437,55 @@ async function doTransition() {
 
 <script>
 // ─── Settings View ───
-function viewSettings() {
+async function viewSettings() {
+  const r = await api('GET','/api/projects/all');
+  state.allProjects = r.projects || state.projects;
   const backendHtml = state.backends.map(b =>
     `<div class="backend-chip ${b.available?'available':''}">${b.available?'●':'○'} <strong>${b.name}</strong><br><span style="font-size:10px">${b.display_name}</span></div>`
   ).join('');
+  const projectActions = state.current ? `<div class="card"><h2>Project Actions</h2>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Current: <strong>${state.current.name}</strong> (${state.current.id})</p>
+    <div class="flex">
+      <button class="btn btn-sm btn-warn" onclick="archiveProject()">Archive Project</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteProject()">Delete Project</button>
+    </div>
+    <p style="font-size:10px;color:var(--text-dim);margin-top:8px">Both actions require PIN (default: 1234)</p></div>` : '';
   return `<div class="card"><h2>Create New Project</h2>
     <div class="form-row"><label>Project Name</label><input id="newName" placeholder="Project name"></div>
     <div class="form-row"><label>Description</label><input id="newDesc" placeholder="Description"></div>
     <button class="btn" onclick="createProject()">Create</button></div>
-    ${state.projects.length ? `<div class="card"><h2>All Projects</h2><ul class="items">${state.projects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')" style="color:var(--accent)">${p.name}</a> <span class="tag">${p.phase}</span> (${p.file_count} files)</li>`).join('')}</ul></div>` : ''}
+    ${projectActions}
+    ${state.projects.length ? `<div class="card"><h2>All Projects</h2><ul class="items">${state.allProjects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')" style="color:var(--accent)">${p.name}</a> <span class="tag">${p.phase}</span> (${p.file_count} files) ${p.status==='archived'?'<span class="tag" style="border:1px solid var(--warn);color:var(--warn)">archived</span>':''}</li>`).join('')}</ul></div>` : ''}
     <div class="card"><h2>AI Backends Status</h2><div class="backend-grid">${backendHtml}</div>
       <p class="mt" style="font-size:11px;color:var(--text-dim)">Configure via environment variables:<br>
         GROQ_API_KEY (free) | OPENROUTER_API_KEY (free) | GEMINI_API_KEY | AWS credentials for Bedrock</p></div>`;
+}
+
+async function archiveProject() {
+  if (!state.current) return;
+  const pin = prompt('Enter PIN to archive this project:');
+  if (!pin) return;
+  const r = await api('POST', `/api/projects/${state.current.id}/archive`, {pin});
+  if (r.error) { alert('Error: ' + r.error); return; }
+  alert(r.message || 'Project archived');
+  await loadProjects();
+  state.current = state.projects[0] || null;
+  state.tab = 'dashboard';
+  render();
+}
+
+async function deleteProject() {
+  if (!state.current) return;
+  if (!confirm(`Permanently delete "${state.current.name}"? This cannot be undone.`)) return;
+  const pin = prompt('Enter PIN to permanently delete:');
+  if (!pin) return;
+  const r = await api('POST', `/api/projects/${state.current.id}/delete`, {pin});
+  if (r.error) { alert('Error: ' + r.error); return; }
+  alert(r.message || 'Project deleted');
+  await loadProjects();
+  state.current = state.projects[0] || null;
+  state.tab = 'dashboard';
+  render();
 }
 
 // ─── Actions ───
