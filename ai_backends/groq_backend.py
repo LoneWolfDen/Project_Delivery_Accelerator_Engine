@@ -88,6 +88,7 @@ class GroqBackend(AIBackend):
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {self._api_key}",
+                    "User-Agent": "ProjectDeliveryAccelerator/2.0",
                 },
                 method="POST",
             )

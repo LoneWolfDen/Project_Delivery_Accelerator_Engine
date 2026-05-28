@@ -96,6 +96,7 @@ class OpenRouterBackend(AIBackend):
                 headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {self._api_key}",
+                    "User-Agent": "ProjectDeliveryAccelerator/2.0",
                     "HTTP-Referer": "https://github.com/LoneWolfDen/Project_Delivery_Accelerator_Engine",
                     "X-Title": "Project Delivery Accelerator",
                 },

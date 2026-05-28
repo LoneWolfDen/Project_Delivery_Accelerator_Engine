@@ -94,7 +94,10 @@ class GeminiBackend(AIBackend):
             req = urllib.request.Request(
                 url,
                 data=data,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "ProjectDeliveryAccelerator/2.0",
+                },
                 method="POST",
             )
 
