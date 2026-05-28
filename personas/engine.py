@@ -37,7 +37,7 @@ AVAILABLE_PERSONAS = {
 }
 
 # Valid AI backends
-VALID_BACKENDS = {"files_only", "ollama", "bedrock", "gemini"}
+VALID_BACKENDS = {"files_only", "ollama", "bedrock", "gemini", "groq", "openrouter"}
 
 
 def list_personas() -> List[Dict[str, str]]:
