@@ -110,8 +110,8 @@ async function api(method, path, body) {
 }
 
 // ─── State ───
-let state = { projects:[], current:null, tab:'dashboard', backends:[], adminConfig:{}, health:{} };
-const TABS = ['dashboard','ingest','intelligence','versions','reviews','proposals','phases','admin'];
+let state = { projects:[], current:null, tab:'dashboard', backends:[], adminConfig:{}, health:{}, lastDeepDive:null };
+const TABS = ['dashboard','ingest','intelligence','versions','reviews','phases','admin'];
 
 // ─── Header ───
 function renderHeader() {
@@ -136,7 +136,7 @@ async function render() {
   const main = document.getElementById('main');
   const views = {
     dashboard: viewDashboard, ingest: viewIngest, intelligence: viewIntelligence,
-    versions: viewVersions, reviews: viewReviews, proposals: viewProposals,
+    versions: viewVersions, reviews: viewReviews,
     phases: viewPhases, settings: viewSettings, admin: viewAdmin
   };
   main.innerHTML = await (views[state.tab] || viewDashboard)();
@@ -144,36 +144,99 @@ async function render() {
 </script>
 
 <script>
-// ─── Dashboard View ───
+// ─── Dashboard View (V3: Hierarchy-aware with version/review selectors) ───
 async function viewDashboard() {
   if (!state.current) return viewNoProject();
   const pid = state.current.id;
-  let intel = {}, versions = [];
+
+  // Load hierarchy metrics (defaults to latest version + latest review)
+  let metrics = {};
+  try { metrics = await api('GET',`/api/projects/${pid}/hierarchy/metrics`); } catch(e){}
+
+  // Also load raw intel for backwards compat
+  let intel = {};
   try { const r = await api('GET',`/api/projects/${pid}/intelligence`); intel = r.intelligence || r; } catch(e){}
-  try { const r = await api('GET',`/api/projects/${pid}/versions`); versions = r.versions||[]; } catch(e){}
+
+  // Load versions + reviews for selectors
+  let versions = [], reviews = [];
+  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = r.versions || []; } catch(e){}
+  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews`); reviews = r.reviews || []; } catch(e){}
+
   const meta = intel._build_metadata || {};
-  const backendHtml = state.backends.map(b =>
-    `<div class="backend-chip ${b.available?'available':''}">${b.available?'●':'○'} ${b.name}</div>`
-  ).join('');
-  return `
-    <div class="grid">
-      <div class="stat"><div class="num">${meta.total_risks||0}</div><div class="label">Risks</div></div>
-      <div class="stat"><div class="num">${meta.total_constraints||0}</div><div class="label">Constraints</div></div>
-      <div class="stat"><div class="num">${meta.total_dependencies||0}</div><div class="label">Dependencies</div></div>
-      <div class="stat"><div class="num">${meta.total_assumptions||0}</div><div class="label">Assumptions</div></div>
-      <div class="stat"><div class="num">${meta.total_action_items||0}</div><div class="label">Actions</div></div>
-      <div class="stat"><div class="num">${versions.length}</div><div class="label">Versions</div></div>
+  const sv = metrics.selected_version || {};
+  const sr = metrics.selected_review || {};
+  const ds = metrics.data_source || {};
+
+  // Version / Review selectors
+  const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===ds.version?'selected':''}>${v.version_id} ${v.label||''} (${v.created_at?.slice(0,10)||''})</option>`).join('');
+  const rOpts = reviews.map(r => `<option value="${r.review_id}" ${r.review_id===ds.review?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
+
+  const selectorHtml = (versions.length || reviews.length) ? `<div class="card"><h2>Data Context</h2>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Metrics update based on selected version and review</p>
+    <div class="flex">
+      ${versions.length ? `<select id="dashVersion" onchange="updateDashMetrics()" style="min-width:180px"><option value="">Latest Version</option>${vOpts}</select>` : ''}
+      ${reviews.length ? `<select id="dashReview" onchange="updateDashMetrics()" style="min-width:200px"><option value="">Latest Review</option>${rOpts}</select>` : ''}
     </div>
+    <p style="font-size:10px;color:var(--text-dim);margin-top:6px">Showing: ${ds.version||'latest'} → ${ds.review||'latest'} | Phase: ${ds.phase||'–'}</p>
+  </div>` : '';
+
+  // Use hierarchy metrics if available, fallback to legacy
+  const risks = metrics.risks_identified || meta.total_risks || 0;
+  const constraints = metrics.constraints || meta.total_constraints || 0;
+  const deps = metrics.dependencies || meta.total_dependencies || 0;
+  const assumptions = metrics.assumptions || meta.total_assumptions || 0;
+  const actions = metrics.action_items || meta.total_action_items || 0;
+  const totalVersions = metrics.total_versions || versions.length;
+  const totalReviews = metrics.total_reviews || 0;
+  const gaps = metrics.gaps_identified || 0;
+  const findings = metrics.total_findings || 0;
+
+  // Trend visualization
+  const trend = metrics.trend || [];
+  let trendHtml = '';
+  if (trend.length > 1) {
+    trendHtml = `<div class="card"><h2>Trend (Last ${trend.length} Versions)</h2>
+      <div style="display:flex;gap:12px;overflow-x:auto;padding:8px 0">
+        ${trend.map(t => `<div style="text-align:center;min-width:70px">
+          <div style="font-size:10px;color:var(--text-dim)">${t.version_id}</div>
+          <div style="font-size:16px;font-weight:700;color:var(--accent)">${t.stats?.risks||0}</div>
+          <div style="font-size:9px;color:var(--text-dim)">risks</div>
+          <div style="font-size:9px;color:var(--text-dim)">${t.created_at?.slice(5,10)||''}</div>
+        </div>`).join('')}
+      </div></div>`;
+  }
+
+  return selectorHtml + `
+    <div class="grid">
+      <div class="stat"><div class="num">${risks}</div><div class="label">Risks</div></div>
+      <div class="stat"><div class="num">${constraints}</div><div class="label">Constraints</div></div>
+      <div class="stat"><div class="num">${deps}</div><div class="label">Dependencies</div></div>
+      <div class="stat"><div class="num">${assumptions}</div><div class="label">Assumptions</div></div>
+      <div class="stat"><div class="num">${totalVersions}</div><div class="label">Versions</div></div>
+      <div class="stat"><div class="num">${totalReviews}</div><div class="label">Reviews</div></div>
+    </div>
+    ${findings ? `<div class="grid mt"><div class="stat"><div class="num">${findings}</div><div class="label">Findings</div></div><div class="stat"><div class="num">${gaps}</div><div class="label">Gaps</div></div></div>` : ''}
     <div class="card mt"><h2>Quick Actions</h2>
       <div class="flex mt">
-        <button class="btn" onclick="switchTab('ingest')">Ingest Files</button>
-        <button class="btn btn-outline" onclick="buildContext()">Build Intelligence</button>
+        <button class="btn" onclick="switchTab('ingest')">Ingest Artefacts</button>
+        <button class="btn btn-outline" onclick="buildContext()">Run Intelligence</button>
         <button class="btn btn-outline" onclick="switchTab('reviews')">Run Review</button>
+        <button class="btn btn-outline" onclick="switchTab('versions')">Browse History</button>
       </div>
-    </div>
-    <div class="card"><h2>AI Backends</h2><div class="backend-grid">${backendHtml}</div></div>
-    ${intel.risks?.length ? `<div class="card"><h2>Top Risks</h2><ul class="items">${intel.risks.slice(0,5).map(r=>`<li>${r}</li>`).join('')}</ul></div>` : ''}
-    ${intel.action_items?.length ? `<div class="card"><h2>Action Items</h2><ul class="items">${intel.action_items.slice(0,5).map(a=>`<li>${a}</li>`).join('')}</ul></div>` : ''}`;
+    </div>` + trendHtml +
+    (intel.risks?.length ? `<div class="card"><h2>Top Risks</h2><ul class="items">${intel.risks.slice(0,5).map(r=>`<li>${escHtml(r)}</li>`).join('')}</ul></div>` : '') +
+    (intel.action_items?.length ? `<div class="card"><h2>Action Items</h2><ul class="items">${intel.action_items.slice(0,5).map(a=>`<li>${escHtml(a)}</li>`).join('')}</ul></div>` : '');
+}
+
+async function updateDashMetrics() {
+  const vEl = document.getElementById('dashVersion');
+  const rEl = document.getElementById('dashReview');
+  const vId = vEl ? vEl.value : '';
+  const rId = rEl ? rEl.value : '';
+  // Re-render dashboard with selected filters (store in state)
+  state._dashVersion = vId;
+  state._dashReview = rId;
+  render();
 }
 
 function viewNoProject() {
@@ -593,23 +656,128 @@ async function viewIntelligence() {
 </script>
 
 <script>
-// ─── Versions View ───
+// ─── Versions View (V3: Collapsible Phase → Version → Review hierarchy) ───
 async function viewVersions() {
   if (!state.current) return viewNoProject();
   const pid = state.current.id;
-  const r = await api('GET',`/api/projects/${pid}/versions`);
-  const versions = r.versions || [];
-  if (!versions.length) return `<div class="card empty"><p>No versions yet. Build intelligence first.</p><button class="btn mt" onclick="buildContext()">Build Intelligence</button></div>`;
-  return `<div class="card"><h2>Context Versions (${versions.length})</h2>
-    <ul class="items">${versions.map(v=>`<li><strong>${v.version_id}</strong> ${v.label?'– '+v.label:''} <span class="tag">${v.timestamp?.slice(0,16)||''}</span>
-      <span style="font-size:11px;color:var(--text-dim)">risks:${v.stats?.risks||0} deps:${v.stats?.dependencies||0} docs:${v.stats?.document_count||0}</span></li>`).join('')}</ul></div>
-    ${versions.length >= 2 ? `<div class="card"><h2>Compare Versions</h2>
-      <div class="flex">
-        <select id="cmpA">${versions.map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''}</option>`).join('')}</select>
-        <span style="color:var(--text-dim)">vs</span>
-        <select id="cmpB">${versions.slice().reverse().map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''}</option>`).join('')}</select>
-        <button class="btn btn-sm" onclick="compareVersions()">Compare</button>
-      </div><div id="cmpResult" class="mt"></div></div>` : ''}`;
+
+  // Load full hierarchy tree
+  let hierarchy = {};
+  try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
+  const tree = hierarchy.tree || [];
+  const totalV = hierarchy.total_versions || 0;
+  const totalR = hierarchy.total_reviews || 0;
+
+  if (!totalV) return `<div class="card empty"><p>No versions yet. Build intelligence to create the first version.</p>
+    <button class="btn mt" onclick="buildContext()">Run Intelligence</button></div>`;
+
+  // Build collapsible tree: Phase → Version → Review
+  let treeHtml = '';
+  for (const phase of tree) {
+    const phaseVersions = phase.versions || [];
+    if (!phaseVersions.length && !phase.is_current) continue;
+    const phaseActive = phase.is_current ? ' style="border-left:3px solid var(--accent)"' : '';
+    treeHtml += `<div class="card"${phaseActive}>
+      <details ${phase.is_current ? 'open' : ''}>
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;color:${phase.is_current?'var(--accent)':'var(--text)'}">
+          ${phase.label} <span class="tag">${phaseVersions.length} versions</span>
+          ${phase.is_current ? '<span class="tag tag-ok">current</span>' : ''}
+        </summary>
+        <p style="font-size:11px;color:var(--text-dim);margin:4px 0 8px">${phase.description||''}</p>`;
+
+    if (!phaseVersions.length) {
+      treeHtml += `<p style="font-size:12px;color:var(--text-dim);padding:8px 0">No versions in this phase yet</p>`;
+    } else {
+      for (const ver of phaseVersions) {
+        const verReviews = ver.reviews || [];
+        treeHtml += `<details style="margin:6px 0;padding-left:12px;border-left:2px solid var(--border)">
+          <summary style="cursor:pointer;font-size:12px">
+            <strong>${ver.version_id}</strong> – ${ver.label||''}
+            <span style="color:var(--text-dim);font-size:10px">${ver.created_at?.slice(0,10)||''}</span>
+            <span class="tag">${ver.artifact_count||0} files</span>
+            <span class="tag">${verReviews.length} reviews</span>
+            ${ver.stats?.risks ? `<span style="font-size:10px;color:var(--warn)">${ver.stats.risks} risks</span>` : ''}
+          </summary>
+          <div style="padding:8px 0 4px 16px">
+            <p style="font-size:11px;color:var(--text-dim)">Persona: ${ver.persona||'–'} | Backend: files_only</p>`;
+
+        if (verReviews.length) {
+          treeHtml += `<div style="margin-top:6px">`;
+          for (const rev of verReviews) {
+            treeHtml += `<div style="padding:6px 10px;margin:4px 0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius)">
+              <div class="flex" style="justify-content:space-between">
+                <span style="font-size:11px;font-weight:600">${rev.review_id}</span>
+                <span style="font-size:10px;color:var(--text-dim)">${rev.created_at?.slice(0,16)||''}</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:3px">
+                Persona: <strong>${rev.persona}</strong> | Backend: ${rev.ai_backend}
+                | Findings: ${rev.total_findings||0}
+              </div>
+              ${rev.summary ? `<p style="font-size:11px;margin-top:3px">${escHtml(rev.summary.slice(0,100))}</p>` : ''}
+              <button class="btn btn-sm btn-outline mt" onclick="viewReviewDetail('${rev.review_id}')">View Details</button>
+            </div>`;
+          }
+          treeHtml += `</div>`;
+        } else {
+          treeHtml += `<p style="font-size:11px;color:var(--text-dim);margin-top:4px">No reviews for this version yet</p>`;
+        }
+        treeHtml += `</div></details>`;
+      }
+    }
+    treeHtml += `</details></div>`;
+  }
+
+  // Compare Versions section
+  let legacyVersions = [];
+  try { const r = await api('GET',`/api/projects/${pid}/versions`); legacyVersions = r.versions || []; } catch(e){}
+  const compareHtml = legacyVersions.length >= 2 ? `<div class="card"><h2>Compare Versions</h2>
+    <div class="flex">
+      <select id="cmpA">${legacyVersions.map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''}</option>`).join('')}</select>
+      <span style="color:var(--text-dim)">vs</span>
+      <select id="cmpB">${legacyVersions.slice().reverse().map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''}</option>`).join('')}</select>
+      <button class="btn btn-sm" onclick="compareVersions()">Compare</button>
+    </div><div id="cmpResult" class="mt"></div></div>` : '';
+
+  return `<div class="card"><h2>Project History</h2>
+    <p style="font-size:12px;color:var(--text-dim)">Navigate: Phase → Version → Review. ${totalV} versions, ${totalR} reviews.</p></div>`
+    + treeHtml + compareHtml;
+}
+
+async function viewReviewDetail(reviewId) {
+  const pid = state.current.id;
+  const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews/${reviewId}`);
+  if (r.error) { alert(r.error); return; }
+
+  const vc = r.version_context || {};
+  let html = `<div class="card"><h2>Review: ${r.review_id}</h2>
+    <div style="font-size:12px;margin-bottom:8px">
+      <strong>Version:</strong> ${r.version_id} | <strong>Phase:</strong> ${r.phase_id}
+      | <strong>Date:</strong> ${r.created_at?.slice(0,16)||''}
+    </div>
+    <div style="font-size:12px;margin-bottom:8px">
+      <strong>Persona:</strong> ${r.persona} | <strong>Backend:</strong> ${r.ai_backend}
+    </div>`;
+
+  // Files included
+  if (r.included_files?.length) {
+    html += `<h3>Files Included</h3><div style="margin:4px 0">${r.included_files.map(f=>`<span class="tag tag-ok">${escHtml(f)}</span>`).join(' ')}</div>`;
+  }
+  if (r.categories?.length) {
+    html += `<div style="margin:4px 0">Categories: ${r.categories.map(c=>`<span class="tag">${c}</span>`).join(' ')}</div>`;
+  }
+
+  // Findings
+  for (const [s, items] of Object.entries(r.findings||{})) {
+    if (items.length) html += `<div class="findings-section"><div class="title">${s.replace(/_/g,' ')}</div><ul class="items">${items.map(i=>`<li>${escHtml(i)}</li>`).join('')}</ul></div>`;
+  }
+  if (r.questions?.length) html += `<div class="findings-section"><div class="title">Questions</div><ul class="items">${r.questions.map(q=>`<li>? ${escHtml(q)}</li>`).join('')}</ul></div>`;
+
+  // Prompt
+  if (r.prompt_used) html += `<details class="collapsible"><summary>Prompt Used</summary><div class="prompt-box">${escHtml(r.prompt_used)}</div></details>`;
+  if (r.custom_prompt) html += `<details class="collapsible"><summary>Custom Prompt</summary><div class="prompt-box">${escHtml(r.custom_prompt)}</div></details>`;
+
+  html += `<button class="btn btn-sm mt" onclick="render()">← Back</button></div>`;
+  document.getElementById('main').innerHTML = html;
 }
 
 async function compareVersions() {
@@ -680,72 +848,102 @@ function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 </script>
 
 <script>
-// ─── Proposals View ───
-async function viewProposals() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
-  let proposal = null;
-  try { proposal = await api('GET',`/api/projects/${pid}/proposal`); } catch(e){}
-  if (!proposal || proposal.error) {
-    return `<div class="card"><h2>Create Proposal</h2>
-      <div class="form-row"><label>Proposal Name</label><input id="propName" placeholder="Cloud Migration Proposal"></div>
-      <div class="form-row"><label>Client</label><input id="propClient" placeholder="Client name"></div>
-      <div class="form-row"><label>Notes</label><textarea id="propNotes" rows="2" placeholder="Initial notes"></textarea></div>
-      <button class="btn" onclick="createProposal()">Create Proposal</button></div>`;
-  }
-  const versions = proposal.versions || [];
-  return `<div class="card"><h2>${proposal.proposal_name}</h2>
-    <p style="font-size:12px;color:var(--text-dim)">Client: ${proposal.client||'-'} | Versions: ${proposal.total_versions} | Current: ${proposal.current_version}</p>
-    <button class="btn btn-sm btn-outline mt" onclick="addProposalVersion()">+ Add Version</button></div>
-    ${versions.length?`<div class="card"><h2>Versions</h2><ul class="items">${versions.map(v=>`<li><strong>${v.version_id}</strong> ${v.label||''} <span class="tag">${v.status}</span> ${v.created_at?.slice(0,16)||''}</li>`).join('')}</ul></div>`:''}`;
-}
-
-async function createProposal() {
-  const name = document.getElementById('propName').value;
-  const client = document.getElementById('propClient').value;
-  const notes = document.getElementById('propNotes').value;
-  if (!name) return;
-  await api('POST',`/api/projects/${state.current.id}/proposal`,{name,client,notes});
-  render();
-}
-async function addProposalVersion() {
-  const label = prompt('Version label:','Revised');
-  const changes = prompt('What changed:','');
-  if (!label) return;
-  await api('POST',`/api/projects/${state.current.id}/proposal/version`,{label,changes});
-  render();
-}
-
-// ─── Phases View ───
+// ─── Phases View (V3: First-class hierarchy navigation, replaces old Proposals + Phases) ───
 async function viewPhases() {
   if (!state.current) return viewNoProject();
   const pid = state.current.id;
-  const phases = ['discovery','proposal','planning','execution','review'];
-  const current = state.current.phase || 'discovery';
-  let history = [];
-  try { const r = await api('GET',`/api/projects/${pid}/phase-history`); history = r.history||[]; } catch(e){}
-  const phaseBar = phases.map(p => {
-    const active = p === current;
-    const passed = phases.indexOf(p) < phases.indexOf(current);
-    const style = active ? 'background:var(--accent);color:#000' : passed ? 'background:var(--accent2);color:#000' : 'background:var(--surface2)';
-    return `<span style="padding:5px 12px;border-radius:var(--radius);font-size:11px;${style}">${p}</span>`;
-  }).join('<span style="color:var(--text-dim)">→</span>');
-  return `<div class="card"><h2>Project Phase</h2><div class="flex mt">${phaseBar}</div>
-    <div class="flex mt">
-      <select id="nextPhase">${phases.filter(p=>p!==current).map(p=>`<option value="${p}">${p}</option>`).join('')}</select>
-      <input id="phaseReason" placeholder="Reason for transition" style="flex:1">
-      <button class="btn btn-sm" onclick="doTransition()">Transition</button>
-    </div><div id="phaseResult" class="mt"></div></div>` +
-    (history.length ? `<div class="card"><h2>Phase History</h2><ul class="items">${history.map(h=>`<li><strong>${h.phase}</strong> – ${h.entered_at?.slice(0,16)||''} ${h.duration?'('+h.duration+')':''} ${h.is_current?' ← current':''} ${h.reason?'– '+h.reason:''}</li>`).join('')}</ul></div>` : '');
+
+  // Load hierarchy phases
+  let phases = [];
+  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/phases`); phases = r.phases || []; } catch(e){}
+
+  // Fallback: if no hierarchy phases, show default
+  if (!phases.length) {
+    phases = [
+      {id:'pre-sales', label:'Pre-sales', order:1, description:'Client engagement, proposals, scoping', is_current:true, version_count:0, review_count:0},
+      {id:'design', label:'Design', order:2, description:'Architecture, solution design, planning', is_current:false, version_count:0, review_count:0},
+      {id:'delivery', label:'Delivery', order:3, description:'Execution, development, implementation', is_current:false, version_count:0, review_count:0},
+      {id:'support', label:'Support', order:4, description:'Operations, maintenance, handover', is_current:false, version_count:0, review_count:0},
+    ];
+  }
+
+  const current = phases.find(p => p.is_current) || phases[0];
+
+  // Phase progression bar
+  const phaseBar = phases.sort((a,b) => a.order - b.order).map(p => {
+    const active = p.is_current;
+    const passed = p.order < current.order;
+    const style = active ? 'background:var(--accent);color:#000;font-weight:600' : passed ? 'background:var(--accent2);color:#000' : 'background:var(--surface2)';
+    return `<span style="padding:6px 14px;border-radius:var(--radius);font-size:11px;${style};cursor:pointer" onclick="viewPhaseDetail('${p.id}')">${p.label}</span>`;
+  }).join('<span style="color:var(--text-dim);margin:0 2px">→</span>');
+
+  // Phase detail cards
+  let phaseCards = '';
+  for (const p of phases.sort((a,b) => a.order - b.order)) {
+    const borderStyle = p.is_current ? 'border-left:3px solid var(--accent)' : '';
+    phaseCards += `<div class="card" style="${borderStyle}">
+      <div class="flex" style="justify-content:space-between">
+        <h2 style="margin:0">${p.label} ${p.is_current ? '<span class="tag tag-ok">current</span>' : ''}</h2>
+        <span style="font-size:10px;color:var(--text-dim)">${p.entered_at ? 'Since: '+p.entered_at.slice(0,10) : ''}</span>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin:4px 0">${p.description||''}</p>
+      <div class="flex mt">
+        <span class="tag">${p.version_count||0} versions</span>
+        <span class="tag">${p.review_count||0} reviews</span>
+      </div>
+    </div>`;
+  }
+
+  // Phase transition
+  const transitionHtml = `<div class="card"><h2>Transition Phase</h2>
+    <div class="flex">
+      <select id="nextPhaseH">${phases.filter(p=>!p.is_current).map(p=>`<option value="${p.id}">${p.label}</option>`).join('')}</select>
+      <input id="phaseReasonH" placeholder="Reason for transition" style="flex:1">
+      <button class="btn btn-sm" onclick="doHierarchyTransition()">Transition</button>
+    </div><div id="phaseHResult" class="mt"></div></div>`;
+
+  return `<div class="card"><h2>Project Lifecycle</h2>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Phases are first-class entities. Each phase contains versions and reviews.</p>
+    <div class="flex mt">${phaseBar}</div></div>`
+    + phaseCards + transitionHtml;
 }
 
-async function doTransition() {
-  const phase = document.getElementById('nextPhase').value;
-  const reason = document.getElementById('phaseReason').value;
-  const r = await api('POST',`/api/projects/${state.current.id}/phase`,{new_phase:phase,reason});
-  if (r.error) { document.getElementById('phaseResult').innerHTML=`<p style="color:var(--danger)">${r.error}</p>`; return; }
-  state.current.phase = phase; render();
+async function viewPhaseDetail(phaseId) {
+  const pid = state.current.id;
+  let versions = [];
+  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = (r.versions||[]).filter(v=>v.phase_id===phaseId); } catch(e){}
+
+  let html = `<div class="card"><h2>Phase: ${phaseId}</h2>
+    <p style="font-size:12px;color:var(--text-dim)">${versions.length} versions in this phase</p></div>`;
+
+  if (versions.length) {
+    for (const v of versions) {
+      html += `<div class="card"><div class="flex" style="justify-content:space-between">
+        <strong>${v.version_id}</strong> <span style="font-size:11px;color:var(--text-dim)">${v.created_at?.slice(0,10)||''}</span>
+      </div>
+      <p style="font-size:11px;color:var(--text-dim)">${v.label||''} | ${v.artifact_count||0} files | ${v.review_count||0} reviews</p></div>`;
+    }
+  } else {
+    html += `<div class="card empty"><p>No versions in this phase yet</p></div>`;
+  }
+  html += `<button class="btn btn-sm mt" onclick="render()">← Back to Phases</button>`;
+  document.getElementById('main').innerHTML = html;
 }
+
+async function doHierarchyTransition() {
+  const phase = document.getElementById('nextPhaseH').value;
+  const reason = document.getElementById('phaseReasonH').value;
+  const r = await api('POST',`/api/projects/${state.current.id}/hierarchy/phase`,{phase_id:phase, reason});
+  if (r.error) { document.getElementById('phaseHResult').innerHTML=`<p style="color:var(--danger)">${r.error}</p>`; return; }
+  document.getElementById('phaseHResult').innerHTML=`<p style="color:var(--accent2)">Transitioned to ${phase}</p>`;
+  // Also update legacy phase
+  await api('POST',`/api/projects/${state.current.id}/phase`,{new_phase:phase, reason});
+  state.current.phase = phase;
+  setTimeout(() => render(), 600);
+}
+
+// Legacy viewProposals redirects to Phases (Pre-sales)
+async function viewProposals() { return viewPhases(); }
 </script>
 
 <script>

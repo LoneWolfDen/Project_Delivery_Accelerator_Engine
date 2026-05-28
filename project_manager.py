@@ -642,6 +642,30 @@ def build_project_intelligence(
     except Exception:
         pass
 
+    # Create Version in hierarchy (Phase→Version→Review model)
+    try:
+        from models.hierarchy import HierarchyStore
+        store = HierarchyStore(project_id)
+        included = [
+            {"filename": d.get("filename", ""), "category": d.get("metadata", {}).get("source_type", "")}
+            for d in active_docs
+        ]
+        excluded = [
+            {"filename": d.get("filename", ""), "category": d.get("metadata", {}).get("source_type", "")}
+            for d in documents if d not in active_docs
+        ]
+        store.create_version(
+            included_artifacts=included,
+            excluded_artifacts=excluded,
+            persona=project.get("settings", {}).get("default_persona", ""),
+            scope=context.get("scope", ""),
+            ai_backend=project.get("ai_backend", "files_only"),
+            label=version_label or version_meta.get("label", ""),
+            stats=version_meta.get("stats", {}),
+        )
+    except Exception:
+        pass
+
     # Update iteration metadata
     _update_iteration_on_build(project_id, version_meta)
 
@@ -802,6 +826,44 @@ def run_persona_review(
             ai_backend=ai_backend,
             file_toggles=file_toggles,
             outputs=[review.get("timestamp", "")],
+        )
+    except Exception:
+        pass
+
+    # Create Review in hierarchy (linked to latest version)
+    try:
+        from models.hierarchy import HierarchyStore
+        store = HierarchyStore(project_id)
+        versions = store.list_versions()
+        latest_version_id = versions[0]["version_id"] if versions else "v0"
+
+        # Get included file names for review context
+        documents = get_project_context(project_id)
+        file_toggles = get_file_toggles(project_id)
+        included_files = [
+            d.get("filename", "")
+            for d in documents
+            if file_toggles.get(d.get("filename", ""), True)
+        ]
+        categories = list(set(
+            d.get("metadata", {}).get("source_type", "")
+            for d in documents
+            if file_toggles.get(d.get("filename", ""), True)
+        ))
+
+        store.create_review(
+            version_id=latest_version_id,
+            persona=persona_name,
+            ai_backend=ai_backend,
+            prompt_used=review.get("prompt_used", ""),
+            custom_prompt=custom_prompt or "",
+            findings=review.get("findings", {}),
+            questions=review.get("questions", []),
+            summary=review.get("summary", ""),
+            included_files=included_files,
+            categories=categories,
+            ai_metadata=review.get("ai_metadata", {}),
+            deep_dive=review.get("deep_dive"),
         )
     except Exception:
         pass
@@ -1321,3 +1383,95 @@ def validate_files_for_ingestion(file_paths: List[str]) -> Dict[str, Any]:
         "invalid_count": len(errors),
     }
 
+
+
+# ──────────────────────────────────────────────────────────────
+# Hierarchy Model Integration (V3 Refinement)
+# Project → Phase → Version → Review
+# ──────────────────────────────────────────────────────────────
+
+
+def get_hierarchy(project_id: str) -> Dict[str, Any]:
+    """Get the full Phase→Version→Review tree for navigation.
+
+    Returns collapsible hierarchy for the UI.
+    """
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.get_hierarchy()
+
+
+def get_hierarchy_phases(project_id: str) -> List[Dict[str, Any]]:
+    """Get all phases with activity counts."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.get_phases()
+
+
+def set_hierarchy_phase(project_id: str, phase_id: str, reason: str = "") -> Dict[str, Any]:
+    """Transition to a new phase in the hierarchy."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.set_current_phase(phase_id, reason)
+
+
+def get_hierarchy_versions(
+    project_id: str, phase_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """List versions, optionally filtered by phase. Newest first."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.list_versions(phase_id)
+
+
+def get_hierarchy_version_detail(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
+    """Get full version detail including linked reviews."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    version = store.get_version(version_id)
+    if version is None:
+        return None
+    # Attach review summaries
+    result = version.to_dict()
+    result["reviews"] = store.list_reviews(version_id=version_id)
+    return result
+
+
+def get_hierarchy_reviews(
+    project_id: str,
+    version_id: Optional[str] = None,
+    phase_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """List reviews, optionally filtered. Newest first."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.list_reviews(version_id=version_id, phase_id=phase_id)
+
+
+def get_hierarchy_review_detail(project_id: str, review_id: str) -> Optional[Dict[str, Any]]:
+    """Get full review detail (prompt, output, version context)."""
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    review = store.get_review(review_id)
+    if review is None:
+        return None
+    result = review.to_dict()
+    # Attach version summary for context display
+    version = store.get_version(review.version_id)
+    if version:
+        result["version_context"] = version.to_summary()
+    return result
+
+
+def get_hierarchy_metrics(
+    project_id: str,
+    version_id: Optional[str] = None,
+    review_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get dashboard metrics scoped to version/review.
+
+    Default: latest version + latest review.
+    """
+    from models.hierarchy import HierarchyStore
+    store = HierarchyStore(project_id)
+    return store.get_metrics(version_id=version_id, review_id=review_id)

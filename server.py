@@ -139,6 +139,77 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = self.path.split("/")[3]
             history = project_manager.get_phase_history_for_project(project_id)
             self._json_response({"project_id": project_id, "history": history})
+        # ── Hierarchy API (Phase→Version→Review) ──
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy"):
+            project_id = self.path.split("/")[3]
+            hierarchy = project_manager.get_hierarchy(project_id)
+            self._json_response(hierarchy)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/phases"):
+            project_id = self.path.split("/")[3]
+            phases = project_manager.get_hierarchy_phases(project_id)
+            self._json_response({"project_id": project_id, "phases": phases})
+        elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path:
+            # GET /api/projects/{id}/hierarchy/versions/{version_id}
+            parts = self.path.split("/")
+            project_id = parts[3]
+            version_id = parts[6]
+            detail = project_manager.get_hierarchy_version_detail(project_id, version_id)
+            if detail:
+                self._json_response(detail)
+            else:
+                self._json_response({"error": "Version not found"}, status=404)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/versions"):
+            project_id = self.path.split("/")[3]
+            # Optional query param: ?phase_id=pre-sales
+            phase_filter = None
+            if "?" in self.path:
+                query = self.path.split("?")[1]
+                for param in query.split("&"):
+                    if param.startswith("phase_id="):
+                        phase_filter = param.split("=")[1]
+                project_id = project_id.split("?")[0]
+            versions = project_manager.get_hierarchy_versions(project_id, phase_filter)
+            self._json_response({"project_id": project_id, "versions": versions})
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path:
+            # GET /api/projects/{id}/hierarchy/reviews/{review_id}
+            parts = self.path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            detail = project_manager.get_hierarchy_review_detail(project_id, review_id)
+            if detail:
+                self._json_response(detail)
+            else:
+                self._json_response({"error": "Review not found"}, status=404)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/reviews"):
+            project_id = self.path.split("/")[3]
+            # Optional: ?version_id=v1&phase_id=pre-sales
+            version_filter = None
+            phase_filter = None
+            if "?" in self.path:
+                query = self.path.split("?")[1]
+                for param in query.split("&"):
+                    if param.startswith("version_id="):
+                        version_filter = param.split("=")[1]
+                    elif param.startswith("phase_id="):
+                        phase_filter = param.split("=")[1]
+                project_id = project_id.split("?")[0]
+            reviews = project_manager.get_hierarchy_reviews(project_id, version_filter, phase_filter)
+            self._json_response({"project_id": project_id, "reviews": reviews})
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/metrics"):
+            project_id = self.path.split("/")[3]
+            # Optional: ?version_id=v1&review_id=r1
+            version_filter = None
+            review_filter = None
+            if "?" in self.path:
+                query = self.path.split("?")[1]
+                for param in query.split("&"):
+                    if param.startswith("version_id="):
+                        version_filter = param.split("=")[1]
+                    elif param.startswith("review_id="):
+                        review_filter = param.split("=")[1]
+                project_id = project_id.split("?")[0]
+            metrics = project_manager.get_hierarchy_metrics(project_id, version_filter, review_filter)
+            self._json_response(metrics)
         # ── Artifact API v1 ──
         elif "/artifacts" in self.path and self.path.startswith("/api/v1/projects/"):
             # GET /api/v1/projects/{projectId}/artifacts
@@ -203,6 +274,9 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/projects/") and self.path.endswith("/phase"):
             project_id = self.path.split("/")[3]
             self._handle_phase_transition(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/phase"):
+            project_id = self.path.split("/")[3]
+            self._handle_hierarchy_phase_transition(project_id)
         elif self.path.startswith("/api/projects/") and self.path.endswith("/toggle-file"):
             project_id = self.path.split("/")[3]
             self._handle_toggle_file(project_id)
@@ -453,6 +527,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             return
         try:
             result = project_manager.transition_project_phase(project_id, new_phase, reason)
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_hierarchy_phase_transition(self, project_id: str) -> None:
+        """Transition phase in hierarchy model."""
+        body = self._read_body() or {}
+        phase_id = body.get("phase_id", "")
+        reason = body.get("reason", "")
+        if not phase_id:
+            self._json_response({"error": "phase_id required"}, status=400)
+            return
+        try:
+            result = project_manager.set_hierarchy_phase(project_id, phase_id, reason)
             self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=400)
