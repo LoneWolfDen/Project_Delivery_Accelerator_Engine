@@ -189,22 +189,25 @@ def _update_project_files(project_id: str, file_paths: List[Path]) -> None:
 
 
 
-def build_project_intelligence(project_id: str) -> Dict[str, Any]:
+def build_project_intelligence(
+    project_id: str, version_label: Optional[str] = None
+) -> Dict[str, Any]:
     """Build (or rebuild) project intelligence from all ingested documents.
 
-    Reads all context JSON files, runs the context builder,
-    and persists the result.
+    Each build is saved as a versioned snapshot for iteration tracking.
 
     Args:
         project_id: Project ID.
+        version_label: Optional label for this build (e.g. 'post-discovery').
 
     Returns:
-        Built context dict with metadata.
+        Built context dict with metadata and version info.
 
     Raises:
         ValueError: If project not found or no documents ingested.
     """
     from processors.context_builder import build_context
+    from processors.history import save_context_version
 
     project = get_project(project_id)
     if project is None:
@@ -216,10 +219,20 @@ def build_project_intelligence(project_id: str) -> Dict[str, Any]:
 
     context = build_context(documents)
 
-    # Persist intelligence
+    # Persist current intelligence
     intelligence_path = PROJECTS_DIR / project_id / "intelligence.json"
     with open(intelligence_path, "w") as f:
         json.dump(context, f, indent=2)
+
+    # Save versioned snapshot
+    project_dir = PROJECTS_DIR / project_id
+    version_meta = save_context_version(project_dir, context, version_label)
+
+    # Update iteration metadata
+    _update_iteration_on_build(project_id, version_meta)
+
+    # Attach version info to response
+    context["_version"] = version_meta
 
     return context
 
@@ -301,6 +314,9 @@ def run_persona_review(
     # Store review result
     _store_review(project_id, review)
 
+    # Update iteration tracking
+    _update_iteration_on_review(project_id)
+
     return review
 
 
@@ -335,3 +351,160 @@ def _store_review(project_id: str, review: Dict[str, Any]) -> None:
 
     with open(reviews_dir / filename, "w") as f:
         json.dump(review, f, indent=2)
+
+
+
+# ──────────────────────────────────────────────────────────────
+# Iteration & History
+# ──────────────────────────────────────────────────────────────
+
+
+def get_project_versions(project_id: str) -> List[Dict[str, Any]]:
+    """List all context build versions for a project.
+
+    Args:
+        project_id: Project ID.
+
+    Returns:
+        List of version metadata dicts, newest first.
+    """
+    from processors.history import list_context_versions
+
+    project_dir = PROJECTS_DIR / project_id
+    return list_context_versions(project_dir)
+
+
+def get_project_version(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
+    """Load a specific context version snapshot.
+
+    Args:
+        project_id: Project ID.
+        version_id: e.g. 'v1', 'v2'.
+
+    Returns:
+        Full context snapshot, or None if not found.
+    """
+    from processors.history import get_context_version
+
+    project_dir = PROJECTS_DIR / project_id
+    return get_context_version(project_dir, version_id)
+
+
+def compare_project_versions(
+    project_id: str, version_a: str, version_b: str
+) -> Dict[str, Any]:
+    """Compare two context versions for a project.
+
+    Args:
+        project_id: Project ID.
+        version_a: Earlier version (e.g. 'v1').
+        version_b: Later version (e.g. 'v2').
+
+    Returns:
+        Comparison dict with added/removed/unchanged per category.
+    """
+    from processors.history import compare_context_versions
+
+    project_dir = PROJECTS_DIR / project_id
+    return compare_context_versions(project_dir, version_a, version_b)
+
+
+def compare_project_reviews(
+    project_id: str, review_file_a: str, review_file_b: str
+) -> Dict[str, Any]:
+    """Compare two review results for a project.
+
+    Args:
+        project_id: Project ID.
+        review_file_a: Filename of earlier review.
+        review_file_b: Filename of later review.
+
+    Returns:
+        Comparison dict showing evolution of findings.
+    """
+    from processors.history import compare_reviews
+
+    reviews_dir = PROJECTS_DIR / project_id / "reviews"
+    path_a = reviews_dir / review_file_a
+    path_b = reviews_dir / review_file_b
+
+    if not path_a.exists():
+        raise ValueError(f"Review not found: {review_file_a}")
+    if not path_b.exists():
+        raise ValueError(f"Review not found: {review_file_b}")
+
+    with open(path_a) as f:
+        review_a = json.load(f)
+    with open(path_b) as f:
+        review_b = json.load(f)
+
+    return compare_reviews(review_a, review_b)
+
+
+def get_project_evolution(
+    project_id: str, category: str = "risks"
+) -> List[Dict[str, Any]]:
+    """Get evolution timeline of a category across all versions.
+
+    Args:
+        project_id: Project ID.
+        category: 'risks', 'assumptions', 'dependencies', 'constraints', or 'action_items'.
+
+    Returns:
+        Timeline list with counts and items per version.
+    """
+    from processors.history import get_evolution_timeline
+
+    project_dir = PROJECTS_DIR / project_id
+    return get_evolution_timeline(project_dir, category)
+
+
+def get_project_review_history(
+    project_id: str, persona_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Get review history for a project, optionally filtered by persona.
+
+    Args:
+        project_id: Project ID.
+        persona_id: Optional persona filter.
+
+    Returns:
+        List of review summaries, newest first.
+    """
+    from processors.history import get_review_history
+
+    project_dir = PROJECTS_DIR / project_id
+    return get_review_history(project_dir, persona_id)
+
+
+def _update_iteration_on_build(project_id: str, version_meta: Dict[str, Any]) -> None:
+    """Update project iteration metadata after a context build."""
+    from datetime import datetime, timezone
+
+    projects = load_projects()
+    for p in projects:
+        if p["id"] == project_id:
+            iteration = p.get("iteration") or {}
+            iteration["current_version"] = version_meta["version_id"]
+            iteration["total_builds"] = version_meta["version_number"]
+            iteration["last_build_at"] = version_meta["timestamp"]
+            p["iteration"] = iteration
+            p["updated_at"] = datetime.now(timezone.utc).isoformat()
+            break
+    save_projects(projects)
+
+
+def _update_iteration_on_review(project_id: str) -> None:
+    """Update project iteration metadata after a review run."""
+    from datetime import datetime, timezone
+
+    projects = load_projects()
+    for p in projects:
+        if p["id"] == project_id:
+            iteration = p.get("iteration") or {}
+            iteration["total_reviews"] = iteration.get("total_reviews", 0) + 1
+            iteration["last_review_at"] = datetime.now(timezone.utc).isoformat()
+            p["iteration"] = iteration
+            p["updated_at"] = datetime.now(timezone.utc).isoformat()
+            break
+    save_projects(projects)
