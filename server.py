@@ -40,7 +40,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
         # API endpoints
         if self.path == "/api/health":
-            self._json_response({"status": "ok", "version": "3.0.0-ui"})
+            self._json_response({"status": "ok", "version": "3.0.0"})
         elif self.path == "/api/backends":
             from ai_backends import list_backends
             self._json_response({"backends": list_backends()})
@@ -50,6 +50,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path == "/api/projects/all":
             projects = project_manager.list_all_projects()
             self._json_response({"projects": projects})
+        # ── Admin endpoints ──
+        elif self.path == "/api/admin/config":
+            config = project_manager.get_admin_config()
+            self._json_response({"config": config})
+        elif self.path == "/api/admin/health":
+            health = project_manager.get_system_health_status()
+            self._json_response({"health": health})
+        elif self.path == "/api/admin/lifecycle":
+            logs = project_manager.get_lifecycle_logs()
+            self._json_response({"lifecycle": logs})
+        elif self.path == "/api/admin/auto-archive-suggestions":
+            suggestions = project_manager.get_auto_archive_suggestions()
+            self._json_response({"suggestions": suggestions})
+        # ── Project-specific endpoints ──
         elif self.path.startswith("/api/projects/") and self.path.endswith("/context"):
             project_id = self.path.split("/")[3]
             context = project_manager.get_project_context(project_id)
@@ -81,6 +95,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response({"project_id": project_id, "version": version})
             else:
                 self._json_response({"error": f"Version not found: {version_id}"}, status=404)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/run-history"):
+            project_id = self.path.split("/")[3]
+            history = project_manager.get_run_history_for_project(project_id)
+            self._json_response({"project_id": project_id, "run_history": history})
+        elif self.path.startswith("/api/projects/") and "/file-snapshot/" in self.path:
+            # GET /api/projects/{id}/file-snapshot/{version_id}
+            parts = self.path.split("/")
+            project_id = parts[3]
+            version_id = parts[5]
+            snapshot = project_manager.get_file_snapshot(project_id, version_id)
+            if snapshot:
+                self._json_response(snapshot)
+            else:
+                self._json_response({"error": "Snapshot not found"}, status=404)
         elif self.path.startswith("/api/projects/") and self.path.endswith("/reviews"):
             # GET /api/projects/{id}/reviews?persona=solution_architect
             project_id = self.path.split("/")[3].split("?")[0]
@@ -127,6 +155,27 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._handle_review()
         elif self.path == "/api/personas":
             self._handle_list_personas()
+        # ── Admin endpoints ──
+        elif self.path == "/api/admin/config":
+            self._handle_update_config()
+        # ── Project lifecycle ──
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/archive"):
+            project_id = self.path.split("/")[3]
+            self._handle_archive_project(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/restore"):
+            project_id = self.path.split("/")[3]
+            self._handle_restore_project(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/delete"):
+            project_id = self.path.split("/")[3]
+            self._handle_delete_project(project_id)
+        # ── Deep Dive & Feedback ──
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/deep-dive"):
+            project_id = self.path.split("/")[3]
+            self._handle_deep_dive(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/deep-dive/feedback"):
+            project_id = self.path.split("/")[3]
+            self._handle_deep_dive_feedback(project_id)
+        # ── Existing endpoints ──
         elif self.path.startswith("/api/projects/") and self.path.endswith("/compare-versions"):
             project_id = self.path.split("/")[3]
             self._handle_compare_versions(project_id)
@@ -142,15 +191,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/projects/") and self.path.endswith("/phase"):
             project_id = self.path.split("/")[3]
             self._handle_phase_transition(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/archive"):
-            project_id = self.path.split("/")[3]
-            self._handle_archive_project(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/delete"):
-            project_id = self.path.split("/")[3]
-            self._handle_delete_project(project_id)
         elif self.path.startswith("/api/projects/") and self.path.endswith("/toggle-file"):
             project_id = self.path.split("/")[3]
             self._handle_toggle_file(project_id)
+        # ── Guardrails ──
+        elif self.path == "/api/validate-files":
+            self._handle_validate_files()
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -378,6 +424,67 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         except ValueError as e:
             self._json_response({"error": str(e)}, status=400)
 
+    def _handle_restore_project(self, project_id: str) -> None:
+        """Restore a project from archive (requires PIN)."""
+        body = self._read_body() or {}
+        pin = body.get("pin", "")
+        try:
+            result = project_manager.restore_project(project_id, pin)
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=403)
+
+    def _handle_update_config(self) -> None:
+        """Update admin configuration."""
+        body = self._read_body()
+        if not body:
+            self._json_response({"error": "Request body required"}, status=400)
+            return
+        try:
+            config = project_manager.update_admin_config(body)
+            self._json_response({"config": config})
+        except Exception as e:
+            self._json_response({"error": str(e)}, status=500)
+
+    def _handle_deep_dive(self, project_id: str) -> None:
+        """Run Deep Dive analysis."""
+        body = self._read_body() or {}
+        persona = body.get("persona", "")
+        custom_prompt = body.get("custom_prompt", "")
+        try:
+            result = project_manager.run_deep_dive_analysis(
+                project_id, persona, custom_prompt
+            )
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+        except Exception as e:
+            self._json_response({"error": str(e)}, status=500)
+
+    def _handle_deep_dive_feedback(self, project_id: str) -> None:
+        """Apply feedback to deep dive results."""
+        body = self._read_body() or {}
+        try:
+            result = project_manager.apply_deep_dive_feedback(
+                project_id,
+                accepted=body.get("accepted"),
+                rejected=body.get("rejected"),
+                added_to_prompt=body.get("added_to_prompt"),
+            )
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_validate_files(self) -> None:
+        """Validate file types before ingestion."""
+        body = self._read_body() or {}
+        file_paths = body.get("file_paths", [])
+        if not file_paths:
+            self._json_response({"error": "file_paths required"}, status=400)
+            return
+        result = project_manager.validate_files_for_ingestion(file_paths)
+        self._json_response(result)
+
     def _read_body(self) -> dict:
         """Read and parse JSON request body."""
         content_length = int(self.headers.get("Content-Length", 0))
@@ -421,8 +528,9 @@ def main() -> None:
     """Start the server."""
     project_manager.PROJECTS_DIR.mkdir(exist_ok=True)
     server = HTTPServer((HOST, PORT), AcceleratorHandler)
-    print("Project Delivery Accelerator Engine v2.0")
+    print("Project Delivery Accelerator Engine v3.0")
     print(f"Listening on http://{HOST}:{PORT}")
+    print("V3: Admin, Archive/Restore, Persona Deep Dive, Version Control, Guardrails")
     server.serve_forever()
 
 
