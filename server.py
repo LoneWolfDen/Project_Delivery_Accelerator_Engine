@@ -47,10 +47,18 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path == "/api/projects":
             projects = project_manager.list_projects()
             self._json_response({"projects": projects})
+        elif self.path == "/api/projects/all":
+            projects = project_manager.list_all_projects()
+            self._json_response({"projects": projects})
         elif self.path.startswith("/api/projects/") and self.path.endswith("/context"):
             project_id = self.path.split("/")[3]
             context = project_manager.get_project_context(project_id)
-            self._json_response({"project_id": project_id, "documents": context})
+            toggles = project_manager.get_file_toggles(project_id)
+            self._json_response({"project_id": project_id, "documents": context, "file_toggles": toggles})
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/file-toggles"):
+            project_id = self.path.split("/")[3]
+            toggles = project_manager.get_file_toggles(project_id)
+            self._json_response({"project_id": project_id, "file_toggles": toggles})
         elif self.path.startswith("/api/projects/") and self.path.endswith("/intelligence"):
             project_id = self.path.split("/")[3]
             intelligence = project_manager.get_project_intelligence(project_id)
@@ -134,6 +142,15 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/projects/") and self.path.endswith("/phase"):
             project_id = self.path.split("/")[3]
             self._handle_phase_transition(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/archive"):
+            project_id = self.path.split("/")[3]
+            self._handle_archive_project(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/delete"):
+            project_id = self.path.split("/")[3]
+            self._handle_delete_project(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/toggle-file"):
+            project_id = self.path.split("/")[3]
+            self._handle_toggle_file(project_id)
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -323,6 +340,40 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             return
         try:
             result = project_manager.transition_project_phase(project_id, new_phase, reason)
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_archive_project(self, project_id: str) -> None:
+        """Archive a project (requires PIN)."""
+        body = self._read_body() or {}
+        pin = body.get("pin", "")
+        try:
+            result = project_manager.archive_project(project_id, pin)
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=403)
+
+    def _handle_delete_project(self, project_id: str) -> None:
+        """Permanently delete a project (requires PIN)."""
+        body = self._read_body() or {}
+        pin = body.get("pin", "")
+        try:
+            result = project_manager.delete_project(project_id, pin)
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=403)
+
+    def _handle_toggle_file(self, project_id: str) -> None:
+        """Toggle file active/inactive for review cycles."""
+        body = self._read_body() or {}
+        filename = body.get("filename", "")
+        active = body.get("active", True)
+        if not filename:
+            self._json_response({"error": "filename required"}, status=400)
+            return
+        try:
+            result = project_manager.toggle_file_active(project_id, filename, active)
             self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=400)
