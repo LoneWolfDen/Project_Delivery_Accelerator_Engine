@@ -110,8 +110,8 @@ async function api(method, path, body) {
 }
 
 // ─── State ───
-let state = { projects:[], current:null, tab:'dashboard', backends:[] };
-const TABS = ['dashboard','ingest','intelligence','versions','reviews','proposals','phases'];
+let state = { projects:[], current:null, tab:'dashboard', backends:[], adminConfig:{}, health:{} };
+const TABS = ['dashboard','ingest','intelligence','versions','reviews','proposals','phases','admin'];
 
 // ─── Header ───
 function renderHeader() {
@@ -137,7 +137,7 @@ async function render() {
   const views = {
     dashboard: viewDashboard, ingest: viewIngest, intelligence: viewIntelligence,
     versions: viewVersions, reviews: viewReviews, proposals: viewProposals,
-    phases: viewPhases, settings: viewSettings
+    phases: viewPhases, settings: viewSettings, admin: viewAdmin
   };
   main.innerHTML = await (views[state.tab] || viewDashboard)();
 }
@@ -522,6 +522,259 @@ async function loadBackends() {
   state.backends = r.backends || [];
 }
 
+// ─── Init ───
+(async () => { await Promise.all([loadProjects(), loadBackends()]); render(); })();
+</script>
+
+<script>
+// ─── Admin View (V3) ───
+async function viewAdmin() {
+  let config = {}, health = {}, lifecycle = {}, suggestions = [];
+  try { const r = await api('GET','/api/admin/config'); config = r.config || {}; } catch(e){}
+  try { const r = await api('GET','/api/admin/health'); health = r.health || {}; } catch(e){}
+  try { const r = await api('GET','/api/admin/lifecycle'); lifecycle = r.lifecycle || {}; } catch(e){}
+  try { const r = await api('GET','/api/admin/auto-archive-suggestions'); suggestions = r.suggestions || []; } catch(e){}
+
+  const lastRun = health.last_intelligence_run || {};
+  const apiStatus = health.api_status || {};
+
+  // System Health section
+  let healthHtml = `<div class="card"><h2>System Health</h2>
+    <h3>Last Intelligence Run</h3>
+    <div style="font-size:12px;padding:6px 0">`;
+  if (lastRun.status === 'never_run') {
+    healthHtml += `<span style="color:var(--text-dim)">No intelligence runs recorded yet</span>`;
+  } else {
+    const statusColor = lastRun.success ? 'var(--accent2)' : 'var(--danger)';
+    healthHtml += `<span style="color:${statusColor}">${lastRun.success?'Success':'Failed'}</span>
+      – ${lastRun.project_name||''} (${lastRun.version_id||''})
+      <span style="color:var(--text-dim);margin-left:8px">${lastRun.timestamp?.slice(0,16)||''}</span>
+      ${lastRun.duration_ms ? `<span class="tag">${Math.round(lastRun.duration_ms)}ms</span>` : ''}`;
+    if (lastRun.error) healthHtml += `<div style="color:var(--danger);margin-top:4px">${lastRun.error}</div>`;
+  }
+  healthHtml += `</div><h3>API Connectivity</h3><div class="backend-grid">`;
+  for (const [name, info] of Object.entries(apiStatus)) {
+    const configured = info.configured;
+    healthHtml += `<div class="backend-chip ${configured?'available':''}">${configured?'●':'○'} <strong>${name}</strong><br><span style="font-size:10px">${configured?'Configured':'Not configured'}</span></div>`;
+  }
+  healthHtml += `</div></div>`;
+
+  // Config section
+  let configHtml = `<div class="card"><h2>Configuration</h2>
+    <div class="form-row"><label>Max Active Projects</label><input id="cfgMaxProjects" type="number" value="${config.max_active_projects||5}" style="width:80px"></div>
+    <div class="form-row"><label>Default Persona</label>
+      <select id="cfgPersona" style="width:200px">
+        <option value="solution_architect" ${config.default_persona==='solution_architect'?'selected':''}>Solution Architect</option>
+        <option value="delivery_manager" ${config.default_persona==='delivery_manager'?'selected':''}>Delivery Manager</option>
+        <option value="product_owner" ${config.default_persona==='product_owner'?'selected':''}>Product Owner</option>
+        <option value="resource_manager" ${config.default_persona==='resource_manager'?'selected':''}>Resource Manager</option>
+      </select></div>
+    <div class="form-row"><label>Default Phase</label>
+      <select id="cfgPhase" style="width:200px">
+        <option value="discovery" ${config.default_phase==='discovery'?'selected':''}>Discovery</option>
+        <option value="proposal" ${config.default_phase==='proposal'?'selected':''}>Proposal</option>
+        <option value="planning" ${config.default_phase==='planning'?'selected':''}>Planning</option>
+        <option value="execution" ${config.default_phase==='execution'?'selected':''}>Execution</option>
+        <option value="review" ${config.default_phase==='review'?'selected':''}>Review</option>
+      </select></div>
+    <div class="form-row"><label>Admin PIN</label><input id="cfgPin" type="password" value="${config.admin_pin||'1234'}" style="width:120px"></div>
+    <h3>API Keys</h3>
+    <div class="form-row"><label>Groq API Key</label><input id="cfgGroq" placeholder="${config.api_keys?.groq||'Not set'}" type="password"></div>
+    <div class="form-row"><label>OpenRouter API Key</label><input id="cfgOpenRouter" placeholder="${config.api_keys?.openrouter||'Not set'}" type="password"></div>
+    <div class="form-row"><label>Gemini API Key</label><input id="cfgGemini" placeholder="${config.api_keys?.gemini||'Not set'}" type="password"></div>
+    <button class="btn mt" onclick="saveAdminConfig()">Save Configuration</button>
+    <div id="configResult" class="mt"></div></div>`;
+
+  // Lifecycle logs section
+  let lifecycleHtml = `<div class="card"><h2>Project Lifecycle Logs</h2>`;
+  const archived = lifecycle.archived || [];
+  const deleted = lifecycle.deleted || [];
+  if (archived.length) {
+    lifecycleHtml += `<h3>Archived Projects (${archived.length}/${lifecycle.max_entries||5})</h3><ul class="items">`;
+    for (const a of archived) {
+      const canRestore = a.restore_allowed !== false;
+      lifecycleHtml += `<li><strong>${a.name}</strong> (${a.project_id}) – ${a.archived_at?.slice(0,16)||''}
+        ${canRestore ? `<button class="btn btn-sm btn-outline" onclick="restoreProject('${a.project_id}')" style="margin-left:8px">Restore</button>` : '<span class="tag">Restored</span>'}
+      </li>`;
+    }
+    lifecycleHtml += `</ul>`;
+  } else {
+    lifecycleHtml += `<p style="color:var(--text-dim);font-size:12px">No archived projects</p>`;
+  }
+  if (deleted.length) {
+    lifecycleHtml += `<h3>Deleted Projects (${deleted.length}/${lifecycle.max_entries||5})</h3><ul class="items">`;
+    for (const d of deleted) {
+      lifecycleHtml += `<li><strong>${d.name}</strong> (${d.project_id}) – Deleted ${d.deleted_at?.slice(0,16)||''} <span style="font-size:10px;color:var(--text-dim)">${(d.file_metadata||[]).length} files</span></li>`;
+    }
+    lifecycleHtml += `</ul>`;
+  }
+  lifecycleHtml += `</div>`;
+
+  // Auto-archive suggestions
+  let suggestHtml = '';
+  if (suggestions.length) {
+    suggestHtml = `<div class="card"><h2>Auto-Archive Suggestions</h2><ul class="items">`;
+    for (const s of suggestions) {
+      suggestHtml += `<li><strong>${s.name}</strong> – Inactive ${s.inactive_days} days (threshold: ${s.threshold_days})
+        <button class="btn btn-sm btn-warn" onclick="archiveProject('${s.project_id}')" style="margin-left:8px">Archive</button></li>`;
+    }
+    suggestHtml += `</ul></div>`;
+  }
+
+  return healthHtml + configHtml + lifecycleHtml + suggestHtml;
+}
+
+async function saveAdminConfig() {
+  const updates = {
+    max_active_projects: parseInt(document.getElementById('cfgMaxProjects').value) || 5,
+    default_persona: document.getElementById('cfgPersona').value,
+    default_phase: document.getElementById('cfgPhase').value,
+    admin_pin: document.getElementById('cfgPin').value,
+    api_keys: {}
+  };
+  const groq = document.getElementById('cfgGroq').value;
+  const openrouter = document.getElementById('cfgOpenRouter').value;
+  const gemini = document.getElementById('cfgGemini').value;
+  if (groq) updates.api_keys.groq = groq;
+  if (openrouter) updates.api_keys.openrouter = openrouter;
+  if (gemini) updates.api_keys.gemini = gemini;
+
+  const r = await api('POST', '/api/admin/config', updates);
+  if (r.config) {
+    document.getElementById('configResult').innerHTML = '<p style="color:var(--accent2)">Configuration saved</p>';
+  } else {
+    document.getElementById('configResult').innerHTML = `<p style="color:var(--danger)">${r.error||'Save failed'}</p>`;
+  }
+}
+
+async function restoreProject(projectId) {
+  const pin = prompt('Enter PIN to restore:');
+  if (!pin) return;
+  const r = await api('POST', `/api/projects/${projectId}/restore`, {pin});
+  if (r.error) { alert('Error: ' + r.error); return; }
+  alert(r.message || 'Project restored');
+  await loadProjects();
+  render();
+}
+</script>
+
+<script>
+// ─── Enhanced Reviews View (V3: File Visibility) ───
+// Override the reviews view to include file visibility per version
+const _originalViewReviews = viewReviews;
+viewReviews = async function() {
+  if (!state.current) return viewNoProject();
+  const pid = state.current.id;
+  const personas = await api('POST','/api/personas');
+  const history = await api('GET',`/api/projects/${pid}/reviews`);
+  const reviews = history.reviews || [];
+  const backendOpts = state.backends.map(b=>`<option value="${b.name}">${b.display_name||b.name} ${b.available?'':'(not configured)'}</option>`).join('');
+
+  // File Visibility section (V3)
+  let fileVisHtml = '';
+  try {
+    const ctx = await api('GET',`/api/projects/${pid}/context`);
+    const docs = ctx.documents || [];
+    const toggles = ctx.file_toggles || {};
+    if (docs.length) {
+      const activeCount = docs.filter(d => toggles[(d.filename||d.metadata?.filename||'')] !== false).length;
+      fileVisHtml = `<div class="card"><h2>File Visibility (Current Version)</h2>
+        <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${activeCount} of ${docs.length} files included. Files are frozen per version for reproducibility.</p>
+        <div style="max-height:200px;overflow-y:auto">`;
+      for (const d of docs) {
+        const fname = d.filename || d.metadata?.filename || '';
+        const isActive = toggles[fname] !== false;
+        const icon = isActive ? '●' : '○';
+        const color = isActive ? 'var(--accent2)' : 'var(--text-dim)';
+        fileVisHtml += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px">
+          <span style="color:${color}">${icon}</span>
+          <span>${escHtml(fname)}</span>
+          <span style="margin-left:auto;font-size:10px;color:${color}">${isActive?'ON':'OFF'}</span>
+          <span class="file-toggle ${isActive?'toggle-on':'toggle-off'}" onclick="toggleFileActive('${escHtml(fname)}',${!isActive})">${isActive?'Included':'Excluded'}</span>
+        </div>`;
+      }
+      fileVisHtml += `</div></div>`;
+    }
+  } catch(e) {}
+
+  // Run Intelligence button (explicit trigger, V3)
+  const runIntelHtml = `<div class="card"><h2>Run Intelligence</h2>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Explicit action: builds intelligence from active files. Creates a versioned snapshot.</p>
+    <div class="flex">
+      <button class="btn" onclick="buildContext()">Run Intelligence</button>
+      <button class="btn btn-outline" onclick="runDeepDive()">Deep Dive Analysis</button>
+    </div><div id="deepDiveResult" class="mt"></div></div>`;
+
+  return fileVisHtml + runIntelHtml + `<div class="card"><h2>Run Persona Review</h2>
+    <div class="flex">
+      <select id="personaSelect">${(personas.personas||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
+      <select id="backendSelect">${backendOpts}</select>
+      <button class="btn" onclick="runReview()">Run Review</button>
+    </div>
+    <div class="form-row mt"><label>Custom Prompt (optional – additional context for AI)</label>
+      <textarea id="customPrompt" rows="3" placeholder="e.g. Budget is capped at 500K. Must use only AWS services. Team has 3 senior engineers."></textarea>
+    </div>
+    <div id="reviewResult" class="mt"></div></div>` +
+    (reviews.length ? `<div class="card"><h2>Review History (${reviews.length})</h2><ul class="items">${reviews.map(r=>`<li><strong>${r.persona}</strong> ${r.timestamp?.slice(0,16)||''} <span class="tag">${r.ai_backend}</span> ${r.total_findings||0} findings</li>`).join('')}</ul></div>` : '');
+};
+
+async function runDeepDive() {
+  if (!state.current) return;
+  const el = document.getElementById('deepDiveResult');
+  el.innerHTML = '<p style="color:var(--text-dim)">Running Deep Dive analysis...</p>';
+  const persona = document.getElementById('personaSelect')?.value || '';
+  const custom = document.getElementById('customPrompt')?.value || '';
+  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive`, {persona, custom_prompt: custom});
+  if (r.error) { el.innerHTML = `<p style="color:var(--danger)">${r.error}</p>`; return; }
+
+  const dd = r.deep_dive || {};
+  const sv = r.scope_validation || {};
+  let html = `<div class="card"><h3>Deep Dive Results</h3>
+    <p style="font-size:11px;color:var(--text-dim)">Scope completeness: ${Math.round((sv.completeness_score||0)*100)}%</p>`;
+
+  if (dd.missing_areas?.length) {
+    html += `<div class="findings-section"><div class="title">Missing Areas</div><ul class="items">`;
+    for (const m of dd.missing_areas) { html += `<li><span class="tag tag-${m.severity==='high'?'off':'ok'}">${m.severity}</span> ${m.area}: ${m.suggestion}</li>`; }
+    html += `</ul></div>`;
+  }
+  if (dd.risk_flags?.length) {
+    html += `<div class="findings-section"><div class="title">Risk Flags</div><ul class="items">`;
+    for (const f of dd.risk_flags.slice(0,10)) { html += `<li><span class="tag">${f.severity}</span> ${f.flag}</li>`; }
+    html += `</ul></div>`;
+  }
+  if (dd.clarification_questions?.length) {
+    html += `<div class="findings-section"><div class="title">Clarification Questions</div><ul class="items">`;
+    for (const q of dd.clarification_questions) { html += `<li>? ${q}</li>`; }
+    html += `</ul></div>`;
+  }
+  if (dd.suggested_additions?.length) {
+    html += `<div class="findings-section"><div class="title">Suggested Additions to Scope</div><ul class="items">`;
+    for (const s of dd.suggested_additions) { html += `<li><span class="tag">${s.priority}</span> [${s.category}] ${s.suggestion}</li>`; }
+    html += `</ul></div>`;
+  }
+  html += `<div class="flex mt">
+    <button class="btn btn-sm btn-outline" onclick="acceptAllSuggestions()">Accept All</button>
+    <button class="btn btn-sm btn-outline" onclick="addToPrompt()">Add to Prompt</button>
+  </div>`;
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+async function acceptAllSuggestions() {
+  if (!state.current) return;
+  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {accepted: ['all']});
+  alert(r.status === 'feedback_applied' ? 'Feedback applied!' : (r.error || 'Failed'));
+}
+
+async function addToPrompt() {
+  const text = prompt('Enter text to add to next prompt:');
+  if (!text) return;
+  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {added_to_prompt: [text]});
+  alert(r.status === 'feedback_applied' ? 'Added to prompt!' : (r.error || 'Failed'));
+}
+</script>
+
+<script>
 // ─── Init ───
 (async () => { await Promise.all([loadProjects(), loadBackends()]); render(); })();
 </script>

@@ -1,11 +1,22 @@
 """Project Manager – handles project persistence and file management.
 
-Supports up to 5 active projects (local mode).
+Supports up to 5 active projects (configurable via Admin).
 Each project has: files, settings, AI configuration, historical outputs.
+
+V3 Enhancements:
+- Admin-driven configuration (max projects, defaults)
+- Lifecycle logging (archive/delete tracking)
+- Version control records for every run
+- Guardrails (validation before operations)
+- Standardised agent input
+- Data separation (raw/processed/intelligence)
+- Archive + Restore with PIN and FIFO limits
+- System health tracking
 """
 
 import json
 import shutil
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -15,7 +26,19 @@ from models.project import Project
 
 PROJECTS_DIR = Path("projects_data")
 PROJECTS_FILE = PROJECTS_DIR / "projects.json"
-MAX_ACTIVE_PROJECTS = 5
+
+# Load max from admin config (with fallback)
+def _get_max_active_projects() -> int:
+    try:
+        from admin.config import load_config
+        return load_config().max_active_projects
+    except Exception:
+        return 5
+
+MAX_ACTIVE_PROJECTS = 5  # Static fallback; runtime uses _get_max_active_projects()
+
+# Max archived projects (FIFO)
+MAX_ARCHIVED = 5
 
 
 def _ensure_dirs() -> None:
@@ -53,25 +76,43 @@ def create_project(name: str, description: str = "") -> Dict[str, Any]:
         ValueError: If max active projects reached.
     """
     projects = load_projects()
-    if len(projects) >= MAX_ACTIVE_PROJECTS:
-        raise ValueError(f"Maximum {MAX_ACTIVE_PROJECTS} active projects allowed")
+    max_projects = _get_max_active_projects()
+    active_count = len([p for p in projects if p.get("status", "active") == "active"])
+    if active_count >= max_projects:
+        raise ValueError(f"Maximum {max_projects} active projects allowed")
 
     project_id = f"proj-{len(projects) + 1:03d}"
+
+    # Get defaults from admin config
+    try:
+        from admin.config import load_config
+        config = load_config()
+        default_phase = config.default_phase
+        default_backend = config.default_ai_backend
+    except Exception:
+        default_phase = "discovery"
+        default_backend = "ollama"
+
     project = Project(
         id=project_id,
         name=name,
         description=description,
+        phase=default_phase,
+        ai_backend=default_backend,
     )
     project_dict = asdict(project)
+    project_dict["status"] = "active"
     projects.append(project_dict)
     save_projects(projects)
 
-    # Create project subdirectory for uploads and outputs
+    # Create project subdirectory with data separation (raw/processed/intelligence)
     project_dir = PROJECTS_DIR / project_id
     project_dir.mkdir(exist_ok=True)
-    (project_dir / "uploads").mkdir(exist_ok=True)
-    (project_dir / "outputs").mkdir(exist_ok=True)
-    (project_dir / "context").mkdir(exist_ok=True)
+    (project_dir / "uploads").mkdir(exist_ok=True)     # raw/
+    (project_dir / "outputs").mkdir(exist_ok=True)     # processed/
+    (project_dir / "context").mkdir(exist_ok=True)     # raw parsed docs
+    (project_dir / "intelligence").mkdir(exist_ok=True)  # intelligence/
+    (project_dir / "run_history").mkdir(exist_ok=True)   # version control
 
     return project_dict
 
@@ -124,6 +165,9 @@ ADMIN_PIN = "1234"
 def archive_project(project_id: str, pin: str) -> Dict[str, Any]:
     """Archive a project (soft-delete, recoverable).
 
+    Enforces FIFO limit of MAX_ARCHIVED (5).
+    Records event in lifecycle log.
+
     Args:
         project_id: Project ID.
         pin: Admin PIN for authorization.
@@ -134,20 +178,69 @@ def archive_project(project_id: str, pin: str) -> Dict[str, Any]:
     Raises:
         ValueError: If PIN is wrong or project not found.
     """
-    if pin != ADMIN_PIN:
+    # Validate PIN from admin config
+    try:
+        from admin.config import load_config
+        config = load_config()
+        admin_pin = config.admin_pin
+    except Exception:
+        admin_pin = ADMIN_PIN
+
+    if pin != admin_pin:
         raise ValueError("Invalid PIN")
 
     projects = load_projects()
+    target = None
     for p in projects:
         if p["id"] == project_id:
-            p["status"] = "archived"
-            save_projects(projects)
-            return {"id": project_id, "status": "archived", "message": "Project archived"}
-    raise ValueError(f"Project not found: {project_id}")
+            target = p
+            break
+
+    if target is None:
+        raise ValueError(f"Project not found: {project_id}")
+
+    # Check FIFO limit for archived projects
+    archived = [p for p in projects if p.get("status") == "archived"]
+    if len(archived) >= MAX_ARCHIVED:
+        # Auto-delete oldest archived project (FIFO)
+        oldest = sorted(archived, key=lambda x: x.get("updated_at", ""))[0]
+        oldest["status"] = "deleted"
+        # Record deletion of auto-evicted project
+        try:
+            from admin.lifecycle import record_delete
+            record_delete(
+                oldest["id"],
+                oldest.get("name", ""),
+                [{"filename": f} for f in oldest.get("files", [])],
+            )
+        except Exception:
+            pass
+
+    # Archive the target project
+    target["status"] = "archived"
+    from datetime import datetime, timezone
+    target["archived_at"] = datetime.now(timezone.utc).isoformat()
+    target["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_projects(projects)
+
+    # Record in lifecycle log
+    try:
+        from admin.lifecycle import record_archive
+        record_archive(
+            project_id,
+            target.get("name", ""),
+            [{"filename": f} for f in target.get("files", [])],
+        )
+    except Exception:
+        pass
+
+    return {"id": project_id, "status": "archived", "message": "Project archived"}
 
 
 def delete_project(project_id: str, pin: str) -> Dict[str, Any]:
     """Permanently delete a project and all its data.
+
+    Records metadata in lifecycle log (NO files kept).
 
     Args:
         project_id: Project ID.
@@ -159,21 +252,40 @@ def delete_project(project_id: str, pin: str) -> Dict[str, Any]:
     Raises:
         ValueError: If PIN is wrong or project not found.
     """
-    if pin != ADMIN_PIN:
+    # Validate PIN from admin config
+    try:
+        from admin.config import load_config
+        config = load_config()
+        admin_pin = config.admin_pin
+    except Exception:
+        admin_pin = ADMIN_PIN
+
+    if pin != admin_pin:
         raise ValueError("Invalid PIN")
 
     projects = load_projects()
-    found = False
+    found = None
     for p in projects:
         if p["id"] == project_id:
+            found = p
             p["status"] = "deleted"
-            found = True
             break
 
     if not found:
         raise ValueError(f"Project not found: {project_id}")
 
     save_projects(projects)
+
+    # Record in lifecycle log before removing files
+    try:
+        from admin.lifecycle import record_delete
+        record_delete(
+            project_id,
+            found.get("name", ""),
+            [{"filename": f} for f in found.get("files", [])],
+        )
+    except Exception:
+        pass
 
     # Remove project data directory
     project_dir = PROJECTS_DIR / project_id
@@ -224,6 +336,116 @@ def get_file_toggles(project_id: str) -> Dict[str, bool]:
     if project is None:
         return {}
     return project.get("file_toggles", {})
+
+
+def restore_project(project_id: str, pin: str) -> Dict[str, Any]:
+    """Restore a project from archive.
+
+    Requires PIN. Restores project config, file references, and version history.
+
+    Args:
+        project_id: Project ID.
+        pin: Admin PIN for authorization.
+
+    Returns:
+        Dict with restore confirmation.
+
+    Raises:
+        ValueError: If PIN wrong, project not found, or not archived.
+    """
+    # Validate PIN
+    try:
+        from admin.config import load_config
+        config = load_config()
+        admin_pin = config.admin_pin
+    except Exception:
+        admin_pin = ADMIN_PIN
+
+    if pin != admin_pin:
+        raise ValueError("Invalid PIN")
+
+    projects = load_projects()
+    target = None
+    for p in projects:
+        if p["id"] == project_id:
+            target = p
+            break
+
+    if target is None:
+        raise ValueError(f"Project not found: {project_id}")
+
+    if target.get("status") != "archived":
+        raise ValueError(f"Project is not archived (status: {target.get('status', 'active')})")
+
+    # Restore project
+    from datetime import datetime, timezone
+    target["status"] = "active"
+    target["restored_at"] = datetime.now(timezone.utc).isoformat()
+    target["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_projects(projects)
+
+    # Update lifecycle log
+    try:
+        from admin.lifecycle import record_restore
+        record_restore(project_id)
+    except Exception:
+        pass
+
+    return {
+        "id": project_id,
+        "status": "active",
+        "message": "Project restored from archive",
+        "restored_at": target["restored_at"],
+    }
+
+
+def get_auto_archive_suggestions() -> List[Dict[str, Any]]:
+    """Get projects that could be auto-archived due to inactivity.
+
+    Based on admin config auto_archive_inactivity_days.
+    This is a suggestion hook – does NOT auto-archive.
+
+    Returns:
+        List of project dicts that are inactive beyond threshold.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    try:
+        from admin.config import load_config
+        config = load_config()
+        if not config.auto_archive_enabled:
+            return []
+        threshold_days = config.auto_archive_inactivity_days
+    except Exception:
+        return []
+
+    projects = load_projects()
+    now = datetime.now(timezone.utc)
+    suggestions = []
+
+    for p in projects:
+        if p.get("status", "active") != "active":
+            continue
+
+        last_activity = p.get("updated_at", p.get("created_at", ""))
+        if not last_activity:
+            continue
+
+        try:
+            last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+            inactive_days = (now - last_dt).days
+            if inactive_days >= threshold_days:
+                suggestions.append({
+                    "project_id": p["id"],
+                    "name": p.get("name", ""),
+                    "inactive_days": inactive_days,
+                    "threshold_days": threshold_days,
+                    "last_activity": last_activity,
+                })
+        except (ValueError, TypeError):
+            continue
+
+    return suggestions
 
 
 
@@ -327,7 +549,9 @@ def build_project_intelligence(
 ) -> Dict[str, Any]:
     """Build (or rebuild) project intelligence from all ingested documents.
 
+    V3: Explicit "Run Intelligence" action with guardrails.
     Each build is saved as a versioned snapshot for iteration tracking.
+    Records run in version control and system health.
 
     Args:
         project_id: Project ID.
@@ -337,32 +561,100 @@ def build_project_intelligence(
         Built context dict with metadata and version info.
 
     Raises:
-        ValueError: If project not found or no documents ingested.
+        ValueError: If project not found, no documents, or guardrail fails.
     """
     from processors.context_builder import build_context
     from processors.history import save_context_version
+
+    start_time = time.time()
 
     project = get_project(project_id)
     if project is None:
         raise ValueError(f"Project not found: {project_id}")
 
     documents = get_project_context(project_id)
+
+    # Guardrail: validate before running
+    try:
+        from admin.guardrails import validate_intelligence_run
+        valid, errors = validate_intelligence_run(
+            project_id, len(documents), project.get("ai_backend", "files_only")
+        )
+        if not valid:
+            raise ValueError("; ".join(errors))
+    except ImportError:
+        # Fallback if guardrails not available
+        if not documents:
+            raise ValueError(f"No documents ingested for project: {project_id}")
+
     if not documents:
         raise ValueError(f"No documents ingested for project: {project_id}")
 
-    context = build_context(documents)
+    # Filter by active files (file toggles)
+    file_toggles = get_file_toggles(project_id)
+    active_docs = []
+    for doc in documents:
+        fname = doc.get("filename", doc.get("metadata", {}).get("filename", ""))
+        if file_toggles.get(fname, True):  # Default: included
+            active_docs.append(doc)
 
-    # Persist current intelligence
-    intelligence_path = PROJECTS_DIR / project_id / "intelligence.json"
+    if not active_docs:
+        raise ValueError("All files are excluded. Include at least one file.")
+
+    context = build_context(active_docs)
+
+    # Persist current intelligence (data separation: intelligence/ dir)
+    project_dir = PROJECTS_DIR / project_id
+    intelligence_dir = project_dir / "intelligence"
+    intelligence_dir.mkdir(exist_ok=True)
+    intelligence_path = intelligence_dir / "current.json"
     with open(intelligence_path, "w") as f:
         json.dump(context, f, indent=2)
 
+    # Also keep legacy path for backward compatibility
+    legacy_path = project_dir / "intelligence.json"
+    with open(legacy_path, "w") as f:
+        json.dump(context, f, indent=2)
+
     # Save versioned snapshot
-    project_dir = PROJECTS_DIR / project_id
     version_meta = save_context_version(project_dir, context, version_label)
+
+    # Record run in version control
+    try:
+        from processors.version_control import create_run_record
+        file_info = [
+            {"filename": d.get("filename", ""), "source_type": d.get("metadata", {}).get("source_type", "")}
+            for d in documents
+        ]
+        create_run_record(
+            project_dir=project_dir,
+            project_id=project_id,
+            run_type="intelligence_build",
+            input_files=file_info,
+            ai_backend=project.get("ai_backend", "files_only"),
+            file_toggles=file_toggles,
+            version_label=version_label or "",
+            outputs=[version_meta["version_id"]],
+        )
+    except Exception:
+        pass
 
     # Update iteration metadata
     _update_iteration_on_build(project_id, version_meta)
+
+    # Record in system health
+    duration_ms = (time.time() - start_time) * 1000
+    try:
+        from admin.health import record_intelligence_run
+        record_intelligence_run(
+            project_id=project_id,
+            project_name=project.get("name", ""),
+            success=True,
+            version_id=version_meta["version_id"],
+            duration_ms=duration_ms,
+        )
+    except Exception:
+        pass
 
     # Attach version info to response
     context["_version"] = version_meta
@@ -412,7 +704,8 @@ def run_persona_review(
 ) -> Dict[str, Any]:
     """Run a persona-driven review for a project.
 
-    Loads built intelligence, runs the persona engine, stores the result.
+    V3: Includes Deep Dive output when AI mode is ON.
+    Records run in version control for traceability.
 
     Args:
         project_id: Project ID.
@@ -421,7 +714,7 @@ def run_persona_review(
         custom_prompt: Optional additional context/instructions for the AI to consider.
 
     Returns:
-        Review result dict.
+        Review result dict (includes deep_dive when AI mode ON).
 
     Raises:
         ValueError: If project not found or no intelligence built.
@@ -439,6 +732,16 @@ def run_persona_review(
             "Run build-context first."
         )
 
+    # Guardrail: validate review prerequisites
+    try:
+        from admin.guardrails import validate_review_prerequisites
+        valid, errors = validate_review_prerequisites(
+            project_id, bool(intelligence), ai_backend
+        )
+        # Don't block on warnings, just include them
+    except ImportError:
+        pass
+
     # Run the review
     review = run_review(
         persona_name=persona_name,
@@ -447,8 +750,58 @@ def run_persona_review(
         custom_prompt=custom_prompt,
     )
 
+    # Run Deep Dive when AI mode is ON (non-files_only)
+    if ai_backend != "files_only":
+        try:
+            from personas.deep_dive import run_deep_dive
+
+            # Get active files info
+            documents = get_project_context(project_id)
+            file_toggles = get_file_toggles(project_id)
+            active_files = [
+                {"filename": d.get("filename", ""), "source_type": d.get("metadata", {}).get("source_type", "")}
+                for d in documents
+                if file_toggles.get(d.get("filename", ""), True)
+            ]
+
+            deep_dive = run_deep_dive(
+                persona_name=persona_name,
+                scope=intelligence.get("scope", ""),
+                intelligence=intelligence,
+                active_files=active_files,
+                custom_prompt=custom_prompt or "",
+                ai_backend=ai_backend,
+            )
+            review["deep_dive"] = deep_dive
+        except Exception:
+            pass
+
     # Store review result
     _store_review(project_id, review)
+
+    # Record in version control
+    try:
+        from processors.version_control import create_run_record
+
+        project_dir = PROJECTS_DIR / project_id
+        documents = get_project_context(project_id)
+        file_info = [
+            {"filename": d.get("filename", ""), "source_type": d.get("metadata", {}).get("source_type", "")}
+            for d in documents
+        ]
+        file_toggles = get_file_toggles(project_id)
+        create_run_record(
+            project_dir=project_dir,
+            project_id=project_id,
+            run_type="persona_review",
+            input_files=file_info,
+            persona_used=persona_name,
+            ai_backend=ai_backend,
+            file_toggles=file_toggles,
+            outputs=[review.get("timestamp", "")],
+        )
+    except Exception:
+        pass
 
     # Update iteration tracking
     _update_iteration_on_review(project_id)
@@ -786,3 +1139,172 @@ def get_phase_info() -> List[Dict[str, Any]]:
     """Get info about all SDLC phases."""
     from processors.phases import get_phase_info
     return get_phase_info()
+
+
+# ──────────────────────────────────────────────────────────────
+# Admin & Governance
+# ──────────────────────────────────────────────────────────────
+
+
+def get_admin_config() -> Dict[str, Any]:
+    """Get admin configuration (safe view, masked keys)."""
+    from admin.config import load_config
+    config = load_config()
+    return config.to_safe_dict()
+
+
+def update_admin_config(updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Update admin configuration."""
+    from admin.config import update_config
+    config = update_config(updates)
+    return config.to_safe_dict()
+
+
+def get_system_health_status() -> Dict[str, Any]:
+    """Get system health status."""
+    from admin.health import get_system_health
+    health = get_system_health()
+    return health.to_dict()
+
+
+def get_lifecycle_logs() -> Dict[str, Any]:
+    """Get lifecycle logs (archived + deleted projects)."""
+    from admin.lifecycle import get_lifecycle_log
+    log = get_lifecycle_log()
+    return log.to_dict()
+
+
+def get_run_history_for_project(project_id: str) -> List[Dict[str, Any]]:
+    """Get version control run history for a project."""
+    from processors.version_control import get_run_history
+    project_dir = PROJECTS_DIR / project_id
+    return get_run_history(project_dir)
+
+
+def get_file_snapshot(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
+    """Get frozen file snapshot for a specific version.
+
+    Used in Review Tab to show which files were included/excluded
+    for that version run.
+    """
+    from processors.version_control import get_file_snapshot_for_version
+    project_dir = PROJECTS_DIR / project_id
+    return get_file_snapshot_for_version(project_dir, version_id)
+
+
+def run_deep_dive_analysis(
+    project_id: str,
+    persona_name: str = "",
+    custom_prompt: str = "",
+) -> Dict[str, Any]:
+    """Run explicit Deep Dive analysis (standalone, not part of review).
+
+    Args:
+        project_id: Project ID.
+        persona_name: Optional persona to apply.
+        custom_prompt: Additional context from user.
+
+    Returns:
+        Deep Dive result dict.
+    """
+    from personas.deep_dive import run_deep_dive
+
+    project = get_project(project_id)
+    if project is None:
+        raise ValueError(f"Project not found: {project_id}")
+
+    intelligence = get_project_intelligence(project_id)
+    if not intelligence:
+        raise ValueError("No intelligence built. Run intelligence first.")
+
+    # Get active files
+    documents = get_project_context(project_id)
+    file_toggles = get_file_toggles(project_id)
+    active_files = [
+        {"filename": d.get("filename", ""), "source_type": d.get("metadata", {}).get("source_type", "")}
+        for d in documents
+        if file_toggles.get(d.get("filename", ""), True)
+    ]
+
+    # Use default persona if not specified
+    if not persona_name:
+        try:
+            from admin.config import load_config
+            persona_name = load_config().default_persona
+        except Exception:
+            persona_name = "solution_architect"
+
+    return run_deep_dive(
+        persona_name=persona_name,
+        scope=intelligence.get("scope", ""),
+        intelligence=intelligence,
+        active_files=active_files,
+        custom_prompt=custom_prompt,
+        ai_backend=project.get("ai_backend", "files_only"),
+    )
+
+
+def apply_deep_dive_feedback(
+    project_id: str,
+    accepted: Optional[List[str]] = None,
+    rejected: Optional[List[str]] = None,
+    added_to_prompt: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Apply user feedback to deep dive results (feedback loop).
+
+    Args:
+        project_id: Project ID.
+        accepted: Accepted suggestions.
+        rejected: Rejected suggestions.
+        added_to_prompt: Items to add to next prompt.
+
+    Returns:
+        Updated feedback status.
+    """
+    from personas.deep_dive import apply_feedback
+    from datetime import datetime, timezone
+
+    # Load last deep dive result
+    project_dir = PROJECTS_DIR / project_id
+    feedback_file = project_dir / "intelligence" / "last_deep_dive.json"
+
+    if feedback_file.exists():
+        with open(feedback_file) as f:
+            deep_dive = json.load(f)
+    else:
+        return {"error": "No deep dive result found. Run deep dive first."}
+
+    updated = apply_feedback(deep_dive, accepted, rejected, added_to_prompt)
+
+    # Save updated result
+    with open(feedback_file, "w") as f:
+        json.dump(updated, f, indent=2)
+
+    return {
+        "status": "feedback_applied",
+        "accepted_count": len(accepted or []),
+        "rejected_count": len(rejected or []),
+        "added_to_prompt_count": len(added_to_prompt or []),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def validate_files_for_ingestion(file_paths: List[str]) -> Dict[str, Any]:
+    """Validate file types before ingestion (guardrail).
+
+    Args:
+        file_paths: List of file path strings.
+
+    Returns:
+        Validation result with valid/invalid files.
+    """
+    from admin.guardrails import validate_file_types
+    all_valid, valid_paths, errors = validate_file_types(file_paths)
+    return {
+        "all_valid": all_valid,
+        "valid_paths": valid_paths,
+        "errors": errors,
+        "valid_count": len(valid_paths),
+        "invalid_count": len(errors),
+    }
+
