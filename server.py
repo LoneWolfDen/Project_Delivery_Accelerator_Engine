@@ -139,6 +139,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = self.path.split("/")[3]
             history = project_manager.get_phase_history_for_project(project_id)
             self._json_response({"project_id": project_id, "history": history})
+        # ── Artifact API v1 ──
+        elif "/artifacts" in self.path and self.path.startswith("/api/v1/projects/"):
+            # GET /api/v1/projects/{projectId}/artifacts
+            parts = self.path.split("/")
+            project_id = parts[4]
+            self._handle_list_artifacts(project_id)
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -197,6 +203,25 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         # ── Guardrails ──
         elif self.path == "/api/validate-files":
             self._handle_validate_files()
+        # ── Artifact API v1 ──
+        elif "/artifacts/upload" in self.path and self.path.startswith("/api/v1/projects/"):
+            parts = self.path.split("/")
+            project_id = parts[4]
+            self._handle_artifact_upload(project_id)
+        elif "/artifacts/text" in self.path and self.path.startswith("/api/v1/projects/"):
+            parts = self.path.split("/")
+            project_id = parts[4]
+            self._handle_artifact_text(project_id)
+        elif "/artifacts/" in self.path and "/toggle" in self.path and self.path.startswith("/api/v1/projects/"):
+            parts = self.path.split("/")
+            project_id = parts[4]
+            artifact_id = parts[6]
+            self._handle_artifact_toggle(project_id, artifact_id)
+        elif "/artifacts/" in self.path and "/delete" in self.path and self.path.startswith("/api/v1/projects/"):
+            parts = self.path.split("/")
+            project_id = parts[4]
+            artifact_id = parts[6]
+            self._handle_artifact_delete(project_id, artifact_id)
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -484,6 +509,185 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             return
         result = project_manager.validate_files_for_ingestion(file_paths)
         self._json_response(result)
+
+    # ── Artifact API v1 Handlers ──
+
+    def _handle_list_artifacts(self, project_id: str) -> None:
+        """GET /api/v1/projects/{projectId}/artifacts"""
+        from processors.artifact_store import list_artifacts
+        artifacts = list_artifacts(project_id)
+        self._json_response({"artifacts": artifacts})
+
+    def _handle_artifact_upload(self, project_id: str) -> None:
+        """POST /api/v1/projects/{projectId}/artifacts/upload
+
+        Handles multipart/form-data file upload.
+        Falls back to JSON body with base64 content for simple clients.
+        """
+        from processors.artifact_store import store_file_artifact
+        import base64
+
+        content_type = self.headers.get("Content-Type", "")
+        content_length = int(self.headers.get("Content-Length", 0))
+
+        if "multipart/form-data" in content_type:
+            # Parse multipart form data
+            file_content, file_name, category, title, metadata = self._parse_multipart_upload(
+                content_type, content_length
+            )
+        else:
+            # JSON body fallback: {fileName, content (base64), category, title, metadata}
+            body = self._read_body() or {}
+            file_name = body.get("fileName", body.get("file_name", ""))
+            content_b64 = body.get("content", "")
+            category = body.get("category", "")
+            title = body.get("title", "")
+            metadata = body.get("metadata", {})
+            if isinstance(metadata, str):
+                try:
+                    metadata = json.loads(metadata)
+                except Exception:
+                    metadata = {}
+
+            if not file_name:
+                self._json_response({"error": "fileName is required"}, status=400)
+                return
+            if not content_b64:
+                self._json_response({"error": "content (base64) is required"}, status=400)
+                return
+            try:
+                file_content = base64.b64decode(content_b64)
+            except Exception:
+                self._json_response({"error": "Invalid base64 content"}, status=400)
+                return
+
+        if not category:
+            self._json_response({"error": "category is required"}, status=400)
+            return
+
+        try:
+            artifact = store_file_artifact(
+                project_id=project_id,
+                file_name=file_name,
+                file_content=file_content,
+                category=category,
+                title=title,
+                metadata=metadata if isinstance(metadata, dict) else {},
+            )
+            self._json_response({"artifact": artifact.to_api_dict()}, status=201)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_artifact_text(self, project_id: str) -> None:
+        """POST /api/v1/projects/{projectId}/artifacts/text"""
+        from processors.artifact_store import store_text_artifact
+
+        body = self._read_body() or {}
+        text = body.get("text", "")
+        category = body.get("category", "")
+        title = body.get("title", "")
+        metadata = body.get("metadata", {})
+
+        if not category:
+            self._json_response({"error": "category is required"}, status=400)
+            return
+        if not text or not text.strip():
+            self._json_response({"error": "text is required"}, status=400)
+            return
+
+        try:
+            artifact = store_text_artifact(
+                project_id=project_id,
+                text=text,
+                category=category,
+                title=title,
+                metadata=metadata if isinstance(metadata, dict) else {},
+            )
+            self._json_response({"artifact": artifact.to_api_dict()}, status=201)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_artifact_toggle(self, project_id: str, artifact_id: str) -> None:
+        """POST /api/v1/projects/{projectId}/artifacts/{artifactId}/toggle"""
+        from processors.artifact_store import toggle_artifact_include
+
+        body = self._read_body() or {}
+        include = body.get("include", True)
+        result = toggle_artifact_include(project_id, artifact_id, include)
+        if result:
+            self._json_response({"artifact": result})
+        else:
+            self._json_response({"error": "Artifact not found"}, status=404)
+
+    def _handle_artifact_delete(self, project_id: str, artifact_id: str) -> None:
+        """POST /api/v1/projects/{projectId}/artifacts/{artifactId}/delete"""
+        from processors.artifact_store import delete_artifact
+
+        deleted = delete_artifact(project_id, artifact_id)
+        if deleted:
+            self._json_response({"status": "deleted", "artifactId": artifact_id})
+        else:
+            self._json_response({"error": "Artifact not found"}, status=404)
+
+    def _parse_multipart_upload(self, content_type: str, content_length: int):
+        """Parse multipart/form-data for file upload.
+
+        Returns tuple: (file_content, file_name, category, title, metadata)
+        """
+        import re
+
+        # Extract boundary
+        boundary_match = re.search(r'boundary=([^\s;]+)', content_type)
+        if not boundary_match:
+            return b"", "", "", "", {}
+
+        boundary = boundary_match.group(1).encode()
+        raw_data = self.rfile.read(content_length)
+
+        # Split by boundary
+        parts = raw_data.split(b"--" + boundary)
+
+        file_content = b""
+        file_name = ""
+        category = ""
+        title = ""
+        metadata = {}
+
+        for part in parts:
+            if not part or part == b"--\r\n" or part == b"--":
+                continue
+
+            # Split headers from body
+            if b"\r\n\r\n" in part:
+                headers_raw, body = part.split(b"\r\n\r\n", 1)
+                headers_str = headers_raw.decode("utf-8", errors="replace")
+
+                # Remove trailing boundary markers
+                if body.endswith(b"\r\n"):
+                    body = body[:-2]
+
+                # Check Content-Disposition
+                name_match = re.search(r'name="([^"]+)"', headers_str)
+                filename_match = re.search(r'filename="([^"]+)"', headers_str)
+
+                if name_match:
+                    field_name = name_match.group(1)
+
+                    if filename_match:
+                        # File field
+                        file_name = filename_match.group(1)
+                        file_content = body
+                    elif field_name == "category":
+                        category = body.decode("utf-8", errors="replace").strip()
+                    elif field_name == "title":
+                        title = body.decode("utf-8", errors="replace").strip()
+                    elif field_name == "metadata":
+                        try:
+                            metadata = json.loads(body.decode("utf-8", errors="replace"))
+                        except Exception:
+                            metadata = {}
+
+        return file_content, file_name, category, title, metadata
 
     def _read_body(self) -> dict:
         """Read and parse JSON request body."""

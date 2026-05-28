@@ -182,63 +182,236 @@ function viewNoProject() {
     <div class="form-row"><label>Project Name</label><input id="newName" placeholder="e.g. Cloud Migration Assessment"></div>
     <div class="form-row"><label>Description</label><input id="newDesc" placeholder="Optional description"></div>
     <button class="btn" onclick="createProject()">Create Project</button>
+    <div id="createProjectError"></div>
     ${state.projects.length ? `<h3 class="mt">Existing Projects</h3><ul class="items">${state.projects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')" style="color:var(--accent)">${p.name}</a> <span class="tag">${p.phase}</span></li>`).join('')}</ul>` : ''}
   </div>`;
 }
 </script>
 
 <script>
-// ─── Ingest View ───
+// ─── Ingest View (V3 Redesign: Upload + Paste Text + Category) ───
+const ARTIFACT_CATEGORIES = [
+  {value:'project_artefact', label:'Project Artefact', icon:'📋'},
+  {value:'meetings_comms', label:'Meetings & Comms', icon:'📞'},
+  {value:'delivery_notes', label:'Delivery Notes', icon:'📝'},
+  {value:'client_context', label:'Client Context', icon:'🏢'},
+  {value:'architecture_design', label:'Architecture & Design', icon:'🏗️'},
+  {value:'external_data', label:'External Data', icon:'🌐'},
+];
+
 async function viewIngest() {
   if (!state.current) return viewNoProject();
-  const ctx = await api('GET',`/api/projects/${state.current.id}/context`);
-  const docs = ctx.documents || [];
-  const toggles = ctx.file_toggles || {};
-  const ingestForm = `<div class="card"><h2>Ingest Documents</h2>
-    <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">Enter file paths (one per line) relative to project root. Supports: .txt, .md, .csv, .eml</p>
-    <div class="form-row"><label>File Paths</label>
-      <textarea id="ingestPaths" rows="4" placeholder="sample_data/scope.txt&#10;sample_data/scope_cpg.txt"></textarea>
+  const pid = state.current.id;
+
+  // Load artifacts (new v1 API)
+  let artifacts = [];
+  try { const r = await api('GET',`/api/v1/projects/${pid}/artifacts`); artifacts = r.artifacts || []; } catch(e){}
+
+  // Also load legacy context for backward compatibility
+  let legacyDocs = [];
+  try { const ctx = await api('GET',`/api/projects/${pid}/context`); legacyDocs = ctx.documents || []; } catch(e){}
+
+  const categoryOpts = ARTIFACT_CATEGORIES.map(c => `<option value="${c.value}">${c.icon} ${c.label}</option>`).join('');
+
+  // Entry methods: Upload File | Paste Text | Legacy File Paths
+  const entryHtml = `<div class="card"><h2>Add Artefact</h2>
+    <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Upload a file or paste text. Category is required for context classification.</p>
+    <div style="display:flex;gap:4px;margin-bottom:12px">
+      <button class="btn btn-sm" id="tabUpload" onclick="switchIngestTab('upload')" style="background:var(--accent)">Upload File</button>
+      <button class="btn btn-sm btn-outline" id="tabPaste" onclick="switchIngestTab('paste')">Paste Text</button>
+      <button class="btn btn-sm btn-outline" id="tabPaths" onclick="switchIngestTab('paths')">File Paths (Legacy)</button>
     </div>
-    <button class="btn" onclick="doIngest()">Ingest Files</button>
-    <div id="ingestResult" class="mt"></div></div>`;
 
-  if (!docs.length) return ingestForm;
-
-  // Build file explorer with expandable rows and toggles
-  const fileRows = docs.map((d, i) => {
-    const fname = d.filename || d.metadata?.filename || `doc-${i}`;
-    const srcType = d.metadata?.source_type || 'unknown';
-    const words = d.metadata?.word_count || 0;
-    const sections = d.sections || [];
-    const sectionCount = sections.length;
-    const ingestedAt = d.metadata?.ingested_at || d.metadata?.created_at || '';
-    const isActive = toggles[fname] !== false; // default active
-    const toggleClass = isActive ? 'toggle-on' : 'toggle-off';
-    const toggleLabel = isActive ? 'Included' : 'Excluded';
-
-    const sectionHtml = sections.length ? sections.map(s =>
-      `<div class="file-section"><span class="section-title">${escHtml(s.title || s.heading || 'Section')}</span> <span style="color:var(--text-dim);font-size:10px">${(s.content||'').length} chars</span></div>`
-    ).join('') : '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">No section data available</div>';
-
-    return `<div class="file-item">
-      <div class="file-header" onclick="toggleFileExpand(this)">
-        <span class="file-chevron">▶</span>
-        <span class="file-icon">${srcType==='csv'?'📊':srcType==='email'?'📧':srcType==='transcript'?'🎙️':'📄'}</span>
-        <span class="file-name">${escHtml(fname)}</span>
-        <span class="tag">${srcType}</span>
-        <span style="font-size:10px;color:var(--text-dim)">${words} words · ${sectionCount} sections</span>
-        ${ingestedAt ? `<span style="font-size:10px;color:var(--text-dim);margin-left:auto">${ingestedAt.slice(0,16)}</span>` : ''}
-        <span class="file-toggle ${toggleClass}" onclick="event.stopPropagation();toggleFileActive('${escHtml(fname)}',${!isActive})">${toggleLabel}</span>
+    <!-- Upload File Tab -->
+    <div id="ingestUpload">
+      <div class="form-row"><label>Category (required)</label><select id="uploadCategory">${categoryOpts}</select></div>
+      <div class="form-row"><label>Title (optional)</label><input id="uploadTitle" placeholder="e.g. Client scope document"></div>
+      <div class="form-row"><label>File</label>
+        <input type="file" id="uploadFile" accept=".txt,.md,.csv,.eml,.json,.yaml,.yml,.pdf,.docx,.xlsx,.pptx"
+          style="background:var(--surface2);padding:8px;border-radius:var(--radius);width:100%">
       </div>
-      <div class="file-body">${sectionHtml}</div>
-    </div>`;
-  }).join('');
+      <button class="btn mt" onclick="doUploadArtifact()">Upload</button>
+    </div>
 
-  const activeCount = docs.filter(d => toggles[(d.filename||d.metadata?.filename||'')] !== false).length;
+    <!-- Paste Text Tab -->
+    <div id="ingestPaste" style="display:none">
+      <div class="form-row"><label>Category (required)</label><select id="pasteCategory">${categoryOpts}</select></div>
+      <div class="form-row"><label>Title (optional)</label><input id="pasteTitle" placeholder="e.g. Sprint 2 meeting notes"></div>
+      <div class="form-row"><label>Text Content</label>
+        <textarea id="pasteText" rows="6" placeholder="Paste your text content here..."></textarea>
+      </div>
+      <button class="btn mt" onclick="doPasteArtifact()">Save Text</button>
+    </div>
 
-  return ingestForm + `<div class="card"><h2>Ingested Documents (${docs.length})</h2>
-    <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${activeCount} of ${docs.length} files included in next review cycle. Toggle to exclude/include.</p>
-    <div class="file-explorer">${fileRows}</div></div>`;
+    <!-- Legacy File Paths Tab -->
+    <div id="ingestPaths" style="display:none">
+      <p style="color:var(--text-dim);font-size:11px;margin-bottom:8px">Legacy: Enter file paths (one per line) relative to project root.</p>
+      <div class="form-row"><label>File Paths</label>
+        <textarea id="ingestPathsArea" rows="4" placeholder="sample_data/scope.txt&#10;sample_data/scope_cpg.txt"></textarea>
+      </div>
+      <button class="btn" onclick="doIngest()">Ingest Files</button>
+    </div>
+
+    <div id="ingestResult" class="mt"></div>
+  </div>`;
+
+  // Artifact Registry
+  let registryHtml = '';
+  if (artifacts.length || legacyDocs.length) {
+    const totalCount = artifacts.length + legacyDocs.length;
+    const includedCount = artifacts.filter(a => a.include).length + legacyDocs.length;
+
+    registryHtml = `<div class="card"><h2>Artefact Registry (${totalCount})</h2>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${includedCount} of ${totalCount} included in intelligence. Toggle to exclude/include.</p>
+      <div class="file-explorer">`;
+
+    // New artifacts
+    for (const a of artifacts) {
+      const catInfo = ARTIFACT_CATEGORIES.find(c => c.value === a.category) || {icon:'📄', label:a.category};
+      const toggleClass = a.include ? 'toggle-on' : 'toggle-off';
+      const toggleLabel = a.include ? 'Included' : 'Excluded';
+      const statusColor = a.status === 'processed' ? 'var(--accent2)' : a.status === 'failed' ? 'var(--danger)' : 'var(--text-dim)';
+
+      registryHtml += `<div class="file-item">
+        <div class="file-header" onclick="toggleFileExpand(this)">
+          <span class="file-chevron">▶</span>
+          <span class="file-icon">${catInfo.icon}</span>
+          <span class="file-name">${escHtml(a.title || a.fileName || 'Untitled')}</span>
+          <span class="tag">${catInfo.label}</span>
+          <span class="tag" style="border-color:${statusColor};color:${statusColor}">${a.status}</span>
+          <span style="font-size:10px;color:var(--text-dim)">${a.type}</span>
+          <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${a.createdAt?.slice(0,16)||''}</span>
+          <span class="file-toggle ${toggleClass}" onclick="event.stopPropagation();toggleArtifact('${a.artifactId}',${!a.include})">${toggleLabel}</span>
+        </div>
+        <div class="file-body">
+          <div style="font-size:11px;color:var(--text-dim);padding:4px 0">
+            <span>Type: ${a.type}</span> · <span>Category: ${a.category}</span>
+            ${a.fileName ? ` · <span>File: ${escHtml(a.fileName)}</span>` : ''}
+          </div>
+          <button class="btn btn-sm btn-danger" onclick="deleteArtifact('${a.artifactId}')" style="margin-top:6px">Remove</button>
+        </div>
+      </div>`;
+    }
+
+    // Legacy documents (backward compat)
+    const toggles = {};
+    try { const ctx = await api('GET',`/api/projects/${pid}/context`); Object.assign(toggles, ctx.file_toggles || {}); } catch(e){}
+    for (const d of legacyDocs) {
+      const fname = d.filename || d.metadata?.filename || '';
+      const srcType = d.metadata?.source_type || 'unknown';
+      const words = d.metadata?.word_count || 0;
+      const sections = d.sections || [];
+      const isActive = toggles[fname] !== false;
+      const toggleClass = isActive ? 'toggle-on' : 'toggle-off';
+      const toggleLabel = isActive ? 'Included' : 'Excluded';
+
+      const sectionHtml = sections.length ? sections.map(s =>
+        `<div class="file-section"><span class="section-title">${escHtml(s.title || s.heading || 'Section')}</span> <span style="color:var(--text-dim);font-size:10px">${(s.content||'').length} chars</span></div>`
+      ).join('') : '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">No section data</div>';
+
+      registryHtml += `<div class="file-item">
+        <div class="file-header" onclick="toggleFileExpand(this)">
+          <span class="file-chevron">▶</span>
+          <span class="file-icon">${srcType==='csv'?'📊':srcType==='email'?'📧':'📄'}</span>
+          <span class="file-name">${escHtml(fname)}</span>
+          <span class="tag">${srcType}</span>
+          <span style="font-size:10px;color:var(--text-dim)">${words} words · ${sections.length} sections</span>
+          <span class="file-toggle ${toggleClass}" onclick="event.stopPropagation();toggleFileActive('${escHtml(fname)}',${!isActive})">${toggleLabel}</span>
+        </div>
+        <div class="file-body">${sectionHtml}</div>
+      </div>`;
+    }
+
+    registryHtml += `</div></div>`;
+  }
+
+  return entryHtml + registryHtml;
+}
+
+function switchIngestTab(tab) {
+  document.getElementById('ingestUpload').style.display = tab==='upload' ? '' : 'none';
+  document.getElementById('ingestPaste').style.display = tab==='paste' ? '' : 'none';
+  document.getElementById('ingestPaths').style.display = tab==='paths' ? '' : 'none';
+  // Update button styles
+  document.getElementById('tabUpload').className = tab==='upload' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
+  document.getElementById('tabPaste').className = tab==='paste' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
+  document.getElementById('tabPaths').className = tab==='paths' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
+  if (tab==='upload') document.getElementById('tabUpload').style.background='var(--accent)';
+  else document.getElementById('tabUpload').style.background='';
+  if (tab==='paste') document.getElementById('tabPaste').style.background='var(--accent)';
+  else document.getElementById('tabPaste').style.background='';
+  if (tab==='paths') document.getElementById('tabPaths').style.background='var(--accent)';
+  else document.getElementById('tabPaths').style.background='';
+}
+
+async function doUploadArtifact() {
+  const pid = state.current.id;
+  const fileInput = document.getElementById('uploadFile');
+  const category = document.getElementById('uploadCategory').value;
+  const title = document.getElementById('uploadTitle').value;
+  const el = document.getElementById('ingestResult');
+
+  if (!fileInput.files.length) { el.innerHTML = '<p style="color:var(--danger)">Please select a file</p>'; return; }
+  if (!category) { el.innerHTML = '<p style="color:var(--danger)">Category is required</p>'; return; }
+
+  const file = fileInput.files[0];
+  el.innerHTML = '<p style="color:var(--text-dim)">Uploading...</p>';
+
+  // Use FormData for multipart upload
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('category', category);
+  if (title) formData.append('title', title);
+
+  try {
+    const resp = await fetch(`/api/v1/projects/${pid}/artifacts/upload`, { method: 'POST', body: formData });
+    const r = await resp.json();
+    if (r.artifact) {
+      el.innerHTML = `<p style="color:var(--accent2)">Uploaded: ${escHtml(r.artifact.title || r.artifact.fileName)}</p>`;
+      fileInput.value = '';
+      document.getElementById('uploadTitle').value = '';
+      setTimeout(() => render(), 800);
+    } else {
+      el.innerHTML = `<p style="color:var(--danger)">${r.error || 'Upload failed'}</p>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<p style="color:var(--danger)">Upload error: ${e.message}</p>`;
+  }
+}
+
+async function doPasteArtifact() {
+  const pid = state.current.id;
+  const category = document.getElementById('pasteCategory').value;
+  const title = document.getElementById('pasteTitle').value;
+  const text = document.getElementById('pasteText').value;
+  const el = document.getElementById('ingestResult');
+
+  if (!text.trim()) { el.innerHTML = '<p style="color:var(--danger)">Text content is required</p>'; return; }
+  if (!category) { el.innerHTML = '<p style="color:var(--danger)">Category is required</p>'; return; }
+
+  el.innerHTML = '<p style="color:var(--text-dim)">Saving...</p>';
+  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/text`, { category, title, text });
+  if (r.artifact) {
+    el.innerHTML = `<p style="color:var(--accent2)">Saved: ${escHtml(r.artifact.title)}</p>`;
+    document.getElementById('pasteText').value = '';
+    document.getElementById('pasteTitle').value = '';
+    setTimeout(() => render(), 800);
+  } else {
+    el.innerHTML = `<p style="color:var(--danger)">${r.error || 'Save failed'}</p>`;
+  }
+}
+
+async function toggleArtifact(artifactId, include) {
+  const pid = state.current.id;
+  await api('POST', `/api/v1/projects/${pid}/artifacts/${artifactId}/toggle`, {include});
+  render();
+}
+
+async function deleteArtifact(artifactId) {
+  if (!confirm('Remove this artefact? This cannot be undone.')) return;
+  const pid = state.current.id;
+  await api('POST', `/api/v1/projects/${pid}/artifacts/${artifactId}/delete`, {});
+  render();
 }
 
 function toggleFileExpand(el) {
@@ -252,7 +425,7 @@ async function toggleFileActive(filename, active) {
 }
 
 async function doIngest() {
-  const paths = document.getElementById('ingestPaths').value.split('\n').map(p=>p.trim()).filter(Boolean);
+  const paths = document.getElementById('ingestPathsArea').value.split('\n').map(p=>p.trim()).filter(Boolean);
   if (!paths.length) return;
   const r = await api('POST','/api/ingest',{project_id:state.current.id,file_paths:paths});
   let html = `<div class="card"><h3>Ingested: ${r.ingested||0} file(s)</h3>`;
@@ -450,10 +623,19 @@ async function viewSettings() {
       <button class="btn btn-sm btn-danger" onclick="deleteProject()">Delete Project</button>
     </div>
     <p style="font-size:10px;color:var(--text-dim);margin-top:8px">Both actions require PIN (default: 1234)</p></div>` : '';
+  // Get admin config for project limit
+  let maxProjects = 5;
+  try { const cfg = await api('GET','/api/admin/config'); maxProjects = cfg.config?.max_active_projects || 5; } catch(e){}
+  const activeCount = (state.allProjects || state.projects).filter(p => p.status !== 'archived' && p.status !== 'deleted').length;
+  const limitWarning = activeCount >= maxProjects
+    ? `<p style="color:var(--danger);font-size:12px;margin-bottom:8px">Limit reached: ${activeCount}/${maxProjects} active projects. Archive or delete a project, or contact admin to increase limit.</p>`
+    : `<p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Active projects: ${activeCount}/${maxProjects}</p>`;
   return `<div class="card"><h2>Create New Project</h2>
+    ${limitWarning}
     <div class="form-row"><label>Project Name</label><input id="newName" placeholder="Project name"></div>
     <div class="form-row"><label>Description</label><input id="newDesc" placeholder="Description"></div>
-    <button class="btn" onclick="createProject()">Create</button></div>
+    <button class="btn" onclick="createProject()" ${activeCount >= maxProjects ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>Create</button>
+    <div id="createProjectError"></div></div>
     ${projectActions}
     ${state.projects.length ? `<div class="card"><h2>All Projects</h2><ul class="items">${state.allProjects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')" style="color:var(--accent)">${p.name}</a> <span class="tag">${p.phase}</span> (${p.file_count} files) ${p.status==='archived'?'<span class="tag" style="border:1px solid var(--warn);color:var(--warn)">archived</span>':''}</li>`).join('')}</ul></div>` : ''}
     <div class="card"><h2>AI Backends Status</h2><div class="backend-grid">${backendHtml}</div>
@@ -495,7 +677,12 @@ async function createProject() {
   if (!name) return;
   const r = await api('POST','/api/projects',{name, description:desc});
   if (r.project) { await loadProjects(); state.current = state.projects.find(p=>p.id===r.project.id)||r.project; state.tab='dashboard'; render(); }
-  else if (r.error) alert(r.error);
+  else if (r.error) {
+    // Show inline error near the create button
+    const errEl = document.getElementById('createProjectError');
+    if (errEl) { errEl.innerHTML = `<p style="color:var(--danger);font-size:12px;margin-top:8px">${r.error}</p>`; }
+    else { alert(r.error); }
+  }
 }
 
 async function selectProject(id) {
@@ -727,51 +914,111 @@ async function runDeepDive() {
   const r = await api('POST', `/api/projects/${state.current.id}/deep-dive`, {persona, custom_prompt: custom});
   if (r.error) { el.innerHTML = `<p style="color:var(--danger)">${r.error}</p>`; return; }
 
+  // Store deep dive result in state for feedback actions
+  state.lastDeepDive = r;
+
   const dd = r.deep_dive || {};
   const sv = r.scope_validation || {};
   let html = `<div class="card"><h3>Deep Dive Results</h3>
-    <p style="font-size:11px;color:var(--text-dim)">Scope completeness: ${Math.round((sv.completeness_score||0)*100)}%</p>`;
+    <p style="font-size:11px;color:var(--text-dim)">Scope completeness: ${Math.round((sv.completeness_score||0)*100)}% | Toggle items to include in prompt</p>`;
+
+  let itemIdx = 0;
 
   if (dd.missing_areas?.length) {
-    html += `<div class="findings-section"><div class="title">Missing Areas</div><ul class="items">`;
-    for (const m of dd.missing_areas) { html += `<li><span class="tag tag-${m.severity==='high'?'off':'ok'}">${m.severity}</span> ${m.area}: ${m.suggestion}</li>`; }
+    html += `<div class="findings-section"><div class="title">Missing Areas</div><ul class="items" style="list-style:none">`;
+    for (const m of dd.missing_areas) {
+      html += `<li style="display:flex;align-items:center;gap:6px">
+        <input type="checkbox" class="dd-item" data-section="missing" data-idx="${itemIdx}" checked>
+        <span class="tag tag-${m.severity==='high'?'off':'ok'}">${m.severity}</span> ${escHtml(m.area)}: ${escHtml(m.suggestion)}</li>`;
+      itemIdx++;
+    }
     html += `</ul></div>`;
   }
   if (dd.risk_flags?.length) {
-    html += `<div class="findings-section"><div class="title">Risk Flags</div><ul class="items">`;
-    for (const f of dd.risk_flags.slice(0,10)) { html += `<li><span class="tag">${f.severity}</span> ${f.flag}</li>`; }
+    html += `<div class="findings-section"><div class="title">Risk Flags</div><ul class="items" style="list-style:none">`;
+    for (const f of dd.risk_flags.slice(0,10)) {
+      html += `<li style="display:flex;align-items:center;gap:6px">
+        <input type="checkbox" class="dd-item" data-section="risk" data-idx="${itemIdx}" checked>
+        <span class="tag">${f.severity}</span> ${escHtml(f.flag)}</li>`;
+      itemIdx++;
+    }
     html += `</ul></div>`;
   }
   if (dd.clarification_questions?.length) {
-    html += `<div class="findings-section"><div class="title">Clarification Questions</div><ul class="items">`;
-    for (const q of dd.clarification_questions) { html += `<li>? ${q}</li>`; }
+    html += `<div class="findings-section"><div class="title">Clarification Questions</div><ul class="items" style="list-style:none">`;
+    for (const q of dd.clarification_questions) {
+      html += `<li style="display:flex;align-items:center;gap:6px">
+        <input type="checkbox" class="dd-item" data-section="question" data-idx="${itemIdx}" checked>
+        ? ${escHtml(q)}</li>`;
+      itemIdx++;
+    }
     html += `</ul></div>`;
   }
   if (dd.suggested_additions?.length) {
-    html += `<div class="findings-section"><div class="title">Suggested Additions to Scope</div><ul class="items">`;
-    for (const s of dd.suggested_additions) { html += `<li><span class="tag">${s.priority}</span> [${s.category}] ${s.suggestion}</li>`; }
+    html += `<div class="findings-section"><div class="title">Suggested Additions to Scope</div><ul class="items" style="list-style:none">`;
+    for (const s of dd.suggested_additions) {
+      html += `<li style="display:flex;align-items:center;gap:6px">
+        <input type="checkbox" class="dd-item" data-section="suggestion" data-idx="${itemIdx}" checked>
+        <span class="tag">${s.priority}</span> [${s.category}] ${escHtml(s.suggestion)}</li>`;
+      itemIdx++;
+    }
     html += `</ul></div>`;
   }
   html += `<div class="flex mt">
-    <button class="btn btn-sm btn-outline" onclick="acceptAllSuggestions()">Accept All</button>
-    <button class="btn btn-sm btn-outline" onclick="addToPrompt()">Add to Prompt</button>
-  </div>`;
+    <button class="btn btn-sm" onclick="acceptAllSuggestions()">Accept All</button>
+    <button class="btn btn-sm btn-outline" onclick="addSelectedToPrompt()">Add Selected to Prompt</button>
+    <button class="btn btn-sm btn-outline" onclick="toggleAllDDItems(true)">Select All</button>
+    <button class="btn btn-sm btn-outline" onclick="toggleAllDDItems(false)">Deselect All</button>
+  </div><div id="ddFeedbackResult" class="mt"></div>`;
   html += `</div>`;
   el.innerHTML = html;
 }
 
-async function acceptAllSuggestions() {
-  if (!state.current) return;
-  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {accepted: ['all']});
-  alert(r.status === 'feedback_applied' ? 'Feedback applied!' : (r.error || 'Failed'));
+function toggleAllDDItems(checked) {
+  document.querySelectorAll('.dd-item').forEach(cb => cb.checked = checked);
 }
 
-async function addToPrompt() {
-  const text = prompt('Enter text to add to next prompt:');
-  if (!text) return;
-  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {added_to_prompt: [text]});
-  alert(r.status === 'feedback_applied' ? 'Added to prompt!' : (r.error || 'Failed'));
+function _getSelectedDDItems() {
+  const dd = state.lastDeepDive?.deep_dive || {};
+  const allItems = [
+    ...(dd.missing_areas||[]).map(m => `[Missing] ${m.area}: ${m.suggestion}`),
+    ...(dd.risk_flags||[]).slice(0,10).map(f => `[Risk] ${f.flag}`),
+    ...(dd.clarification_questions||[]).map(q => `[Question] ${q}`),
+    ...(dd.suggested_additions||[]).map(s => `[Suggestion] ${s.suggestion}`),
+  ];
+  const selected = [];
+  document.querySelectorAll('.dd-item').forEach((cb, i) => {
+    if (cb.checked && allItems[i]) selected.push(allItems[i]);
+  });
+  return selected;
 }
+
+async function acceptAllSuggestions() {
+  if (!state.current) return;
+  const items = _getSelectedDDItems();
+  if (!items.length) { alert('No items selected'); return; }
+  const el = document.getElementById('ddFeedbackResult');
+  el.innerHTML = '<p style="color:var(--text-dim)">Applying feedback...</p>';
+  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {accepted: items});
+  if (r.error) { el.innerHTML = `<p style="color:var(--danger)">${r.error}</p>`; return; }
+  el.innerHTML = `<p style="color:var(--accent2)">Accepted ${r.accepted_count} items</p>`;
+}
+
+async function addSelectedToPrompt() {
+  if (!state.current) return;
+  const items = _getSelectedDDItems();
+  if (!items.length) { alert('No items selected'); return; }
+  const el = document.getElementById('ddFeedbackResult');
+  el.innerHTML = '<p style="color:var(--text-dim)">Adding to prompt...</p>';
+  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {added_to_prompt: items});
+  if (r.error) { el.innerHTML = `<p style="color:var(--danger)">${r.error}</p>`; return; }
+  el.innerHTML = `<p style="color:var(--accent2)">Added ${r.added_to_prompt_count} items to prompt</p>`;
+  // Also append to custom prompt textarea if visible
+  const ta = document.getElementById('customPrompt');
+  if (ta) { ta.value = (ta.value ? ta.value + '\n' : '') + items.join('\n'); }
+}
+
+// Old feedback functions removed – replaced by toggle-based versions above
 </script>
 
 <script>

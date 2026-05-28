@@ -79,7 +79,10 @@ def create_project(name: str, description: str = "") -> Dict[str, Any]:
     max_projects = _get_max_active_projects()
     active_count = len([p for p in projects if p.get("status", "active") == "active"])
     if active_count >= max_projects:
-        raise ValueError(f"Maximum {max_projects} active projects allowed")
+        raise ValueError(
+            f"Maximum {max_projects} active projects reached. "
+            f"Please archive or delete an existing project, or contact your admin to increase the limit."
+        )
 
     project_id = f"proj-{len(projects) + 1:03d}"
 
@@ -1234,7 +1237,7 @@ def run_deep_dive_analysis(
         except Exception:
             persona_name = "solution_architect"
 
-    return run_deep_dive(
+    result = run_deep_dive(
         persona_name=persona_name,
         scope=intelligence.get("scope", ""),
         intelligence=intelligence,
@@ -1242,6 +1245,16 @@ def run_deep_dive_analysis(
         custom_prompt=custom_prompt,
         ai_backend=project.get("ai_backend", "files_only"),
     )
+
+    # Persist deep dive result so feedback endpoint can find it
+    project_dir = PROJECTS_DIR / project_id
+    intelligence_dir = project_dir / "intelligence"
+    intelligence_dir.mkdir(parents=True, exist_ok=True)
+    feedback_file = intelligence_dir / "last_deep_dive.json"
+    with open(feedback_file, "w") as f:
+        json.dump(result, f, indent=2)
+
+    return result
 
 
 def apply_deep_dive_feedback(
