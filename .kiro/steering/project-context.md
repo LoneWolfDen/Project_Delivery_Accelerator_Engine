@@ -1,63 +1,91 @@
-# Project Context – Delivery Accelerator Engine v2
+# Project Context – Delivery Accelerator Engine
+
+## Identity
+
+- **Product**: Project Delivery Accelerator Engine
+- **Codename**: Contexta
+- **Version**: v2 complete, v3 in progress
+- **Repo**: LoneWolfDen/Project_Delivery_Accelerator_Engine
 
 ## What This Is
 
-A **context-aware delivery intelligence platform** (not a migration dashboard).
-Product name: **Project Delivery Accelerator Engine**
-Internal codename: **Contexta**
+A **context-aware delivery intelligence platform** that converts documents, discussions, and decisions into reusable project intelligence across the full SDLC.
 
-## Core Mission
+## v2 Status: COMPLETE (180 tests passing)
 
-Convert documents, discussions, and decisions into **reusable project intelligence** across the full SDLC:
-Discovery → Proposal → SoW review → Planning → Execution → Review
+All v2 features are implemented and merged:
+- Ingestion pipeline (5 parsers: txt, md, csv, eml, transcripts)
+- Context builder (pattern-based extraction with dedup)
+- Persona review engine (4 personas, 3 backends: files_only/ollama/bedrock)
+- Iteration & history (versioned builds, comparisons, evolution timelines)
+- Enhanced extraction (table parsing, noise filtering, fuzzy dedup)
+- CLI interface (13 commands covering full workflow)
+- Proposal version tracking (multi-version with status lifecycle)
+- SDLC phase transitions (validated, with audit trail)
 
-## Key Design Principles
+## v3 In Progress
 
-1. **Token discipline** – Only load minimum required context per AI request. Use structured extraction, not long text.
-2. **Stateful, not stateless** – Build project memory. Store intermediate findings. Reuse them.
-3. **Persona-driven** – Reviews use predefined role prompts (Solution Architect, Delivery Manager, Product Owner, Resource Manager). Users never write prompts.
-4. **Multi-backend** – Support Ollama (local), AWS Bedrock (cloud), and files-only (no AI) modes.
-5. **Iteration over repetition** – Save outputs, compare versions, track how risks/assumptions evolve.
+Current focus: **Web UI** (single-page app consuming existing API)
 
-## Architecture (Current v2)
+Upcoming:
+- Diagram generation (.drawio)
+- Proposal auto-drafts
+- Export to Word/PowerPoint
+- Pre-sales → delivery feedback loop
+
+## Architecture
 
 ```
-server.py              → Lightweight HTTP API
-project_manager.py     → Project CRUD + persistence
-processors/            → Ingestion + context building
-personas/              → Review engine + YAML persona definitions
-models/                → Data models (Project, Context, ReviewOutput)
-sample_data/           → Test input files
-outputs/               → Generated results (gitignored)
-_archive/              → Legacy migration demo (reference only, ignore)
+cli.py                 → CLI (13 commands)
+server.py              → HTTP API (GET / for endpoint list)
+project_manager.py     → Project CRUD + orchestration
+processors/
+  ingestion.py         → File type detection + routing
+  context_builder.py   → Multi-doc aggregation + summary
+  history.py           → Version tracking + comparisons
+  proposals.py         → Proposal versioning
+  phases.py            → SDLC phase management
+  extractors/
+    patterns.py        → Regex patterns (enhanced)
+    intelligence_extractor.py → Section-aware extraction
+  parsers/             → 5 format parsers
+personas/
+  engine.py            → Review orchestration (3 backends)
+  definitions/         → 4 YAML persona configs
+models/
+  project.py           → Project, ProjectContext, ReviewOutput, IterationMetadata
+  document.py          → IngestedDocument, DocumentSection, DocumentMetadata
+  proposal.py          → ProposalVersion, ProposalTracker
 ```
 
 ## What to IGNORE
 
-- `_archive/` folder – old migration-specific demo code. Do not reference for v2 work.
-- Any files mentioning "AnyCompany", "migration dashboard", or hardcoded GANTT data are legacy.
+- `_archive/` – legacy migration demo, never load into context
+- `projects_data/` – runtime data, gitignored
+- `outputs/` – generated exports, gitignored
 
 ## Tech Stack
 
-- Python 3.9+
-- YAML for persona definitions
-- JSON for project persistence
-- HTTP server (stdlib, no framework yet)
-- pytest for testing
-- Optional: boto3 (Bedrock), ollama (local AI), strands-agents
+- Python 3.9+, no external deps except pyyaml
+- stdlib HTTP server (no framework)
+- YAML for persona definitions, JSON for persistence
+- pytest (180 tests)
+- Optional: boto3 (Bedrock), ollama (local AI)
 
 ## Coding Standards
 
-- Keep modules small and focused
-- Use dataclasses for models
-- Type hints on all function signatures
+- Dataclasses for models, type hints everywhere
 - Docstrings on all public functions
-- Raise NotImplementedError for stubs (not pass)
-- Max 100 chars line length (ruff enforced)
+- NotImplementedError for stubs
+- 100-char lines (ruff), MIN_EXTRACTION_LENGTH = 15
+- Tests in tests/, sample fixtures in sample_data/
 
-## When Working on This Repo
+## Key API Endpoints
 
-- Always check current project structure before making changes
-- Don't load _archive/ files into context unless explicitly asked
-- Prefer structured outputs (dicts, dataclasses) over raw strings
-- Keep sample_data/ as test fixtures – don't hardcode data in source
+GET /, /api/health, /api/projects, /api/projects/{id}/context,
+/api/projects/{id}/intelligence, /api/projects/{id}/summary,
+/api/projects/{id}/versions, /api/projects/{id}/versions/{vid},
+/api/projects/{id}/reviews, /api/projects/{id}/evolution/{category}
+POST /api/projects, /api/ingest, /api/projects/{id}/build-context,
+/api/review, /api/personas, /api/projects/{id}/compare-versions,
+/api/projects/{id}/compare-reviews

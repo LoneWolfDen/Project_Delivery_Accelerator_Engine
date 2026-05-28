@@ -6,9 +6,11 @@ Lightweight API server providing:
 - Context building
 - Persona-driven reviews
 - AI backend switching
+- Static file serving (Web UI)
 """
 
 import json
+import os
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any
@@ -25,33 +27,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         """Handle GET requests."""
+        # Serve Web UI
         if self.path == "/" or self.path == "":
-            self._json_response({
-                "name": "Project Delivery Accelerator Engine",
-                "version": "2.0.0",
-                "status": "running",
-                "endpoints": {
-                    "GET /": "This page",
-                    "GET /api/health": "Health check",
-                    "GET /api/projects": "List projects",
-                    "GET /api/projects/{id}/context": "Get ingested documents",
-                    "GET /api/projects/{id}/intelligence": "Get built intelligence",
-                    "GET /api/projects/{id}/summary": "Get token-efficient summary",
-                    "GET /api/projects/{id}/versions": "List context build versions",
-                    "GET /api/projects/{id}/versions/{vid}": "Get specific version snapshot",
-                    "GET /api/projects/{id}/reviews": "Review history (?persona=filter)",
-                    "GET /api/projects/{id}/evolution/{category}": "Category evolution timeline",
-                    "POST /api/projects": "Create project (body: {name, description})",
-                    "POST /api/ingest": "Ingest files (body: {project_id, file_paths})",
-                    "POST /api/projects/{id}/build-context": "Build intelligence (body: {label?})",
-                    "POST /api/projects/{id}/compare-versions": "Compare versions (body: {version_a, version_b})",
-                    "POST /api/projects/{id}/compare-reviews": "Compare reviews (body: {review_a, review_b})",
-                    "POST /api/review": "Run persona review (body: {project_id, persona, ai_backend})",
-                    "POST /api/personas": "List available personas",
-                },
-            })
-        elif self.path == "/api/health":
-            self._json_response({"status": "ok", "version": "2.0.0"})
+            self._serve_static("index.html")
+            return
+        if self.path.startswith("/static/") or self.path.endswith((".html", ".css", ".js")):
+            filename = self.path.lstrip("/")
+            if not filename.startswith("static/"):
+                filename = "static/" + filename
+            self._serve_static(filename.replace("static/", ""))
+            return
+
+        # API endpoints
+        if self.path == "/api/health":
+            self._json_response({"status": "ok", "version": "3.0.0-ui"})
         elif self.path == "/api/projects":
             projects = project_manager.list_projects()
             self._json_response({"projects": projects})
@@ -100,6 +89,17 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             category = parts[5]
             timeline = project_manager.get_project_evolution(project_id, category)
             self._json_response({"project_id": project_id, "category": category, "timeline": timeline})
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/proposal"):
+            project_id = self.path.split("/")[3]
+            proposal = project_manager.get_proposal_info(project_id)
+            if proposal:
+                self._json_response(proposal)
+            else:
+                self._json_response({"error": "No proposal exists"}, status=404)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/phase-history"):
+            project_id = self.path.split("/")[3]
+            history = project_manager.get_phase_history_for_project(project_id)
+            self._json_response({"project_id": project_id, "history": history})
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -122,6 +122,15 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/projects/") and self.path.endswith("/compare-reviews"):
             project_id = self.path.split("/")[3]
             self._handle_compare_reviews(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/proposal"):
+            project_id = self.path.split("/")[3]
+            self._handle_create_proposal(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/proposal/version"):
+            project_id = self.path.split("/")[3]
+            self._handle_add_proposal_version(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/phase"):
+            project_id = self.path.split("/")[3]
+            self._handle_phase_transition(project_id)
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -275,6 +284,44 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         except ValueError as e:
             self._json_response({"error": str(e)}, status=404)
 
+    def _handle_create_proposal(self, project_id: str) -> None:
+        """Create a proposal for a project."""
+        body = self._read_body()
+        name = body.get("name", "Untitled Proposal") if body else "Untitled Proposal"
+        try:
+            result = project_manager.create_proposal(
+                project_id, name, body.get("client", ""), notes=body.get("notes", "")
+            )
+            self._json_response(result, status=201)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_add_proposal_version(self, project_id: str) -> None:
+        """Add a version to existing proposal."""
+        body = self._read_body() or {}
+        try:
+            result = project_manager.add_proposal_version(
+                project_id, body.get("label", ""), notes=body.get("notes", ""),
+                changes=body.get("changes", ""),
+            )
+            self._json_response(result, status=201)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_phase_transition(self, project_id: str) -> None:
+        """Transition project phase."""
+        body = self._read_body() or {}
+        new_phase = body.get("new_phase", "")
+        reason = body.get("reason", "")
+        if not new_phase:
+            self._json_response({"error": "new_phase required"}, status=400)
+            return
+        try:
+            result = project_manager.transition_project_phase(project_id, new_phase, reason)
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
     def _read_body(self) -> dict:
         """Read and parse JSON request body."""
         content_length = int(self.headers.get("Content-Length", 0))
@@ -293,6 +340,25 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
+
+    def _serve_static(self, filename: str) -> None:
+        """Serve a static file from the static/ directory."""
+        static_dir = Path(__file__).parent / "static"
+        file_path = static_dir / filename
+        if not file_path.exists() or not file_path.is_file():
+            self._json_response({"error": "Not found"}, status=404)
+            return
+        # Determine content type
+        ext = file_path.suffix.lower()
+        content_types = {
+            ".html": "text/html", ".css": "text/css", ".js": "application/javascript",
+            ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",
+        }
+        content_type = content_types.get(ext, "application/octet-stream")
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.end_headers()
+        self.wfile.write(file_path.read_bytes())
 
 
 def main() -> None:
