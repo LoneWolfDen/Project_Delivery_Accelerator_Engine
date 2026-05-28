@@ -3,16 +3,18 @@
 Runs structured analysis using predefined personas (roles).
 Each persona has a specific prompt template and output format.
 
-Supports three modes:
+Supports backends:
 - files_only: Pattern-based analysis (no AI, instant, deterministic)
 - ollama: Local LLM via Ollama API
 - bedrock: AWS Bedrock (Claude, etc.)
+- gemini: Google Gemini Pro via API key
 
 The engine:
 1. Loads the persona YAML definition
 2. Builds a focused prompt from context summary + persona template
-3. Runs analysis (AI or heuristic)
-4. Returns structured ReviewOutput
+3. Optionally appends user-supplied custom context
+4. Runs analysis (AI or heuristic)
+5. Returns structured ReviewOutput with prompt visibility
 """
 
 import json
@@ -33,6 +35,9 @@ AVAILABLE_PERSONAS = {
     "product_owner": "product_owner.yaml",
     "resource_manager": "resource_manager.yaml",
 }
+
+# Valid AI backends
+VALID_BACKENDS = {"files_only", "ollama", "bedrock", "gemini"}
 
 
 def list_personas() -> List[Dict[str, str]]:
@@ -84,39 +89,49 @@ def run_review(
     persona_name: str,
     context: Dict[str, Any],
     ai_backend: Optional[str] = None,
+    custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a persona-driven review against project context.
 
     Args:
         persona_name: Which persona to use (e.g. 'solution_architect').
         context: Built project intelligence dict (from build_context).
-        ai_backend: 'ollama', 'bedrock', or 'files_only' (default).
+        ai_backend: 'files_only', 'ollama', 'bedrock', or 'gemini' (default: files_only).
+        custom_prompt: Optional additional user context/instructions that the AI
+            must consider when evaluating. Appended to the persona prompt.
 
     Returns:
         Review output dict with keys: persona, timestamp, findings (per section),
-        summary, recommendations, questions, raw_output.
+        summary, recommendations, questions, prompt_used, raw_output.
+        The 'prompt_used' field shows exactly what was sent to the AI.
     """
     persona = load_persona(persona_name)
     backend = ai_backend or "files_only"
 
+    if backend not in VALID_BACKENDS:
+        available = ", ".join(sorted(VALID_BACKENDS))
+        raise ValueError(f"Unknown AI backend: '{backend}'. Use: {available}")
+
     if backend == "files_only":
-        return _run_files_only_review(persona, context)
-    elif backend == "ollama":
-        return _run_ollama_review(persona, context)
-    elif backend == "bedrock":
-        return _run_bedrock_review(persona, context)
+        return _run_files_only_review(persona, context, custom_prompt)
     else:
-        raise ValueError(f"Unknown AI backend: '{backend}'. Use: files_only, ollama, bedrock")
+        return _run_ai_review(persona, context, backend, custom_prompt)
 
 
-def build_review_prompt(persona: Dict[str, Any], context: Dict[str, Any]) -> str:
+def build_review_prompt(
+    persona: Dict[str, Any],
+    context: Dict[str, Any],
+    custom_prompt: Optional[str] = None,
+) -> str:
     """Build a structured prompt for AI review.
 
     Combines persona template with context summary for token-efficient prompts.
+    If custom_prompt is provided, it's appended as additional user context.
 
     Args:
         persona: Loaded persona definition.
         context: Project intelligence dict.
+        custom_prompt: Optional additional context/instructions from the user.
 
     Returns:
         Full prompt string ready for AI submission.
@@ -152,6 +167,18 @@ def build_review_prompt(persona: Dict[str, Any], context: Dict[str, Any]) -> str
         "## Project Context",
         "",
         context_summary,
+    ])
+
+    # Append custom user prompt if provided
+    if custom_prompt and custom_prompt.strip():
+        prompt_parts.extend([
+            "",
+            "## Additional Context (User-Provided)",
+            "",
+            custom_prompt.strip(),
+        ])
+
+    prompt_parts.extend([
         "",
         "## Instructions",
         "",
@@ -170,7 +197,7 @@ def build_review_prompt(persona: Dict[str, Any], context: Dict[str, Any]) -> str
 
 
 def _run_files_only_review(
-    persona: Dict[str, Any], context: Dict[str, Any]
+    persona: Dict[str, Any], context: Dict[str, Any], custom_prompt: Optional[str] = None
 ) -> Dict[str, Any]:
     """Run a deterministic, pattern-based review without AI.
 
@@ -180,6 +207,9 @@ def _run_files_only_review(
     persona_name = persona["name"]
     focus_areas = persona.get("focus_areas", [])
     output_sections = persona.get("output_format", {}).get("sections", [])
+
+    # Build prompt for display even in files-only mode
+    prompt = build_review_prompt(persona, context, custom_prompt)
 
     # Get extracted intelligence
     risks = context.get("risks", [])
@@ -207,11 +237,71 @@ def _run_files_only_review(
         "summary": _build_review_summary(persona_name, findings),
         "recommendations": findings.get("recommendations", []),
         "questions": findings.get("questions", []),
-        "prompt_used": None,
+        "prompt_used": prompt,
+        "custom_prompt": custom_prompt,
         "raw_output": None,
     }
 
     return review
+
+
+def _run_ai_review(
+    persona: Dict[str, Any],
+    context: Dict[str, Any],
+    backend_name: str,
+    custom_prompt: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Run review using any AI backend (unified handler).
+
+    Uses the ai_backends module for consistent behavior across all providers.
+    Falls back to files-only analysis if the backend is unavailable.
+    """
+    from ai_backends import get_backend
+
+    prompt = build_review_prompt(persona, context, custom_prompt)
+
+    # System prompt for the AI
+    system_prompt = (
+        f"You are a {persona['name']}. {persona.get('role', '')}\n"
+        "Provide structured analysis with bullet points per section.\n"
+        "Flag severity levels: Critical, High, Medium, Low.\n"
+        "Be concise and evidence-based."
+    )
+
+    backend = get_backend(backend_name)
+    response = backend.generate(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=0.3,
+        max_tokens=2000,
+    )
+
+    if not response.success:
+        # Fall back to files-only with a note about the failure
+        review = _run_files_only_review(persona, context, custom_prompt)
+        review["ai_backend"] = f"{backend_name}_fallback"
+        review["raw_output"] = f"{backend_name} unavailable: {response.error}. Fell back to files-only analysis."
+        review["prompt_used"] = prompt
+        review["custom_prompt"] = custom_prompt
+        return review
+
+    # Parse AI output into structured findings
+    findings = _parse_ai_output(response.text, persona)
+
+    return {
+        "persona": persona["name"],
+        "persona_id": _get_persona_id(persona["name"]),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ai_backend": backend_name,
+        "findings": findings,
+        "summary": _build_review_summary(persona["name"], findings),
+        "recommendations": findings.get("recommendations", []),
+        "questions": findings.get("questions", []),
+        "prompt_used": prompt,
+        "custom_prompt": custom_prompt,
+        "raw_output": response.text,
+        "ai_metadata": response.to_dict(),
+    }
 
 
 def _analyse_by_persona(
@@ -515,108 +605,6 @@ def _analyse_generic(
         else:
             findings[section] = []
     return findings
-
-
-# ──────────────────────────────────────────────────────────────
-# AI backend implementations
-# ──────────────────────────────────────────────────────────────
-
-
-def _run_ollama_review(
-    persona: Dict[str, Any], context: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Run review using local Ollama model."""
-    prompt = build_review_prompt(persona, context)
-
-    try:
-        import urllib.request
-        import urllib.error
-
-        payload = json.dumps({
-            "model": "llama3.2",
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.3, "num_predict": 2000},
-        }).encode()
-
-        req = urllib.request.Request(
-            "http://localhost:11434/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            result = json.loads(resp.read().decode())
-            raw_output = result.get("response", "")
-
-    except (urllib.error.URLError, ConnectionRefusedError, TimeoutError) as e:
-        # Fall back to files-only if Ollama unavailable
-        review = _run_files_only_review(persona, context)
-        review["ai_backend"] = "ollama_fallback"
-        review["raw_output"] = f"Ollama unavailable: {e}. Fell back to files-only analysis."
-        return review
-
-    # Parse AI output into structured findings
-    findings = _parse_ai_output(raw_output, persona)
-
-    return {
-        "persona": persona["name"],
-        "persona_id": _get_persona_id(persona["name"]),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ai_backend": "ollama",
-        "findings": findings,
-        "summary": _build_review_summary(persona["name"], findings),
-        "recommendations": findings.get("recommendations", []),
-        "questions": findings.get("questions", []),
-        "prompt_used": prompt,
-        "raw_output": raw_output,
-    }
-
-
-def _run_bedrock_review(
-    persona: Dict[str, Any], context: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Run review using AWS Bedrock."""
-    prompt = build_review_prompt(persona, context)
-
-    try:
-        import boto3
-
-        client = boto3.client("bedrock-runtime")
-        body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 2000,
-            "temperature": 0.3,
-            "messages": [{"role": "user", "content": prompt}],
-        })
-
-        response = client.invoke_model(
-            modelId="anthropic.claude-3-haiku-20240307-v1:0",
-            body=body,
-        )
-        result = json.loads(response["body"].read())
-        raw_output = result.get("content", [{}])[0].get("text", "")
-
-    except Exception as e:
-        # Fall back to files-only
-        review = _run_files_only_review(persona, context)
-        review["ai_backend"] = "bedrock_fallback"
-        review["raw_output"] = f"Bedrock unavailable: {e}. Fell back to files-only analysis."
-        return review
-
-    findings = _parse_ai_output(raw_output, persona)
-
-    return {
-        "persona": persona["name"],
-        "persona_id": _get_persona_id(persona["name"]),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ai_backend": "bedrock",
-        "findings": findings,
-        "summary": _build_review_summary(persona["name"], findings),
-        "recommendations": findings.get("recommendations", []),
-        "questions": findings.get("questions", []),
-        "prompt_used": prompt,
-        "raw_output": raw_output,
-    }
 
 
 # ──────────────────────────────────────────────────────────────

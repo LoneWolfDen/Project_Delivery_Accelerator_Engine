@@ -16,11 +16,23 @@ dev = [
 ai = [
     "boto3>=1.28.0",
     "ollama>=0.1.0",
+    "google-genai>=1.0.0",
 ]
 agents = [
     "strands-agents>=0.1.0",
     "strands-agents-tools>=0.1.0",
 ]
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["models*", "processors*", "personas*", "ai_backends*"]
+exclude = ["tests*", "_archive*", "outputs*"]
+
+[tool.setuptools]
+py-modules = ["project_manager", "server", "cli"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

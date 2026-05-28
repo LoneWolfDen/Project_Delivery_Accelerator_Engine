@@ -41,6 +41,9 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         # API endpoints
         if self.path == "/api/health":
             self._json_response({"status": "ok", "version": "3.0.0-ui"})
+        elif self.path == "/api/backends":
+            from ai_backends import list_backends
+            self._json_response({"backends": list_backends()})
         elif self.path == "/api/projects":
             projects = project_manager.list_projects()
             self._json_response({"projects": projects})
@@ -199,6 +202,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         project_id = body.get("project_id")
         persona_name = body.get("persona")
         ai_backend = body.get("ai_backend", "files_only")
+        custom_prompt = body.get("custom_prompt")
 
         if not project_id:
             self._json_response({"error": "project_id required"}, status=400)
@@ -212,6 +216,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 project_id=project_id,
                 persona_name=persona_name,
                 ai_backend=ai_backend,
+                custom_prompt=custom_prompt,
             )
             self._json_response(result)
         except ValueError as e:

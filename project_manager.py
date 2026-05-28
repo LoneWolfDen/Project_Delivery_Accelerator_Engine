@@ -281,6 +281,7 @@ def run_persona_review(
     project_id: str,
     persona_name: str,
     ai_backend: str = "files_only",
+    custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a persona-driven review for a project.
 
@@ -289,7 +290,8 @@ def run_persona_review(
     Args:
         project_id: Project ID.
         persona_name: Persona to use (e.g. 'solution_architect').
-        ai_backend: 'files_only', 'ollama', or 'bedrock'.
+        ai_backend: 'files_only', 'ollama', 'bedrock', or 'gemini'.
+        custom_prompt: Optional additional context/instructions for the AI to consider.
 
     Returns:
         Review result dict.
@@ -315,6 +317,7 @@ def run_persona_review(
         persona_name=persona_name,
         context=intelligence,
         ai_backend=ai_backend,
+        custom_prompt=custom_prompt,
     )
 
     # Store review result
