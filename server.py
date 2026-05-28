@@ -37,9 +37,15 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                     "GET /api/projects/{id}/context": "Get ingested documents",
                     "GET /api/projects/{id}/intelligence": "Get built intelligence",
                     "GET /api/projects/{id}/summary": "Get token-efficient summary",
+                    "GET /api/projects/{id}/versions": "List context build versions",
+                    "GET /api/projects/{id}/versions/{vid}": "Get specific version snapshot",
+                    "GET /api/projects/{id}/reviews": "Review history (?persona=filter)",
+                    "GET /api/projects/{id}/evolution/{category}": "Category evolution timeline",
                     "POST /api/projects": "Create project (body: {name, description})",
                     "POST /api/ingest": "Ingest files (body: {project_id, file_paths})",
-                    "POST /api/projects/{id}/build-context": "Build intelligence from docs",
+                    "POST /api/projects/{id}/build-context": "Build intelligence (body: {label?})",
+                    "POST /api/projects/{id}/compare-versions": "Compare versions (body: {version_a, version_b})",
+                    "POST /api/projects/{id}/compare-reviews": "Compare reviews (body: {review_a, review_b})",
                     "POST /api/review": "Run persona review (body: {project_id, persona, ai_backend})",
                     "POST /api/personas": "List available personas",
                 },
@@ -61,6 +67,39 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = self.path.split("/")[3]
             summary = project_manager.get_project_summary(project_id)
             self._json_response({"project_id": project_id, "summary": summary})
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/versions"):
+            project_id = self.path.split("/")[3]
+            versions = project_manager.get_project_versions(project_id)
+            self._json_response({"project_id": project_id, "versions": versions})
+        elif self.path.startswith("/api/projects/") and "/versions/" in self.path:
+            # GET /api/projects/{id}/versions/{version_id}
+            parts = self.path.split("/")
+            project_id = parts[3]
+            version_id = parts[5]
+            version = project_manager.get_project_version(project_id, version_id)
+            if version:
+                self._json_response({"project_id": project_id, "version": version})
+            else:
+                self._json_response({"error": f"Version not found: {version_id}"}, status=404)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/reviews"):
+            # GET /api/projects/{id}/reviews?persona=solution_architect
+            project_id = self.path.split("/")[3].split("?")[0]
+            # Simple query param parsing
+            persona_filter = None
+            if "?" in self.path:
+                query = self.path.split("?")[1]
+                for param in query.split("&"):
+                    if param.startswith("persona="):
+                        persona_filter = param.split("=")[1]
+            reviews = project_manager.get_project_review_history(project_id, persona_filter)
+            self._json_response({"project_id": project_id, "reviews": reviews})
+        elif self.path.startswith("/api/projects/") and "/evolution/" in self.path:
+            # GET /api/projects/{id}/evolution/{category}
+            parts = self.path.split("/")
+            project_id = parts[3]
+            category = parts[5]
+            timeline = project_manager.get_project_evolution(project_id, category)
+            self._json_response({"project_id": project_id, "category": category, "timeline": timeline})
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -77,6 +116,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._handle_review()
         elif self.path == "/api/personas":
             self._handle_list_personas()
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/compare-versions"):
+            project_id = self.path.split("/")[3]
+            self._handle_compare_versions(project_id)
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/compare-reviews"):
+            project_id = self.path.split("/")[3]
+            self._handle_compare_reviews(project_id)
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -172,13 +217,63 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def _handle_build_context(self, project_id: str) -> None:
         """Build/rebuild project intelligence from ingested documents."""
+        body = self._read_body()
+        version_label = body.get("label") if body else None
         try:
-            result = project_manager.build_project_intelligence(project_id)
+            result = project_manager.build_project_intelligence(project_id, version_label)
             self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=404)
         except Exception as e:
             self._json_response({"error": str(e)}, status=500)
+
+    def _handle_compare_versions(self, project_id: str) -> None:
+        """Compare two context versions."""
+        body = self._read_body()
+        if not body:
+            self._json_response({"error": "Request body required"}, status=400)
+            return
+
+        version_a = body.get("version_a")
+        version_b = body.get("version_b")
+
+        if not version_a or not version_b:
+            self._json_response(
+                {"error": "version_a and version_b required"}, status=400
+            )
+            return
+
+        try:
+            result = project_manager.compare_project_versions(
+                project_id, version_a, version_b
+            )
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=404)
+
+    def _handle_compare_reviews(self, project_id: str) -> None:
+        """Compare two review results."""
+        body = self._read_body()
+        if not body:
+            self._json_response({"error": "Request body required"}, status=400)
+            return
+
+        review_a = body.get("review_a")
+        review_b = body.get("review_b")
+
+        if not review_a or not review_b:
+            self._json_response(
+                {"error": "review_a and review_b filenames required"}, status=400
+            )
+            return
+
+        try:
+            result = project_manager.compare_project_reviews(
+                project_id, review_a, review_b
+            )
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=404)
 
     def _read_body(self) -> dict:
         """Read and parse JSON request body."""
