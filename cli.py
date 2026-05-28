@@ -116,6 +116,54 @@ def main() -> None:
         help="Output format (default: markdown)",
     )
 
+    # ── proposal ──
+    proposal_parser = subparsers.add_parser("proposal", help="Manage proposals")
+    proposal_sub = proposal_parser.add_subparsers(dest="proposal_cmd")
+
+    prop_create = proposal_sub.add_parser("create", help="Create proposal")
+    prop_create.add_argument("project_id", help="Project ID")
+    prop_create.add_argument("name", help="Proposal name")
+    prop_create.add_argument("-c", "--client", default="", help="Client name")
+    prop_create.add_argument("--files", nargs="*", default=[], help="Associated files")
+    prop_create.add_argument("-n", "--notes", default="", help="Notes")
+
+    prop_version = proposal_sub.add_parser("add-version", help="Add proposal version")
+    prop_version.add_argument("project_id", help="Project ID")
+    prop_version.add_argument("-l", "--label", default="", help="Version label")
+    prop_version.add_argument("--files", nargs="*", default=[], help="Files")
+    prop_version.add_argument("--changes", default="", help="What changed")
+    prop_version.add_argument("-n", "--notes", default="", help="Notes")
+
+    prop_list = proposal_sub.add_parser("list", help="List proposal versions")
+    prop_list.add_argument("project_id", help="Project ID")
+
+    prop_compare = proposal_sub.add_parser("compare", help="Compare proposal versions")
+    prop_compare.add_argument("project_id", help="Project ID")
+    prop_compare.add_argument("version_a", help="First version (e.g. prop-v1)")
+    prop_compare.add_argument("version_b", help="Second version (e.g. prop-v2)")
+
+    prop_status = proposal_sub.add_parser("set-status", help="Set proposal version status")
+    prop_status.add_argument("project_id", help="Project ID")
+    prop_status.add_argument("version_id", help="Version ID (e.g. prop-v1)")
+    prop_status.add_argument("status", help="New status")
+
+    prop_info = proposal_sub.add_parser("info", help="Show proposal details")
+    prop_info.add_argument("project_id", help="Project ID")
+
+    # ── phase ──
+    phase_parser = subparsers.add_parser("phase", help="Manage project phases")
+    phase_sub = phase_parser.add_subparsers(dest="phase_cmd")
+
+    phase_transition = phase_sub.add_parser("transition", help="Transition to new phase")
+    phase_transition.add_argument("project_id", help="Project ID")
+    phase_transition.add_argument("new_phase", help="Target phase")
+    phase_transition.add_argument("-r", "--reason", default="", help="Reason for transition")
+
+    phase_history = phase_sub.add_parser("history", help="View phase history")
+    phase_history.add_argument("project_id", help="Project ID")
+
+    phase_info = phase_sub.add_parser("info", help="Show available phases and transitions")
+
     # ── status ──
     status_parser = subparsers.add_parser("status", help="Full project status")
     status_parser.add_argument("project_id", help="Project ID")
@@ -143,6 +191,8 @@ def main() -> None:
             "reviews": cmd_reviews,
             "export": cmd_export,
             "status": cmd_status,
+            "proposal": cmd_proposal,
+            "phase": cmd_phase,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -418,6 +468,119 @@ def cmd_status(args) -> None:
         print(f"    Dependencies: {meta.get('total_dependencies', 0)}")
         print(f"    Assumptions:  {meta.get('total_assumptions', 0)}")
         print(f"    Action Items: {meta.get('total_action_items', 0)}")
+
+
+def cmd_proposal(args) -> None:
+    """Handle proposal subcommands."""
+    if not args.proposal_cmd:
+        _info("Usage: python cli.py proposal {create|add-version|list|compare|set-status|info} ...")
+        return
+
+    if args.proposal_cmd == "create":
+        result = project_manager.create_proposal(
+            args.project_id, args.name, args.client,
+            [Path(f) for f in args.files] if args.files else None,
+            args.notes,
+        )
+        _success(f"Proposal created: {result['proposal_name']}")
+        _info(f"Version: {result['current_version']}")
+
+    elif args.proposal_cmd == "add-version":
+        result = project_manager.add_proposal_version(
+            args.project_id, args.label,
+            [Path(f) for f in args.files] if args.files else None,
+            args.notes, args.changes,
+        )
+        _success(f"Proposal version added: {result['version_id']} – {result['label']}")
+
+    elif args.proposal_cmd == "list":
+        versions = project_manager.list_proposal_versions_for_project(args.project_id)
+        if not versions:
+            _info("No proposal yet. Create one: python cli.py proposal create <project_id> <name>")
+            return
+        _header(f"Proposal Versions – {args.project_id}")
+        for v in versions:
+            status_icon = {"draft": "○", "submitted": "→", "under_review": "◎",
+                          "accepted": "✓", "rejected": "✗", "superseded": "↓",
+                          "revised": "↻"}.get(v["status"], "?")
+            print(f"  {status_icon} {v['version_id']}  {v['label']:<25}  "
+                  f"status: {v['status']:<13}  files: {v['files_count']}  "
+                  f"{v['created_at'][:16]}")
+
+    elif args.proposal_cmd == "compare":
+        result = project_manager.compare_proposals(
+            args.project_id, args.version_a, args.version_b
+        )
+        _header(f"Proposal Comparison: {result['version_a']} → {result['version_b']}")
+        print(f"  {result['label_a']} ({result['status_a']}) → {result['label_b']} ({result['status_b']})")
+        print(f"  Time between: {result['time_between']}")
+        print()
+        files = result.get("files", {})
+        if files.get("added"):
+            print(f"  Files added:")
+            for f in files["added"]:
+                print(f"    + {f}")
+        if files.get("removed"):
+            print(f"  Files removed:")
+            for f in files["removed"]:
+                print(f"    - {f}")
+        if result.get("changes_noted"):
+            print(f"\n  Changes noted: {result['changes_noted']}")
+
+    elif args.proposal_cmd == "set-status":
+        result = project_manager.update_proposal_status(
+            args.project_id, args.version_id, args.status
+        )
+        _success(f"Status updated: {result['version_id']} → {result['status']}")
+
+    elif args.proposal_cmd == "info":
+        proposal = project_manager.get_proposal_info(args.project_id)
+        if not proposal:
+            _info("No proposal exists for this project.")
+            return
+        _header(f"Proposal: {proposal['proposal_name']}")
+        print(f"  Client:          {proposal.get('client', '-')}")
+        print(f"  Current version: {proposal['current_version']}")
+        print(f"  Total versions:  {proposal['total_versions']}")
+        print(f"  Created:         {proposal['created_at'][:16]}")
+        print(f"  Updated:         {proposal['updated_at'][:16]}")
+
+
+def cmd_phase(args) -> None:
+    """Handle phase subcommands."""
+    if not args.phase_cmd:
+        _info("Usage: python cli.py phase {transition|history|info} ...")
+        return
+
+    if args.phase_cmd == "transition":
+        result = project_manager.transition_project_phase(
+            args.project_id, args.new_phase, args.reason
+        )
+        _success(f"Phase transition: {result['from_phase']} → {result['to_phase']}")
+        if result.get("reason"):
+            _info(f"Reason: {result['reason']}")
+
+    elif args.phase_cmd == "history":
+        history = project_manager.get_phase_history_for_project(args.project_id)
+        if not history:
+            _info("No phase history yet.")
+            return
+        _header(f"Phase History – {args.project_id}")
+        for entry in history:
+            current_marker = " ← current" if entry.get("is_current") else ""
+            print(
+                f"  {entry['phase']:<12}  entered: {entry['entered_at'][:16]}  "
+                f"duration: {entry.get('duration', '-')}{current_marker}"
+            )
+            if entry.get("reason"):
+                print(f"                reason: {entry['reason']}")
+
+    elif args.phase_cmd == "info":
+        phases = project_manager.get_phase_info()
+        _header("SDLC Phases")
+        for p in phases:
+            transitions = ", ".join(p["can_transition_to"]) or "none"
+            print(f"  {p['order']}. {p['phase']:<12}  → can move to: {transitions}")
 
 
 # ──────────────────────────────────────────────────────────────

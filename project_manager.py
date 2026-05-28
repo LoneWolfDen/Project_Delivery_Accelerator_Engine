@@ -508,3 +508,145 @@ def _update_iteration_on_review(project_id: str) -> None:
             p["updated_at"] = datetime.now(timezone.utc).isoformat()
             break
     save_projects(projects)
+
+
+
+# ──────────────────────────────────────────────────────────────
+# Proposal Management
+# ──────────────────────────────────────────────────────────────
+
+
+def create_proposal(
+    project_id: str,
+    proposal_name: str,
+    client: str = "",
+    files: Optional[List[Path]] = None,
+    notes: str = "",
+) -> Dict[str, Any]:
+    """Create a proposal for a project.
+
+    Args:
+        project_id: Project ID.
+        proposal_name: Name of the proposal.
+        client: Client name.
+        files: Files associated with this version.
+        notes: Notes about this version.
+
+    Returns:
+        Proposal tracker dict.
+    """
+    from processors.proposals import create_proposal as _create
+
+    project = get_project(project_id)
+    if project is None:
+        raise ValueError(f"Project not found: {project_id}")
+
+    project_dir = PROJECTS_DIR / project_id
+    intel = get_project_intelligence(project_id)
+    ctx_version = intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
+
+    file_strs = [str(f) for f in (files or [])]
+    return _create(project_dir, proposal_name, client, file_strs, notes, ctx_version)
+
+
+def add_proposal_version(
+    project_id: str,
+    label: str = "",
+    files: Optional[List[Path]] = None,
+    notes: str = "",
+    changes: str = "",
+) -> Dict[str, Any]:
+    """Add a new version to the project's proposal.
+
+    Args:
+        project_id: Project ID.
+        label: Version label.
+        files: Files for this version.
+        notes: Author notes.
+        changes: What changed from previous.
+
+    Returns:
+        New version dict.
+    """
+    from processors.proposals import add_proposal_version as _add
+
+    project_dir = PROJECTS_DIR / project_id
+    intel = get_project_intelligence(project_id)
+    ctx_version = intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
+
+    file_strs = [str(f) for f in (files or [])]
+    return _add(project_dir, file_strs, label, notes, changes, ctx_version)
+
+
+def get_proposal_info(project_id: str) -> Optional[Dict[str, Any]]:
+    """Get the proposal tracker for a project."""
+    from processors.proposals import get_proposal
+
+    project_dir = PROJECTS_DIR / project_id
+    return get_proposal(project_dir)
+
+
+def list_proposal_versions_for_project(project_id: str) -> List[Dict[str, Any]]:
+    """List all proposal versions for a project."""
+    from processors.proposals import list_proposal_versions
+
+    project_dir = PROJECTS_DIR / project_id
+    return list_proposal_versions(project_dir)
+
+
+def compare_proposals(
+    project_id: str, version_a: str, version_b: str
+) -> Dict[str, Any]:
+    """Compare two proposal versions."""
+    from processors.proposals import compare_proposal_versions
+
+    project_dir = PROJECTS_DIR / project_id
+    return compare_proposal_versions(project_dir, version_a, version_b)
+
+
+def update_proposal_status(
+    project_id: str, version_id: str, new_status: str
+) -> Dict[str, Any]:
+    """Update proposal version status."""
+    from processors.proposals import update_proposal_status as _update
+
+    project_dir = PROJECTS_DIR / project_id
+    return _update(project_dir, version_id, new_status)
+
+
+# ──────────────────────────────────────────────────────────────
+# Phase Transitions
+# ──────────────────────────────────────────────────────────────
+
+
+def transition_project_phase(
+    project_id: str, new_phase: str, reason: str = ""
+) -> Dict[str, Any]:
+    """Move a project to a new SDLC phase.
+
+    Args:
+        project_id: Project ID.
+        new_phase: Target phase (discovery/proposal/planning/execution/review).
+        reason: Optional reason for transition.
+
+    Returns:
+        Transition record dict.
+    """
+    from processors.phases import transition_phase
+
+    project_dir = PROJECTS_DIR / project_id
+    return transition_phase(project_dir, PROJECTS_FILE, project_id, new_phase, reason)
+
+
+def get_phase_history_for_project(project_id: str) -> List[Dict[str, Any]]:
+    """Get phase transition history for a project."""
+    from processors.phases import get_phase_history
+
+    project_dir = PROJECTS_DIR / project_id
+    return get_phase_history(project_dir, PROJECTS_FILE, project_id)
+
+
+def get_phase_info() -> List[Dict[str, Any]]:
+    """Get info about all SDLC phases."""
+    from processors.phases import get_phase_info
+    return get_phase_info()
