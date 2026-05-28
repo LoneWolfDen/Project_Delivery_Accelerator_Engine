@@ -1,0 +1,345 @@
+<mxfile host="app.diagrams.net" modified="2026-05-28" agent="Kiro" version="24.0">
+  <diagram id="arch-overview" name="System Architecture">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- LEGEND -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="legend" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="320" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b&gt;LEGEND&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="30" y="25" width="100" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-done" value="" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="30" y="50" width="20" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-done-t" value="✓ Built &amp; Working" style="text;html=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="55" y="50" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-partial" value="" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="30" y="75" width="20" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-partial-t" value="◐ Partial / Basic" style="text;html=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="55" y="75" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-pending" value="" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="180" y="50" width="20" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-pending-t" value="✗ Pending / Planned" style="text;html=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="205" y="50" width="130" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-future" value="" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="180" y="75" width="20" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-future-t" value="◇ Future Vision (v4+)" style="text;html=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="205" y="75" width="130" height="20" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- USER INTERFACES LAYER -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="ui-group" value="&lt;b&gt;USER INTERFACES&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="150" width="1160" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ui-web" value="&lt;b&gt;Web UI (SPA)&lt;/b&gt;&lt;br&gt;static/index.html&lt;br&gt;&lt;br&gt;Multi-project selector&lt;br&gt;Dashboard / Ingest / Intelligence&lt;br&gt;Reviews / Versions / Proposals / Phases" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
+          <mxGeometry x="20" y="35" width="260" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="ui-cli" value="&lt;b&gt;CLI (cli.py)&lt;/b&gt;&lt;br&gt;&lt;br&gt;16 commands&lt;br&gt;backends / review --show-prompt&lt;br&gt;--custom-prompt / export" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
+          <mxGeometry x="300" y="35" width="220" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="ui-api" value="&lt;b&gt;REST API (server.py)&lt;/b&gt;&lt;br&gt;&lt;br&gt;GET/POST endpoints&lt;br&gt;CORS enabled&lt;br&gt;Static file serving" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
+          <mxGeometry x="540" y="35" width="200" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="ui-export" value="&lt;b&gt;Export Engine&lt;/b&gt;&lt;br&gt;&lt;br&gt;Markdown export&lt;br&gt;JSON export&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Word/PPTX (v3)&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Diagram gen (v3)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="ui-group">
+          <mxGeometry x="760" y="35" width="180" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="ui-advanced" value="&lt;b&gt;Advanced UI (v4)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Copilot assistant&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Real-time collab&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Dashboard charts&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ui-group">
+          <mxGeometry x="960" y="35" width="180" height="95" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ORCHESTRATION LAYER -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="orch-group" value="&lt;b&gt;ORCHESTRATION LAYER&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="320" width="1160" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="orch-pm" value="&lt;b&gt;Project Manager&lt;/b&gt;&lt;br&gt;project_manager.py&lt;br&gt;&lt;br&gt;CRUD (max 5 projects)&lt;br&gt;File routing / orchestration&lt;br&gt;Iteration tracking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
+          <mxGeometry x="20" y="35" width="240" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="orch-persona" value="&lt;b&gt;Persona Engine&lt;/b&gt;&lt;br&gt;personas/engine.py&lt;br&gt;&lt;br&gt;4 personas (YAML)&lt;br&gt;Prompt builder + custom prompts&lt;br&gt;AI output parser&lt;br&gt;Fallback to files-only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
+          <mxGeometry x="280" y="35" width="240" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="orch-backends" value="&lt;b&gt;AI Backend Registry&lt;/b&gt;&lt;br&gt;ai_backends/registry.py&lt;br&gt;&lt;br&gt;6 backends: files_only, ollama,&lt;br&gt;bedrock, gemini, groq, openrouter&lt;br&gt;Pluggable adapter pattern" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
+          <mxGeometry x="540" y="35" width="240" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="orch-agents" value="&lt;b&gt;Agent Framework (v3+)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Strands Agents integration&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Multi-agent orchestration&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Tool-use workflows&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="orch-group">
+          <mxGeometry x="800" y="35" width="220" height="85" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- PROCESSING LAYER -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="proc-group" value="&lt;b&gt;PROCESSING LAYER&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="480" width="1160" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="proc-ingest" value="&lt;b&gt;Ingestion&lt;/b&gt;&lt;br&gt;processors/ingestion.py&lt;br&gt;&lt;br&gt;✓ .txt (scope, SoW, notes)&lt;br&gt;✓ .md (markdown docs)&lt;br&gt;✓ .csv (structured data)&lt;br&gt;✓ .eml (email parsing)&lt;br&gt;✓ Transcript detection&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ .pdf / .docx&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ .drawio parsing&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
+          <mxGeometry x="20" y="30" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="proc-context" value="&lt;b&gt;Context Builder&lt;/b&gt;&lt;br&gt;processors/context_builder.py&lt;br&gt;&lt;br&gt;✓ Intelligence extraction&lt;br&gt;✓ Deduplication&lt;br&gt;✓ Merge contexts&lt;br&gt;✓ Summary generation&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Semantic chunking&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Embedding-based dedup&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
+          <mxGeometry x="240" y="30" width="210" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="proc-extract" value="&lt;b&gt;Extractors&lt;/b&gt;&lt;br&gt;processors/extractors.py&lt;br&gt;&lt;br&gt;✓ Keyword patterns&lt;br&gt;✓ Table parsing&lt;br&gt;✓ Noise filtering&lt;br&gt;✓ Risk/Constraint/Dep detection&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ AI-powered extraction&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Entity recognition&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
+          <mxGeometry x="470" y="30" width="210" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="proc-history" value="&lt;b&gt;History &amp; Versioning&lt;/b&gt;&lt;br&gt;processors/history.py&lt;br&gt;&lt;br&gt;✓ Version snapshots&lt;br&gt;✓ Compare versions&lt;br&gt;✓ Evolution timeline&lt;br&gt;✓ Review history&lt;br&gt;✓ Review comparison" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
+          <mxGeometry x="700" y="30" width="200" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="proc-proposals" value="&lt;b&gt;Proposals &amp; Phases&lt;/b&gt;&lt;br&gt;processors/proposals.py&lt;br&gt;processors/phases.py&lt;br&gt;&lt;br&gt;✓ Multi-version proposals&lt;br&gt;✓ Status tracking&lt;br&gt;✓ SDLC phase transitions&lt;br&gt;✓ Phase history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
+          <mxGeometry x="920" y="30" width="210" height="120" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- AI BACKENDS LAYER -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="ai-group" value="&lt;b&gt;AI BACKENDS&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="670" width="1160" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-files" value="&lt;b&gt;files_only&lt;/b&gt;&lt;br&gt;Heuristic analysis&lt;br&gt;No AI / instant" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ai-group">
+          <mxGeometry x="20" y="35" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-groq" value="&lt;b&gt;Groq&lt;/b&gt;&lt;br&gt;Llama 3.3 70B&lt;br&gt;FREE tier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ai-group">
+          <mxGeometry x="180" y="35" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-openrouter" value="&lt;b&gt;OpenRouter&lt;/b&gt;&lt;br&gt;300+ models&lt;br&gt;FREE tier" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ai-group">
+          <mxGeometry x="340" y="35" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-gemini" value="&lt;b&gt;Gemini&lt;/b&gt;&lt;br&gt;gemini-2.0-flash&lt;br&gt;API key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ai-group">
+          <mxGeometry x="500" y="35" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-ollama" value="&lt;b&gt;Ollama&lt;/b&gt;&lt;br&gt;Local LLM&lt;br&gt;Offline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ai-group">
+          <mxGeometry x="660" y="35" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-bedrock" value="&lt;b&gt;Bedrock&lt;/b&gt;&lt;br&gt;Claude (AWS)&lt;br&gt;Pay-per-use" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ai-group">
+          <mxGeometry x="820" y="35" width="140" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-future" value="&lt;b&gt;Future&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ OpenAI&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Anthropic Direct&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ai-group">
+          <mxGeometry x="980" y="35" width="150" height="70" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- DATA LAYER -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="data-group" value="&lt;b&gt;DATA &amp; PERSISTENCE LAYER&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="820" width="1160" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="data-json" value="&lt;b&gt;JSON File Store&lt;/b&gt;&lt;br&gt;projects_data/&lt;br&gt;&lt;br&gt;✓ projects.json (registry)&lt;br&gt;✓ {id}/context/ (ingested docs)&lt;br&gt;✓ {id}/intelligence.json&lt;br&gt;✓ {id}/reviews/&lt;br&gt;✓ {id}/versions/" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="data-group">
+          <mxGeometry x="20" y="30" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="data-personas" value="&lt;b&gt;Persona Definitions&lt;/b&gt;&lt;br&gt;personas/definitions/*.yaml&lt;br&gt;&lt;br&gt;✓ 4 built-in personas&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ User-defined personas&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Dynamic persona creation&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="data-group">
+          <mxGeometry x="270" y="30" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="data-sample" value="&lt;b&gt;Sample Data&lt;/b&gt;&lt;br&gt;sample_data/&lt;br&gt;&lt;br&gt;✓ scope.txt, scope_cpg.txt&lt;br&gt;✓ CSV samples&lt;br&gt;✓ Test fixtures" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="data-group">
+          <mxGeometry x="520" y="30" width="200" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="data-sqlite" value="&lt;b&gt;SQLite (v3 planned)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Replace JSON files&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Concurrent access&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Query support&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="data-group">
+          <mxGeometry x="750" y="30" width="180" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="data-vector" value="&lt;b&gt;Vector DB (v4)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Semantic search&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Cross-project learning&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ RAG pipeline&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="data-group">
+          <mxGeometry x="960" y="30" width="170" height="90" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- DEVOPS & QUALITY LAYER -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="ops-group" value="&lt;b&gt;DEVOPS &amp; QUALITY&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="980" width="1160" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ops-ci" value="&lt;b&gt;GitHub Actions CI&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ Ruff lint&lt;br&gt;✓ Pytest (3.9/3.11/3.12)&lt;br&gt;✓ Coverage &gt;80%" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ops-group">
+          <mxGeometry x="20" y="30" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ops-tests" value="&lt;b&gt;Test Suite&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ 180 tests passing&lt;br&gt;✓ Unit + integration&lt;br&gt;✓ Extraction quality tests" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ops-group">
+          <mxGeometry x="220" y="30" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ops-pkg" value="&lt;b&gt;Packaging&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ pyproject.toml&lt;br&gt;✓ pip install -e .&lt;br&gt;✓ Optional deps [ai][dev][agents]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ops-group">
+          <mxGeometry x="420" y="30" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ops-docs" value="&lt;b&gt;Documentation&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ API Reference&lt;br&gt;✓ Getting Started&lt;br&gt;✓ Architecture guide" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ops-group">
+          <mxGeometry x="640" y="30" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ops-deploy" value="&lt;b&gt;Deployment (v3)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Docker container&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ AWS ECS/Fargate&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Health checks&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="ops-group">
+          <mxGeometry x="840" y="30" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="ops-monitor" value="&lt;b&gt;Observability (v4)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Token tracking&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Cost analytics&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Usage dashboards&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ops-group">
+          <mxGeometry x="1020" y="30" width="120" height="70" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- CONNECTORS (Data Flow) -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- UI → Orchestration -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666;" edge="1" source="ui-web" target="orch-pm" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666;" edge="1" source="ui-cli" target="orch-pm" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#666;" edge="1" source="ui-api" target="orch-pm" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Orchestration → Processing -->
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;" edge="1" source="orch-pm" target="proc-ingest" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;" edge="1" source="orch-pm" target="proc-context" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;" edge="1" source="orch-pm" target="proc-history" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#82b366;" edge="1" source="orch-pm" target="proc-proposals" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Persona → AI Backends -->
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="orch-persona" target="orch-backends" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8b" value="prompt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;dashed=1;" edge="1" source="orch-backends" target="ai-groq" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Processing → Data -->
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;dashed=1;" edge="1" source="proc-ingest" target="data-json" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#9673a6;dashed=1;" edge="1" source="proc-history" target="data-json" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="data-flow" name="Data Flow (User Journey)">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <!-- Title -->
+        <mxCell id="df-title" value="&lt;b&gt;USER JOURNEY: Document → Intelligence → Review&lt;/b&gt;" style="text;html=1;align=center;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="300" y="20" width="500" height="30" as="geometry" />
+        </mxCell>
+
+
+        <!-- STEP 1: Upload Documents -->
+        <mxCell id="df-s1" value="&lt;b&gt;1. UPLOAD&lt;/b&gt;&lt;br&gt;&lt;br&gt;User provides file paths&lt;br&gt;(.txt, .md, .csv, .eml)&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;✓ BUILT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="180" height="100" as="geometry" />
+        </mxCell>
+        <!-- STEP 2: Ingest & Parse -->
+        <mxCell id="df-s2" value="&lt;b&gt;2. INGEST&lt;/b&gt;&lt;br&gt;&lt;br&gt;Parse → detect type →&lt;br&gt;extract sections →&lt;br&gt;store as IngestedDocument&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;✓ BUILT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="280" y="80" width="180" height="100" as="geometry" />
+        </mxCell>
+        <!-- STEP 3: Build Intelligence -->
+        <mxCell id="df-s3" value="&lt;b&gt;3. BUILD INTELLIGENCE&lt;/b&gt;&lt;br&gt;&lt;br&gt;Extract: risks, assumptions,&lt;br&gt;dependencies, constraints,&lt;br&gt;scope, action items&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;✓ BUILT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="520" y="80" width="190" height="100" as="geometry" />
+        </mxCell>
+        <!-- STEP 4: Review -->
+        <mxCell id="df-s4" value="&lt;b&gt;4. PERSONA REVIEW&lt;/b&gt;&lt;br&gt;&lt;br&gt;Select persona + backend&lt;br&gt;Add custom prompt&lt;br&gt;AI analyses context&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;✓ BUILT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="770" y="80" width="180" height="100" as="geometry" />
+        </mxCell>
+        <!-- STEP 5: Iterate -->
+        <mxCell id="df-s5" value="&lt;b&gt;5. ITERATE&lt;/b&gt;&lt;br&gt;&lt;br&gt;Compare versions&lt;br&gt;Track evolution&lt;br&gt;Refine documents&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;✓ BUILT&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="80" width="170" height="100" as="geometry" />
+        </mxCell>
+        <!-- Flow arrows -->
+        <mxCell id="df-a1" style="rounded=1;strokeColor=#666;strokeWidth=2;" edge="1" source="df-s1" target="df-s2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="df-a2" style="rounded=1;strokeColor=#666;strokeWidth=2;" edge="1" source="df-s2" target="df-s3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="df-a3" style="rounded=1;strokeColor=#666;strokeWidth=2;" edge="1" source="df-s3" target="df-s4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="df-a4" style="rounded=1;strokeColor=#666;strokeWidth=2;" edge="1" source="df-s4" target="df-s5" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Feedback loop -->
+        <mxCell id="df-loop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#d6b656;strokeWidth=2;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=1;" edge="1" source="df-s5" target="df-s1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="1095" y="220" /><mxPoint x="130" y="220" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="df-loop-label" value="iterate: add docs, rebuild, re-review" style="text;html=1;align=center;fontSize=11;fontColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="400" y="222" width="280" height="20" as="geometry" />
+        </mxCell>
+
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- PENDING WORK SECTION -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <mxCell id="pending-title" value="&lt;b&gt;PENDING WORK (v3 Roadmap)&lt;/b&gt;" style="text;html=1;align=left;fontSize=14;fontColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="40" y="270" width="300" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" value="&lt;b&gt;P1: PDF/DOCX Ingestion&lt;/b&gt;&lt;br&gt;Parse Word docs and PDFs&lt;br&gt;Extract tables and images&lt;br&gt;Priority: HIGH" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="&lt;b&gt;P2: AI-Powered Extraction&lt;/b&gt;&lt;br&gt;Use LLM for intelligence build&lt;br&gt;Better risk/dep detection&lt;br&gt;Priority: HIGH" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="260" y="300" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" value="&lt;b&gt;P3: Export to Word/PPTX&lt;/b&gt;&lt;br&gt;Generate client-ready docs&lt;br&gt;Templated outputs&lt;br&gt;Priority: MEDIUM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="480" y="300" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p4" value="&lt;b&gt;P4: Diagram Generation&lt;/b&gt;&lt;br&gt;Auto-generate .drawio&lt;br&gt;Dependency maps&lt;br&gt;Priority: MEDIUM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="700" y="300" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p5" value="&lt;b&gt;P5: Docker + Deploy&lt;/b&gt;&lt;br&gt;Containerize&lt;br&gt;ECS/Fargate ready&lt;br&gt;Priority: MEDIUM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="920" y="300" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p6" value="&lt;b&gt;P6: User-Defined Personas&lt;/b&gt;&lt;br&gt;CRUD for persona YAML&lt;br&gt;Custom focus areas&lt;br&gt;Priority: LOW" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="40" y="400" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p7" value="&lt;b&gt;P7: Strands Agents&lt;/b&gt;&lt;br&gt;Multi-agent workflows&lt;br&gt;Tool-use patterns&lt;br&gt;Priority: LOW" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="260" y="400" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p8" value="&lt;b&gt;P8: SQLite Migration&lt;/b&gt;&lt;br&gt;Replace JSON flat files&lt;br&gt;Better concurrency&lt;br&gt;Priority: LOW" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="480" y="400" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="p9" value="&lt;b&gt;P9: Pre-sales Feedback Loop&lt;/b&gt;&lt;br&gt;Proposal → Delivery tracking&lt;br&gt;Accuracy scoring&lt;br&gt;Priority: LOW" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="700" y="400" width="200" height="80" as="geometry" />
+        </mxCell>
+
+
+        <!-- Future Vision -->
+        <mxCell id="future-title" value="&lt;b&gt;FUTURE VISION (v4+)&lt;/b&gt;" style="text;html=1;align=left;fontSize=14;fontColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="510" width="300" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="f1" value="&lt;b&gt;Multi-Project Intelligence&lt;/b&gt;&lt;br&gt;Cross-project learning&lt;br&gt;Pattern recognition&lt;br&gt;Delivery benchmarks" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="540" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" value="&lt;b&gt;Copilot Assistant&lt;/b&gt;&lt;br&gt;Chat interface&lt;br&gt;Context-aware Q&amp;A&lt;br&gt;Proactive suggestions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="260" y="540" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" value="&lt;b&gt;RAG Pipeline&lt;/b&gt;&lt;br&gt;Embeddings + vector search&lt;br&gt;Semantic document retrieval&lt;br&gt;Grounded AI responses" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="480" y="540" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f4" value="&lt;b&gt;Cost &amp; Token Analytics&lt;/b&gt;&lt;br&gt;Per-project AI spend&lt;br&gt;Token budget controls&lt;br&gt;Usage dashboards" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="700" y="540" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f5" value="&lt;b&gt;Team Collaboration&lt;/b&gt;&lt;br&gt;Multi-user support&lt;br&gt;Auth (Cognito/OAuth)&lt;br&gt;Role-based access" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="920" y="540" width="180" height="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
