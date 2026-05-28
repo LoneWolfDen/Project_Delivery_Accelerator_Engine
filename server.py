@@ -277,6 +277,18 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/phase"):
             project_id = self.path.split("/")[3]
             self._handle_hierarchy_phase_transition(project_id)
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/delete"):
+            # POST /api/projects/{id}/hierarchy/reviews/{review_id}/delete
+            parts = self.path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            self._handle_delete_review(project_id, review_id)
+        elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path and self.path.endswith("/set-active-review"):
+            # POST /api/projects/{id}/hierarchy/versions/{version_id}/set-active-review
+            parts = self.path.split("/")
+            project_id = parts[3]
+            version_id = parts[6]
+            self._handle_set_active_review(project_id, version_id)
         elif self.path.startswith("/api/projects/") and self.path.endswith("/toggle-file"):
             project_id = self.path.split("/")[3]
             self._handle_toggle_file(project_id)
@@ -544,6 +556,27 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=400)
+
+    def _handle_delete_review(self, project_id: str, review_id: str) -> None:
+        """Delete a review from the hierarchy."""
+        result = project_manager.delete_hierarchy_review(project_id, review_id)
+        if result.get("error"):
+            self._json_response(result, status=404)
+        else:
+            self._json_response(result)
+
+    def _handle_set_active_review(self, project_id: str, version_id: str) -> None:
+        """Set the active review for a version."""
+        body = self._read_body() or {}
+        review_id = body.get("review_id", "")
+        if not review_id:
+            self._json_response({"error": "review_id required"}, status=400)
+            return
+        result = project_manager.set_active_review(project_id, version_id, review_id)
+        if result.get("error"):
+            self._json_response(result, status=400)
+        else:
+            self._json_response(result)
 
     def _handle_archive_project(self, project_id: str) -> None:
         """Archive a project (requires PIN)."""
