@@ -224,7 +224,8 @@ async function viewIngest() {
 
     <!-- Upload File Tab -->
     <div id="ingestUpload">
-      <div class="form-row"><label>Category (required)</label><select id="uploadCategory">${categoryOpts}</select></div>
+      <div class="form-row"><label>Category (required)</label><select id="uploadCategory" onchange="renderMetadataFields('upload')">${categoryOpts}</select></div>
+      <div id="uploadMetaFields"></div>
       <div class="form-row"><label>Title (optional)</label><input id="uploadTitle" placeholder="e.g. Client scope document"></div>
       <div class="form-row"><label>File</label>
         <input type="file" id="uploadFile" accept=".txt,.md,.csv,.eml,.json,.yaml,.yml,.pdf,.docx,.xlsx,.pptx"
@@ -235,7 +236,8 @@ async function viewIngest() {
 
     <!-- Paste Text Tab -->
     <div id="ingestPaste" style="display:none">
-      <div class="form-row"><label>Category (required)</label><select id="pasteCategory">${categoryOpts}</select></div>
+      <div class="form-row"><label>Category (required)</label><select id="pasteCategory" onchange="renderMetadataFields('paste')">${categoryOpts}</select></div>
+      <div id="pasteMetaFields"></div>
       <div class="form-row"><label>Title (optional)</label><input id="pasteTitle" placeholder="e.g. Sprint 2 meeting notes"></div>
       <div class="form-row"><label>Text Content</label>
         <textarea id="pasteText" rows="6" placeholder="Paste your text content here..."></textarea>
@@ -263,6 +265,9 @@ async function viewIngest() {
 
     registryHtml = `<div class="card"><h2>Artefact Registry (${totalCount})</h2>
       <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${includedCount} of ${totalCount} included in intelligence. Toggle to exclude/include.</p>
+      <div class="flex" style="margin-bottom:10px">
+        <button class="btn btn-sm btn-outline" onclick="processAllArtifacts()">Process All Included</button>
+      </div>
       <div class="file-explorer">`;
 
     // New artifacts
@@ -270,7 +275,13 @@ async function viewIngest() {
       const catInfo = ARTIFACT_CATEGORIES.find(c => c.value === a.category) || {icon:'📄', label:a.category};
       const toggleClass = a.include ? 'toggle-on' : 'toggle-off';
       const toggleLabel = a.include ? 'Included' : 'Excluded';
-      const statusColor = a.status === 'processed' ? 'var(--accent2)' : a.status === 'failed' ? 'var(--danger)' : 'var(--text-dim)';
+      const statusColor = a.status === 'processed' ? 'var(--accent2)' : a.status === 'failed' ? 'var(--danger)' : a.status === 'processing' ? 'var(--warn)' : 'var(--text-dim)';
+
+      // Format metadata display
+      const metaEntries = Object.entries(a.metadata || {});
+      const metaHtml = metaEntries.length ? metaEntries.map(([k,v]) =>
+        `<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:8px;margin:1px">${k}: ${Array.isArray(v)?v.join(', '):v}</span>`
+      ).join(' ') : '';
 
       registryHtml += `<div class="file-item">
         <div class="file-header" onclick="toggleFileExpand(this)">
@@ -279,8 +290,7 @@ async function viewIngest() {
           <span class="file-name">${escHtml(a.title || a.fileName || 'Untitled')}</span>
           <span class="tag">${catInfo.label}</span>
           <span class="tag" style="border-color:${statusColor};color:${statusColor}">${a.status}</span>
-          <span style="font-size:10px;color:var(--text-dim)">${a.type}</span>
-          <span style="font-size:10px;color:var(--text-dim);margin-left:auto">${a.createdAt?.slice(0,16)||''}</span>
+          <span style="font-size:10px;color:var(--text-dim)">${a.createdAt?.slice(0,10)||''}</span>
           <span class="file-toggle ${toggleClass}" onclick="event.stopPropagation();toggleArtifact('${a.artifactId}',${!a.include})">${toggleLabel}</span>
         </div>
         <div class="file-body">
@@ -288,7 +298,11 @@ async function viewIngest() {
             <span>Type: ${a.type}</span> · <span>Category: ${a.category}</span>
             ${a.fileName ? ` · <span>File: ${escHtml(a.fileName)}</span>` : ''}
           </div>
-          <button class="btn btn-sm btn-danger" onclick="deleteArtifact('${a.artifactId}')" style="margin-top:6px">Remove</button>
+          ${metaHtml ? `<div style="margin:4px 0;display:flex;flex-wrap:wrap;gap:3px">${metaHtml}</div>` : ''}
+          <div class="flex mt">
+            <button class="btn btn-sm btn-outline" onclick="processArtifact('${a.artifactId}')">Process</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteArtifact('${a.artifactId}')">Remove</button>
+          </div>
         </div>
       </div>`;
     }
@@ -342,6 +356,99 @@ function switchIngestTab(tab) {
   else document.getElementById('tabPaste').style.background='';
   if (tab==='paths') document.getElementById('tabPaths').style.background='var(--accent)';
   else document.getElementById('tabPaths').style.background='';
+  // Render metadata fields for active tab
+  if (tab === 'upload') renderMetadataFields('upload');
+  if (tab === 'paste') renderMetadataFields('paste');
+}
+
+// ─── Category Metadata Schema (mirrors backend CATEGORY_METADATA_SCHEMA) ───
+const CATEGORY_META_SCHEMA = {
+  project_artefact: [
+    {name:'version', type:'string', label:'Version', required:false},
+    {name:'owner', type:'string', label:'Owner', required:false},
+  ],
+  meetings_comms: [
+    {name:'date', type:'date', label:'Date', required:false},
+    {name:'participants', type:'array', label:'Participants (comma-separated)', required:false},
+  ],
+  delivery_notes: [
+    {name:'sprint', type:'string', label:'Sprint / Iteration', required:false},
+    {name:'date', type:'date', label:'Date', required:false},
+  ],
+  client_context: [
+    {name:'source', type:'enum', label:'Source', required:true, options:['retrospective','historical','lessons_learned','other']},
+    {name:'relevance', type:'enum', label:'Relevance', required:false, options:['delivery','operations','commercial','security','other']},
+  ],
+  architecture_design: [
+    {name:'systemName', type:'string', label:'System Name', required:false},
+    {name:'layer', type:'enum', label:'Layer', required:false, options:['frontend','backend','data','platform','integration','other']},
+  ],
+  external_data: [
+    {name:'sourceUrl', type:'string', label:'Source URL', required:false},
+    {name:'retrievedAt', type:'date', label:'Retrieved At', required:false},
+  ],
+};
+
+function renderMetadataFields(prefix) {
+  const catEl = document.getElementById(prefix + 'Category');
+  const container = document.getElementById(prefix + 'MetaFields');
+  if (!catEl || !container) return;
+  const category = catEl.value;
+  const fields = CATEGORY_META_SCHEMA[category] || [];
+  if (!fields.length) { container.innerHTML = ''; return; }
+  let html = '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin:8px 0;background:var(--bg)"><p style="font-size:10px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase">Context Fields</p>';
+  for (const f of fields) {
+    const reqMark = f.required ? ' <span style="color:var(--danger)">*</span>' : '';
+    const fieldId = `${prefix}_meta_${f.name}`;
+    if (f.type === 'enum') {
+      const opts = f.options.map(o => `<option value="${o}">${o.replace(/_/g,' ')}</option>`).join('');
+      html += `<div class="form-row"><label>${f.label}${reqMark}</label><select id="${fieldId}"><option value="">-- select --</option>${opts}</select></div>`;
+    } else if (f.type === 'date') {
+      html += `<div class="form-row"><label>${f.label}${reqMark}</label><input id="${fieldId}" type="date"></div>`;
+    } else if (f.type === 'array') {
+      html += `<div class="form-row"><label>${f.label}${reqMark}</label><input id="${fieldId}" placeholder="e.g. Alice, Bob, Charlie"></div>`;
+    } else {
+      html += `<div class="form-row"><label>${f.label}${reqMark}</label><input id="${fieldId}" placeholder="${f.label}"></div>`;
+    }
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function collectMetadata(prefix) {
+  const catEl = document.getElementById(prefix + 'Category');
+  if (!catEl) return {};
+  const category = catEl.value;
+  const fields = CATEGORY_META_SCHEMA[category] || [];
+  const metadata = {};
+  for (const f of fields) {
+    const el = document.getElementById(`${prefix}_meta_${f.name}`);
+    if (!el) continue;
+    let val = el.value.trim();
+    if (!val) continue;
+    if (f.type === 'array') {
+      metadata[f.name] = val.split(',').map(s => s.trim()).filter(Boolean);
+    } else {
+      metadata[f.name] = val;
+    }
+  }
+  return metadata;
+}
+
+function validateMetadata(prefix) {
+  const catEl = document.getElementById(prefix + 'Category');
+  if (!catEl) return {valid:true, errors:[]};
+  const category = catEl.value;
+  const fields = CATEGORY_META_SCHEMA[category] || [];
+  const errors = [];
+  for (const f of fields) {
+    if (!f.required) continue;
+    const el = document.getElementById(`${prefix}_meta_${f.name}`);
+    if (!el || !el.value.trim()) {
+      errors.push(`${f.label} is required for category '${category.replace(/_/g,' ')}'`);
+    }
+  }
+  return {valid: errors.length === 0, errors};
 }
 
 async function doUploadArtifact() {
@@ -354,6 +461,11 @@ async function doUploadArtifact() {
   if (!fileInput.files.length) { el.innerHTML = '<p style="color:var(--danger)">Please select a file</p>'; return; }
   if (!category) { el.innerHTML = '<p style="color:var(--danger)">Category is required</p>'; return; }
 
+  // Validate metadata (required fields check)
+  const {valid, errors} = validateMetadata('upload');
+  if (!valid) { el.innerHTML = `<p style="color:var(--danger)">${errors.join('<br>')}</p>`; return; }
+
+  const metadata = collectMetadata('upload');
   const file = fileInput.files[0];
   el.innerHTML = '<p style="color:var(--text-dim)">Uploading...</p>';
 
@@ -362,6 +474,7 @@ async function doUploadArtifact() {
   formData.append('file', file);
   formData.append('category', category);
   if (title) formData.append('title', title);
+  if (Object.keys(metadata).length) formData.append('metadata', JSON.stringify(metadata));
 
   try {
     const resp = await fetch(`/api/v1/projects/${pid}/artifacts/upload`, { method: 'POST', body: formData });
@@ -389,15 +502,20 @@ async function doPasteArtifact() {
   if (!text.trim()) { el.innerHTML = '<p style="color:var(--danger)">Text content is required</p>'; return; }
   if (!category) { el.innerHTML = '<p style="color:var(--danger)">Category is required</p>'; return; }
 
+  // Validate metadata (required fields check)
+  const {valid, errors} = validateMetadata('paste');
+  if (!valid) { el.innerHTML = `<p style="color:var(--danger)">${errors.join('<br>')}</p>`; return; }
+
+  const metadata = collectMetadata('paste');
   el.innerHTML = '<p style="color:var(--text-dim)">Saving...</p>';
-  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/text`, { category, title, text });
+  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/text`, { category, title, text, metadata });
   if (r.artifact) {
     el.innerHTML = `<p style="color:var(--accent2)">Saved: ${escHtml(r.artifact.title)}</p>`;
     document.getElementById('pasteText').value = '';
     document.getElementById('pasteTitle').value = '';
     setTimeout(() => render(), 800);
   } else {
-    el.innerHTML = `<p style="color:var(--danger)">${r.error || 'Save failed'}</p>`;
+    el.innerHTML = `<p style="color:var(--danger)">${r.error || r.message || 'Save failed'}</p>`;
   }
 }
 
@@ -412,6 +530,28 @@ async function deleteArtifact(artifactId) {
   const pid = state.current.id;
   await api('POST', `/api/v1/projects/${pid}/artifacts/${artifactId}/delete`, {});
   render();
+}
+
+async function processArtifact(artifactId) {
+  const pid = state.current.id;
+  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/${artifactId}/process`, {});
+  if (r.job) {
+    alert(`Processing queued (job: ${r.job.jobId})`);
+    setTimeout(() => render(), 500);
+  } else {
+    alert(r.error || r.message || 'Processing failed');
+  }
+}
+
+async function processAllArtifacts() {
+  const pid = state.current.id;
+  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/process`, {onlyIncluded: true});
+  if (r.queuedArtifactIds) {
+    alert(`Queued ${r.queuedArtifactIds.length} artifact(s) for processing`);
+    setTimeout(() => render(), 500);
+  } else {
+    alert(r.error || r.message || 'Processing failed');
+  }
 }
 
 function toggleFileExpand(el) {
