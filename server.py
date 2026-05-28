@@ -55,11 +55,19 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = self.path.split("/")[3]
             self._handle_build_context(project_id)
         elif self.path == "/api/review":
-            self._json_response(
-                {"message": "Persona review not yet implemented"}, status=501
-            )
+            self._handle_review()
+        elif self.path == "/api/personas":
+            self._handle_list_personas()
         else:
             self._json_response({"error": "Not found"}, status=404)
+
+    def do_OPTIONS(self) -> None:
+        """Handle CORS preflight."""
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def _handle_create_project(self) -> None:
         """Handle project creation."""
@@ -107,6 +115,41 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, status=404)
         except Exception as e:
             self._json_response({"error": str(e)}, status=500)
+
+    def _handle_review(self) -> None:
+        """Handle persona review request."""
+        body = self._read_body()
+        if not body:
+            self._json_response({"error": "Request body required"}, status=400)
+            return
+
+        project_id = body.get("project_id")
+        persona_name = body.get("persona")
+        ai_backend = body.get("ai_backend", "files_only")
+
+        if not project_id:
+            self._json_response({"error": "project_id required"}, status=400)
+            return
+        if not persona_name:
+            self._json_response({"error": "persona required"}, status=400)
+            return
+
+        try:
+            result = project_manager.run_persona_review(
+                project_id=project_id,
+                persona_name=persona_name,
+                ai_backend=ai_backend,
+            )
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+        except Exception as e:
+            self._json_response({"error": str(e)}, status=500)
+
+    def _handle_list_personas(self) -> None:
+        """Handle listing available personas."""
+        from personas.engine import list_personas
+        self._json_response({"personas": list_personas()})
 
     def _handle_build_context(self, project_id: str) -> None:
         """Build/rebuild project intelligence from ingested documents."""

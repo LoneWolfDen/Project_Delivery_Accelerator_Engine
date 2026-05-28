@@ -255,3 +255,83 @@ def get_project_summary(project_id: str) -> str:
     if not intelligence:
         return "No intelligence built yet. Run build-context first."
     return build_context_summary(intelligence)
+
+
+
+def run_persona_review(
+    project_id: str,
+    persona_name: str,
+    ai_backend: str = "files_only",
+) -> Dict[str, Any]:
+    """Run a persona-driven review for a project.
+
+    Loads built intelligence, runs the persona engine, stores the result.
+
+    Args:
+        project_id: Project ID.
+        persona_name: Persona to use (e.g. 'solution_architect').
+        ai_backend: 'files_only', 'ollama', or 'bedrock'.
+
+    Returns:
+        Review result dict.
+
+    Raises:
+        ValueError: If project not found or no intelligence built.
+    """
+    from personas.engine import run_review
+
+    project = get_project(project_id)
+    if project is None:
+        raise ValueError(f"Project not found: {project_id}")
+
+    intelligence = get_project_intelligence(project_id)
+    if not intelligence:
+        raise ValueError(
+            f"No intelligence built for project: {project_id}. "
+            "Run build-context first."
+        )
+
+    # Run the review
+    review = run_review(
+        persona_name=persona_name,
+        context=intelligence,
+        ai_backend=ai_backend,
+    )
+
+    # Store review result
+    _store_review(project_id, review)
+
+    return review
+
+
+def get_project_reviews(project_id: str) -> List[Dict[str, Any]]:
+    """Load all stored reviews for a project.
+
+    Args:
+        project_id: Project ID.
+
+    Returns:
+        List of review result dicts, newest first.
+    """
+    reviews_dir = PROJECTS_DIR / project_id / "reviews"
+    if not reviews_dir.exists():
+        return []
+
+    reviews = []
+    for json_file in sorted(reviews_dir.glob("*.json"), reverse=True):
+        with open(json_file) as f:
+            reviews.append(json.load(f))
+    return reviews
+
+
+def _store_review(project_id: str, review: Dict[str, Any]) -> None:
+    """Persist a review result to disk."""
+    reviews_dir = PROJECTS_DIR / project_id / "reviews"
+    reviews_dir.mkdir(exist_ok=True)
+
+    persona_id = review.get("persona_id", "unknown")
+    timestamp = review.get("timestamp", "").replace(":", "-").replace("+", "")[:19]
+    filename = f"{persona_id}_{timestamp}.json"
+
+    with open(reviews_dir / filename, "w") as f:
+        json.dump(review, f, indent=2)
