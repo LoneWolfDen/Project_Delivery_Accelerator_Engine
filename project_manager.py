@@ -186,3 +186,72 @@ def _update_project_files(project_id: str, file_paths: List[Path]) -> None:
             p["files"] = sorted(existing_files)
             break
     save_projects(projects)
+
+
+
+def build_project_intelligence(project_id: str) -> Dict[str, Any]:
+    """Build (or rebuild) project intelligence from all ingested documents.
+
+    Reads all context JSON files, runs the context builder,
+    and persists the result.
+
+    Args:
+        project_id: Project ID.
+
+    Returns:
+        Built context dict with metadata.
+
+    Raises:
+        ValueError: If project not found or no documents ingested.
+    """
+    from processors.context_builder import build_context
+
+    project = get_project(project_id)
+    if project is None:
+        raise ValueError(f"Project not found: {project_id}")
+
+    documents = get_project_context(project_id)
+    if not documents:
+        raise ValueError(f"No documents ingested for project: {project_id}")
+
+    context = build_context(documents)
+
+    # Persist intelligence
+    intelligence_path = PROJECTS_DIR / project_id / "intelligence.json"
+    with open(intelligence_path, "w") as f:
+        json.dump(context, f, indent=2)
+
+    return context
+
+
+def get_project_intelligence(project_id: str) -> Dict[str, Any]:
+    """Load built intelligence for a project.
+
+    Args:
+        project_id: Project ID.
+
+    Returns:
+        Intelligence dict, or empty dict if not yet built.
+    """
+    intelligence_path = PROJECTS_DIR / project_id / "intelligence.json"
+    if not intelligence_path.exists():
+        return {}
+    with open(intelligence_path) as f:
+        return json.load(f)
+
+
+def get_project_summary(project_id: str) -> str:
+    """Get a token-efficient summary of project intelligence.
+
+    Args:
+        project_id: Project ID.
+
+    Returns:
+        Text summary suitable for prompt injection.
+    """
+    from processors.context_builder import build_context_summary
+
+    intelligence = get_project_intelligence(project_id)
+    if not intelligence:
+        return "No intelligence built yet. Run build-context first."
+    return build_context_summary(intelligence)

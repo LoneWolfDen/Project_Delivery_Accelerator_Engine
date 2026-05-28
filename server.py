@@ -34,6 +34,14 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = self.path.split("/")[3]
             context = project_manager.get_project_context(project_id)
             self._json_response({"project_id": project_id, "documents": context})
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/intelligence"):
+            project_id = self.path.split("/")[3]
+            intelligence = project_manager.get_project_intelligence(project_id)
+            self._json_response({"project_id": project_id, "intelligence": intelligence})
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/summary"):
+            project_id = self.path.split("/")[3]
+            summary = project_manager.get_project_summary(project_id)
+            self._json_response({"project_id": project_id, "summary": summary})
         else:
             self._json_response({"error": "Not found"}, status=404)
 
@@ -43,6 +51,9 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._handle_create_project()
         elif self.path == "/api/ingest":
             self._handle_ingest()
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/build-context"):
+            project_id = self.path.split("/")[3]
+            self._handle_build_context(project_id)
         elif self.path == "/api/review":
             self._json_response(
                 {"message": "Persona review not yet implemented"}, status=501
@@ -91,6 +102,16 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         try:
             paths = [Path(fp) for fp in file_paths]
             result = project_manager.ingest_files_to_project(project_id, paths)
+            self._json_response(result)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=404)
+        except Exception as e:
+            self._json_response({"error": str(e)}, status=500)
+
+    def _handle_build_context(self, project_id: str) -> None:
+        """Build/rebuild project intelligence from ingested documents."""
+        try:
+            result = project_manager.build_project_intelligence(project_id)
             self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=404)
