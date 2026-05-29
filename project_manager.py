@@ -837,19 +837,45 @@ def run_persona_review(
         versions = store.list_versions()
         latest_version_id = versions[0]["version_id"] if versions else "v0"
 
-        # Get included file names for review context
+        # Get included file names for review context – merge BOTH systems:
+        # 1. Legacy context/ documents (ingested via /api/ingest)
+        # 2. New artifact v1 uploads (ingested via /api/v1/artifacts/upload|text)
         documents = get_project_context(project_id)
         file_toggles = get_file_toggles(project_id)
-        included_files = [
+
+        # Legacy files: filter by toggle state
+        legacy_included_files = [
             d.get("filename", "")
             for d in documents
-            if file_toggles.get(d.get("filename", ""), True)
+            if file_toggles.get(d.get("filename", ""), True) and d.get("filename", "")
         ]
-        categories = list(set(
+        legacy_categories = list(set(
             d.get("metadata", {}).get("source_type", "")
             for d in documents
             if file_toggles.get(d.get("filename", ""), True)
+            and d.get("metadata", {}).get("source_type", "")
         ))
+
+        # New artifact v1 files: include those with include=True
+        artifact_included_files: List[str] = []
+        artifact_categories: List[str] = []
+        try:
+            from processors.artifact_store import list_artifacts
+            artifacts = list_artifacts(project_id)
+            for art in artifacts:
+                if art.get("include", True):
+                    label = art.get("title") or art.get("fileName") or art.get("artifactId", "")
+                    if label:
+                        artifact_included_files.append(label)
+                    cat = art.get("category", "")
+                    if cat:
+                        artifact_categories.append(cat)
+        except Exception:
+            pass
+
+        # Merge and deduplicate
+        included_files = list(dict.fromkeys(legacy_included_files + artifact_included_files))
+        categories = list(dict.fromkeys(legacy_categories + artifact_categories))
 
         store.create_review(
             version_id=latest_version_id,
