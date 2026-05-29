@@ -173,8 +173,8 @@ async function viewDashboard() {
   const ds = metrics.data_source || {};
 
   // Version / Review selectors – Reviews FILTERED by selected version
-  const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===selVersion?'selected':''}>${v.version_id} ${v.label||''} (${v.created_at?.slice(0,10)||''})</option>`).join('');
-  const rOpts = availableReviews.map(r => `<option value="${r.review_id}" ${r.review_id===selReview?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
+  const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===ds.version?'selected':''}>${v.version_id} ${v.label||''} (${v.created_at?.slice(0,10)||''})</option>`).join('');
+  const rOpts = availableReviews.map(r => `<option value="${r.review_id}" ${r.review_id===ds.review?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
 
   const selectorHtml = (versions.length) ? `<div class="card"><h2>Data Context</h2>
     <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Select a version and review to scope all dashboard data</p>

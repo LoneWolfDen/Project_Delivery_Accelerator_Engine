@@ -269,20 +269,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/phase"):
             project_id = clean_path.split("/")[3]
             self._handle_hierarchy_phase_transition(project_id)
-        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path and clean_path.endswith("/delete"):
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/delete"):
             # POST /api/projects/{id}/hierarchy/reviews/{review_id}/delete
-            parts = clean_path.split("/")
+            parts = self.path.split("/")
             project_id = parts[3]
             review_id = parts[6]
             self._handle_delete_review(project_id, review_id)
-        elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path and clean_path.endswith("/set-active-review"):
+        elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path and self.path.endswith("/set-active-review"):
             # POST /api/projects/{id}/hierarchy/versions/{version_id}/set-active-review
-            parts = clean_path.split("/")
+            parts = self.path.split("/")
             project_id = parts[3]
             version_id = parts[6]
             self._handle_set_active_review(project_id, version_id)
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/toggle-file"):
-            project_id = clean_path.split("/")[3]
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/toggle-file"):
+            project_id = self.path.split("/")[3]
             self._handle_toggle_file(project_id)
         # ── Guardrails ──
         elif clean_path == "/api/validate-files":
