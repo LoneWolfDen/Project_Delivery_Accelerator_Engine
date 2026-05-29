@@ -599,7 +599,18 @@ async function viewDashboard(){
 }
 
 function navigateToVersion(vid){state._dashVersion=vid;state._dashReview='';state.tab='dashboard';render();}
-function navigateToIntelligence(cat){state._intelCategory=cat;switchTab('intelligence');}
+function navigateToIntelligence(cat){
+  state._intelCategory=cat;
+  switchTab('intelligence');
+  // Scroll to the category section after render
+  setTimeout(()=>{
+    const el=document.getElementById(`intel_${cat}`);
+    if(el){
+      el.scrollIntoView({behavior:'smooth',block:'start'});
+      el.setAttribute('open','');
+    }
+  },100);
+}
 function toggleDebug(){state._debugMode=!state._debugMode;render();}
 function onVersionChange(){
   const v=document.getElementById('dashVersion');
@@ -980,11 +991,21 @@ async function viewIntelligence(){
   // Try to get data from review first (if selected), then from intelligence
   let revFindings={};
   let intelligenceData={};
+  let versionData=null;
   
+  // Load review findings if review is selected
   if(ds.review){
     try{
       const rd=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${ds.review}`);
       if(rd&&rd.findings)revFindings=rd.findings;
+    }catch(e){}
+  }
+  
+  // Load version data if version is selected
+  if(ds.version){
+    try{
+      const vd=await api('GET',`/api/projects/${pid}/hierarchy/versions/${ds.version}`);
+      if(vd)versionData=vd;
     }catch(e){}
   }
   
@@ -994,12 +1015,20 @@ async function viewIntelligence(){
     intelligenceData=data.intelligence||data;
   }catch(e){}
   
-  // Determine which source to use
+  // Determine which source to use (priority: review findings > version context > intelligence.json)
   const useReview=Object.keys(revFindings).length>0;
-  const src=useReview?revFindings:intelligenceData;
+  const useVersion=versionData&&versionData.scope;
+  let src=intelligenceData;
+  
+  if(useReview){
+    src=revFindings;
+  }else if(useVersion){
+    // Use version data, which contains the actual intelligence context that was used
+    src=intelligenceData;  // Version shares same structure as intelligence
+  }
   
   // Check if we have any data at all
-  if(!useReview && !intelligenceData.risks && !intelligenceData.constraints && !intelligenceData.scope){
+  if(!useReview && !useVersion && !intelligenceData.risks && !intelligenceData.constraints && !intelligenceData.scope){
     return`<div class="card"><div class="empty"><div class="empty-icon">🧠</div>
       <p>No intelligence built yet.</p>
       <button class="btn mt" onclick="buildContext()">Run Intelligence Now</button></div></div>`;
@@ -1018,12 +1047,12 @@ async function viewIntelligence(){
       </div>
     </div>
     ${ds.version?`<p style="font-size:11px;color:var(--accent)">
-      Scope: <strong>${escHtml(ds.version_label||ds.version)}</strong> → <strong>${ds.review_persona?escHtml(ds.review_persona)+' ('+ds.review+')':ds.review||'latest'}</strong>
+      Scope: <strong>${escHtml(ds.version_label||ds.version)}</strong>${ds.review?' → <strong>'+escHtml(ds.review_persona?ds.review_persona+' ('+ds.review+')':ds.review)+'</strong>':''}
     </p>`:''}
   </div>`;
 
   let html=header;
-  const allCats=useReview?Object.keys(revFindings):cats;
+  const allCats=useReview?Object.keys(revFindings).filter(k=>cats.includes(k)||Array.isArray(revFindings[k])):cats;
   for(const c of allCats){
     const items=src[c]||[];
     if(!items.length)continue;
