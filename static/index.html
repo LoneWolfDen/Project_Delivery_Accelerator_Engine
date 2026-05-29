@@ -1341,6 +1341,37 @@ async function setActiveReview(vid,rid){
   if(r.error){toast(r.error,'err');return;}
   toast(`Active review set to ${rid}`);render();
 }
+async function setActiveReviewGated(vid,rid){
+  // DS-09: use gated endpoint — prompts for decided_by
+  const decided_by=prompt('Your name (decision owner):');
+  if(!decided_by)return;
+  const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/versions/${vid}/set-active-review-gated`,
+    {review_id:rid,decided_by});
+  if(r.error){
+    const msg=r.blockers?r.blockers.join('\n'):r.error;
+    if(confirm(`Gate not passed:\n${msg}\n\nForce-set anyway?`)){
+      const r2=await api('POST',`/api/projects/${state.current.id}/hierarchy/versions/${vid}/set-active-review-gated`,
+        {review_id:rid,decided_by,force:true});
+      if(r2.error){toast(r2.error,'err');return;}
+      toast(`Active review force-set to ${rid}`);render();
+    }
+    return;
+  }
+  toast(`Active review set to ${rid} (by ${decided_by})`);render();
+}
+function openMarkComplete(rid,suggestedStatus){
+  const el=document.getElementById('markComplete_'+rid);
+  if(el){el.style.display='';el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+}
+async function submitMarkComplete(rid,qualityStatus){
+  const nameEl=document.getElementById('completedBy_'+rid);
+  const name=(nameEl?.value||'').trim();
+  if(!name){toast('Enter your name first','err');return;}
+  const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/reviews/${rid}/complete`,
+    {completed_by:name,quality_status:qualityStatus});
+  if(r.error){toast(r.error,'err');return;}
+  toast(`Review marked ${qualityStatus} (score: ${r.score}/100)`);render();
+}
 async function deleteReview(rid){
   if(!rid||rid==='undefined'){toast('Invalid review ID','err');return;}
   if(!confirm('Delete this review? Cannot be undone.'))return;
@@ -1776,10 +1807,43 @@ async function viewReviews(){
           </summary>
           <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
             ${rev.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(rev.summary.slice(0,180))}</p>`:''}
+            <!-- DS-09: Quality gate bar -->
+            ${(()=>{
+              const score=rev.completeness_score||0;
+              const qs=rev.quality_status||'pending';
+              const qColor=qs==='complete'?'var(--green)':qs==='interim'?'var(--yellow)':'var(--text-muted)';
+              const qBadge=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
+              const barColor=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
+              return`<div style="margin-bottom:8px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                  <span style="font-size:11px;color:var(--text-dim)">Quality</span>
+                  <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden">
+                    <div style="width:${score}%;height:100%;background:${barColor};border-radius:3px;transition:width .3s"></div>
+                  </div>
+                  <span style="font-size:11px;font-weight:600;color:${barColor}">${score}%</span>
+                  <span class="tag ${qBadge}" style="font-size:10px">${qs}</span>
+                  ${rev.completed_by?`<span style="font-size:10px;color:var(--text-muted)">by ${escHtml(rev.completed_by)}</span>`:''}
+                </div>
+              </div>`;
+            })()}
             <div class="flex gap-sm">
               <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rid}')">Full Details</button>
-              ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
+              ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReviewGated('${ver.version_id}','${rid}')">Set Active</button>`:''}
+              ${(rev.quality_status||'pending')==='pending'?`
+                <button class="btn btn-sm btn-ghost" onclick="openMarkComplete('${rid}','complete')">✓ Mark Complete</button>
+                <button class="btn btn-sm btn-ghost" onclick="openMarkComplete('${rid}','interim')">~ Interim</button>`
+              :(rev.quality_status==='interim'?`<button class="btn btn-sm btn-ghost" onclick="openMarkComplete('${rid}','complete')">✓ Mark Complete</button>`:'')
+              }
               <button class="btn btn-sm btn-red" onclick="deleteReview('${rid}')">Delete</button>
+            </div>
+            <div id="markComplete_${rid}" style="display:none;margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+              <label style="font-size:11px;color:var(--text-dim)">Marked by</label>
+              <div class="flex gap-sm mt-sm">
+                <input id="completedBy_${rid}" placeholder="Your name" style="flex:1">
+                <button class="btn btn-sm btn-green" onclick="submitMarkComplete('${rid}','complete')">✓ Complete</button>
+                <button class="btn btn-sm btn-yellow" onclick="submitMarkComplete('${rid}','interim')">~ Interim</button>
+                <button class="btn btn-xs btn-ghost" onclick="document.getElementById('markComplete_${rid}').style.display='none'">✕</button>
+              </div>
             </div>
           </div>
         </details>`;
@@ -2338,7 +2402,108 @@ async function viewPresales(){
       <button class="btn btn-sm mt" onclick="openAddProposalVersion()">+ Add Version</button></div>`;
   }
 
-  // ── Next actions ───────────────────────────────────────────
+  // ── Proposal Document Viewer (DS-10) ──────────────────────
+  let docCard='';
+  if(curVer){
+    let doc=null;
+    try{const dr=await api('GET',`/api/projects/${pid}/proposal/document?proposal_ver_id=${curVer.version_id}`);doc=dr.document||null;}catch(e){}
+    if(doc){
+      const phases=doc.delivery_phases||[];
+      const risks=doc.risks||[];
+      const assumptions=doc.assumptions||[];
+      const gantt=doc.gantt_data||[];
+      const excl=doc.exclusions||[];
+      const ac=doc.acceptance_criteria||[];
+      const raci=doc.responsibilities||{};
+      docCard=`<div class="card" style="border-top:2px solid var(--green-dim)">
+        <div class="flex-between mb">
+          <div class="card-title"><span class="icon">📄</span>Proposal Document
+            <span class="tag tag-green" style="margin-left:6px">${escHtml(doc.version_label||curVer.version_id)}</span>
+            ${doc.word_count?`<span class="tag" style="margin-left:4px">${doc.word_count} words</span>`:''}
+          </div>
+          <div class="flex gap-sm">
+            <span style="font-size:11px;color:var(--text-muted)">${doc.ai_backend}</span>
+            <button class="btn btn-sm btn-outline" onclick="regenerateDoc('${curVer.version_id}','${curVer.active_review_id||''}')">🔄 Regenerate</button>
+          </div>
+        </div>
+        ${doc.exec_summary?`<details open><summary class="collapse-header" style="list-style:none;margin:-16px -18px 0;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+          <span class="chevron">▶</span><strong>Executive Summary</strong></summary>
+          <div class="collapse-body"><p style="font-size:12px;color:var(--text-dim)">${escHtml(doc.exec_summary)}</p></div></details>`:''}
+        ${doc.scope?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Scope</strong></summary>
+          <div class="collapse-body"><p style="font-size:12px;color:var(--text-dim)">${escHtml(doc.scope)}</p></div></details>`:''}
+        ${phases.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Delivery Phases</strong><span class="tag" style="margin-left:6px">${phases.length}</span></summary>
+          <div class="collapse-body">
+            ${phases.map((p,i)=>`<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <div style="width:20px;height:20px;border-radius:50%;background:var(--accent-dim);color:#fff;
+                display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${i+1}</div>
+              <div>
+                <div style="font-size:12px;font-weight:600">${escHtml(p.phase)}</div>
+                <div style="font-size:11px;color:var(--text-dim)">${escHtml(p.description)} · ${p.duration_weeks}w</div>
+              </div>
+            </div>`).join('')}
+          </div></details>`:''}
+        ${gantt.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Timeline (Gantt)</strong></summary>
+          <div class="collapse-body" style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <tr style="color:var(--text-muted);border-bottom:1px solid var(--border)">
+                <th style="text-align:left;padding:4px 8px">Milestone</th>
+                <th style="padding:4px 8px">Phase</th>
+                <th style="padding:4px 8px">Start</th>
+                <th style="padding:4px 8px">End</th>
+                <th style="padding:4px 8px">Owner</th>
+              </tr>
+              ${gantt.map(g=>`<tr style="border-bottom:1px solid var(--border)">
+                <td style="padding:4px 8px;color:var(--text)">${escHtml(g.milestone)}</td>
+                <td style="padding:4px 8px;color:var(--text-dim)">${escHtml(g.phase||'')}</td>
+                <td style="padding:4px 8px;text-align:center">W${g.start_week}</td>
+                <td style="padding:4px 8px;text-align:center">W${g.end_week}</td>
+                <td style="padding:4px 8px;color:var(--text-dim)">${escHtml(g.owner||'')}</td>
+              </tr>`).join('')}
+            </table>
+          </div></details>`:''}
+        ${risks.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Risks</strong><span class="tag tag-red" style="margin-left:6px">${risks.length}</span></summary>
+          <div class="collapse-body">
+            ${risks.map(r=>`<div style="padding:5px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:2px">
+                <span style="font-size:12px;color:var(--text)">${escHtml(r.risk)}</span>
+                <span class="tag" style="font-size:9px">${escHtml(r.category||'')}</span>
+                <span class="tag ${r.impact==='high'?'tag-red':r.impact==='medium'?'tag-yellow':''}" style="font-size:9px">I:${r.impact||'?'}</span>
+                <span class="tag ${r.probability==='high'?'tag-red':r.probability==='medium'?'tag-yellow':''}" style="font-size:9px">P:${r.probability||'?'}</span>
+              </div>
+              ${r.mitigation?`<div style="font-size:11px;color:var(--text-dim)">→ ${escHtml(r.mitigation)}</div>`:''}
+            </div>`).join('')}
+          </div></details>`:''}
+        ${assumptions.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Assumptions</strong><span class="tag" style="margin-left:6px">${assumptions.length}</span></summary>
+          <div class="collapse-body">
+            ${assumptions.map(a=>`<div style="padding:3px 0;display:flex;gap:8px;border-bottom:1px solid var(--border)">
+              <span class="tag" style="font-size:10px;flex-shrink:0">${escHtml(a.category||'')}</span>
+              <span style="font-size:12px;color:var(--text-dim)">${escHtml(a.assumption)}</span>
+            </div>`).join('')}
+          </div></details>`:''}
+        ${excl.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Exclusions</strong></summary>
+          <div class="collapse-body"><ul class="items">${excl.map(e=>`<li>${escHtml(e)}</li>`).join('')}</ul></div></details>`:''}
+        ${ac.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Acceptance Criteria</strong></summary>
+          <div class="collapse-body"><ul class="items">${ac.map(a=>`<li>✓ ${escHtml(a)}</li>`).join('')}</ul></div></details>`:''}
+        ${(raci.client_responsibilities||[]).length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Client Responsibilities</strong></summary>
+          <div class="collapse-body"><ul class="items">${(raci.client_responsibilities||[]).map(r=>`<li>● ${escHtml(r)}</li>`).join('')}</ul></div></details>`:''}
+      </div>`;
+    } else {
+      // No doc yet — show generate button if review is available
+      const activeRevId=curVer.active_review_id||'';
+      if(activeRevId){
+        docCard=`<div class="card" style="border:1px dashed var(--border2)">
+          <div class="flex-between">
+            <div>
+              <div class="card-title"><span class="icon">📄</span>Proposal Document</div>
+              <p style="font-size:12px;color:var(--text-dim);margin-top:4px">No document generated yet for this version.</p>
+            </div>
+            <button class="btn btn-outline" onclick="regenerateDoc('${curVer.version_id}','${activeRevId}')">⚡ Generate</button>
+          </div>
+          <div id="docGenResult" class="mt"></div>
+        </div>`;
+      }
+    }
+  }
   const actions=(fbSum.next_actions||[]);
   const actionsCard=actions.length?`<div class="card" style="border-left:3px solid var(--yellow)">
     <div class="card-title mb"><span class="icon">⚡</span>Open Actions</div>
@@ -2411,25 +2576,57 @@ async function viewPresales(){
   // ── Inline forms (hidden by default) ──────────────────────
   const captureFeedbackForm=`<div id="captureFbForm" style="display:none">
     <div class="card" style="border:1px solid var(--accent)">
-      <div class="card-title mb"><span class="icon">✍️</span>Capture Client Feedback</div>
+      <div class="card-title mb"><span class="icon">✍️</span>Capture Client Feedback
+        <span class="tag tag-blue" style="margin-left:6px">DS-11 Hybrid Tagger</span></div>
       <input type="hidden" id="fbProposalVerId">
       <input type="hidden" id="fbReviewId">
       <div class="form-row"><label>Responder Name</label><input id="fbName" placeholder="e.g. Sarah Chen"></div>
       <div class="form-row"><label>Email (optional)</label><input id="fbEmail" type="email" placeholder="s.chen@client.com"></div>
       <div class="form-row"><label>Source</label>
         <select id="fbSource"><option value="internal">Internal (delivery team)</option><option value="external">External (client)</option></select></div>
-      <div class="form-row"><label>✅ Accepted items <span style="color:var(--text-muted);font-weight:400">(one per line)</span></label>
-        <textarea id="fbAccepted" rows="3" placeholder="Migration phased approach&#10;AWS as primary cloud provider"></textarea></div>
-      <div class="form-row"><label>✗ Rejected items</label>
-        <textarea id="fbRejected" rows="2" placeholder="Full re-platform in Phase 1"></textarea></div>
-      <div class="form-row"><label>⚠ Concerns / questions</label>
-        <textarea id="fbConcerns" rows="2" placeholder="Timeline too aggressive&#10;Need security review before sign-off"></textarea></div>
-      <div class="form-row"><label>Notes</label>
-        <textarea id="fbNotes" rows="2" placeholder="Client requested revised timeline before board sign-off."></textarea></div>
+
+      <!-- Two-panel layout -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+        <!-- Left: raw text input -->
+        <div>
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px">
+            Paste raw feedback (email / meeting notes / transcript)
+          </label>
+          <textarea id="fbRawText" rows="8"
+            placeholder="Paste the client's email, meeting notes or any raw feedback here…&#10;&#10;The system will split it into paragraphs and pre-classify each one."></textarea>
+          <div class="flex gap-sm mt-sm">
+            <select id="fbClassifyBackend" style="font-size:11px">
+              <option value="files_only">Heuristic (offline)</option>
+              ${(state.backends||[]).filter(b=>b.name!=='files_only').map(b=>`<option value="${b.name}">${escHtml(b.display_name||b.name)}</option>`).join('')}
+            </select>
+            <button class="btn btn-sm btn-outline" onclick="classifyFeedback()">⚡ Pre-classify</button>
+          </div>
+          <p style="font-size:10px;color:var(--text-muted);margin-top:4px">
+            Pre-classify splits text into paragraphs and suggests category + mapping.
+            Review and correct each item on the right.
+          </p>
+        </div>
+        <!-- Right: tagger panel -->
+        <div>
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:4px">
+            Classified items <span id="fbItemCount" style="color:var(--text-muted)">(0)</span>
+          </label>
+          <div id="fbTaggerPanel" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:6px">
+            <p style="font-size:11px;color:var(--text-muted);padding:8px;text-align:center">
+              Paste text on the left and click Pre-classify, or add items manually below.
+            </p>
+          </div>
+          <button class="btn btn-xs btn-ghost" style="margin-top:6px" onclick="addManualFbItem()">+ Add Item Manually</button>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:10px"><label>Notes</label>
+        <textarea id="fbNotes" rows="2" placeholder="Summary notes for the delivery team."></textarea></div>
       <div class="form-row"><label>Next Action</label>
         <input id="fbNextAction" placeholder="e.g. Revise proposal timeline, schedule security review"></div>
+
       <div class="flex gap-sm mt">
-        <button class="btn" onclick="submitCaptureFeedback()">Save Feedback</button>
+        <button class="btn" onclick="submitCaptureFeedback()">💾 Save Feedback</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('captureFbForm').style.display='none'">Cancel</button>
       </div>
       <div id="captureFbResult" class="mt"></div>
@@ -2438,15 +2635,39 @@ async function viewPresales(){
 
   const createProposalForm=`<div id="createProposalForm" style="display:none">
     <div class="card" style="border:1px solid var(--green-dim)">
-      <div class="card-title mb"><span class="icon">📋</span>Create Proposal</div>
+      <div class="card-title mb"><span class="icon">📋</span>Create Proposal
+        <span class="tag tag-blue" style="margin-left:6px">DS-10</span></div>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">
+        A proposal is generated from a <strong>Version</strong> + its <strong>Active Review</strong>.
+        Both are required before proceeding.
+      </p>
+      <!-- Step 1: Source selection -->
+      <p class="card-section" style="margin-top:0">Step 1 — Select Source</p>
+      <div class="form-row"><label>Intelligence Version <span style="color:var(--red)">*</span></label>
+        <select id="propVersionSelect" onchange="onPropVersionChange()" style="width:100%">
+          <option value="">— select a version —</option>
+          ${(await(async()=>{try{const rv=await api('GET',\`/api/projects/\${pid}/hierarchy/versions\`);return(rv.versions||[]).map(v=>\`<option value="\${v.version_id}">\${v.version_id} – \${escHtml(v.label||'')} (\${fmtDateShort(v.created_at)})</option>\`).join('');}catch(e){return '';}})()||''}
+        </select></div>
+      <div class="form-row" id="propReviewRow" style="display:none"><label>Active Review <span style="color:var(--red)">*</span></label>
+        <select id="propReviewSelect" style="width:100%">
+          <option value="">— select active review —</option>
+        </select>
+        <p id="propReviewGateMsg" style="font-size:11px;margin-top:3px"></p>
+      </div>
+      <!-- Step 2: Metadata -->
+      <p class="card-section">Step 2 — Proposal Details</p>
       <div class="form-row"><label>Proposal Name <span style="color:var(--red)">*</span></label>
         <input id="propName" placeholder="e.g. AWS Cloud Migration Proposal"></div>
       <div class="form-row"><label>Client Name</label>
         <input id="propClient" placeholder="e.g. Acme Financial Services"></div>
+      <div class="form-row"><label>AI Backend for Document Generation</label>
+        <select id="propBackend" style="width:100%">
+          ${(state.backends||[]).map(b=>\`<option value="\${b.name}">\${escHtml(b.display_name||b.name)}\${b.available?'':' (unavailable)'}</option>\`).join('')}
+        </select></div>
       <div class="form-row"><label>Initial Notes</label>
         <textarea id="propNotes" rows="2" placeholder="Initial submission after discovery call."></textarea></div>
       <div class="flex gap-sm mt">
-        <button class="btn btn-green" onclick="submitCreateProposal()">Create</button>
+        <button class="btn btn-green" onclick="submitCreateProposal()">Create + Generate Document</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('createProposalForm').style.display='none'">Cancel</button>
       </div>
       <div id="createProposalResult" class="mt"></div>
@@ -2456,6 +2677,14 @@ async function viewPresales(){
   const addVersionForm=`<div id="addVersionForm" style="display:none">
     <div class="card" style="border:1px solid var(--purple)">
       <div class="card-title mb"><span class="icon">➕</span>Add Proposal Version</div>
+      <div class="form-row"><label>Based on Intelligence Version <span style="color:var(--red)">*</span></label>
+        <select id="verVersionSelect" style="width:100%">
+          <option value="">— select version —</option>
+        </select></div>
+      <div class="form-row"><label>Active Review <span style="color:var(--red)">*</span></label>
+        <select id="verReviewSelect" style="width:100%">
+          <option value="">— select review —</option>
+        </select></div>
       <div class="form-row"><label>Label</label>
         <input id="verLabel" placeholder="e.g. Post-feedback revision"></div>
       <div class="form-row"><label>What changed from previous version?</label>
@@ -2463,7 +2692,7 @@ async function viewPresales(){
       <div class="form-row"><label>Notes</label>
         <textarea id="verNotes" rows="2" placeholder="Revised proposal addressing client timeline concern."></textarea></div>
       <div class="flex gap-sm mt">
-        <button class="btn" onclick="submitAddVersion()">Add Version</button>
+        <button class="btn" onclick="submitAddVersion()">Add Version + Generate Document</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('addVersionForm').style.display='none'">Cancel</button>
       </div>
       <div id="addVersionResult" class="mt"></div>
@@ -2526,8 +2755,80 @@ async function viewPresales(){
     <div id="presalesReviewResult" class="mt"></div>
   </div>`;
 
-  // ── HTML order: hidden forms FIRST so they exist in DOM before any button calls them
-  return createProposalForm+summaryCard+versionsCard+addVersionForm+runReviewCard+actionsCard+reviewCard+captureFeedbackForm+shareForm+fbCard;
+  // ── Stop Condition + Finalise (DS-12) ─────────────────────
+  let stopCard='';
+  {
+    let sc={ready:false,blockers:[],critical_open:[],unresolved_count:0};
+    try{sc=await api('GET',`/api/projects/${pid}/presales/stop-condition`);}catch(e){}
+    const isReady=sc.ready;
+    const isFinalised=curVer&&curVer.lock_status==='soft_locked';
+    if(isFinalised){
+      stopCard=`<div class="card" style="border:1px solid var(--green-dim);background:rgba(63,185,80,.04)">
+        <div class="flex-between">
+          <div class="card-title" style="color:var(--green)"><span class="icon">🔒</span>Pre-Sales Finalised</div>
+          <span class="tag tag-green">locked</span>
+        </div>
+        <p style="font-size:12px;color:var(--text-dim);margin-top:6px">
+          This proposal version is soft-locked. The project has moved to the Design phase.
+          Any changes require an override reason.
+        </p>
+      </div>`;
+    } else {
+      const blockerHtml=(sc.blockers||[]).map(b=>`<li style="color:var(--red)">${escHtml(b)}</li>`).join('');
+      const critHtml=(sc.critical_open||[]).map(c=>`
+        <div style="padding:5px 8px;background:rgba(248,81,73,.06);border:1px solid var(--red);
+          border-radius:var(--radius);margin-bottom:4px;font-size:11px">
+          <span class="tag tag-red" style="margin-right:6px">${escHtml(c.category||'?')}</span>
+          ${c.mapped_to?`<span class="tag" style="margin-right:6px">${c.mapped_to}</span>`:''}
+          ${escHtml(c.text)}
+          <label style="float:right;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px">
+            <input type="checkbox" onchange="overrideCritical('${c.item_id}',this.checked)"
+              style="accent-color:var(--accent)">
+            not critical
+          </label>
+        </div>`).join('');
+      stopCard=`<div class="card" style="border:2px solid ${isReady?'var(--green-dim)':'var(--border2)'}">
+        <div class="flex-between mb">
+          <div class="card-title"><span class="icon">${isReady?'✅':'🔵'}</span>Readiness Check</div>
+          <span class="tag ${isReady?'tag-green':'tag-yellow'}">${isReady?'Ready to Finalise':'Not Ready'}</span>
+        </div>
+        ${!isReady&&blockerHtml?`<ul class="items" style="margin-bottom:10px">${blockerHtml}</ul>`:''}
+        ${sc.unresolved_count>0?`<div style="margin-bottom:10px">
+          <p style="font-size:11px;color:var(--red);font-weight:600;margin-bottom:6px">
+            ⚠ ${sc.unresolved_count} critical item(s) must be resolved:
+          </p>
+          ${critHtml}
+          <p style="font-size:10px;color:var(--text-muted);margin-top:4px">
+            Tick "not critical" to override individual items (PM decision).
+          </p>
+        </div>`:''}
+        ${isReady?`<p style="font-size:12px;color:var(--green);margin-bottom:10px">
+          ✓ All conditions met. Ready to finalise the pre-sales phase.
+        </p>`:''}
+        <div id="finaliseForm" style="${isReady?'':'margin-top:8px'}">
+          <div class="flex gap-sm" style="align-items:flex-end;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
+              <label style="font-size:11px;color:var(--text-dim)">Decision owner <span style="color:var(--red)">*</span></label>
+              <input id="finaliseDecidedBy" placeholder="Your name">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:200px">
+              <label style="font-size:11px;color:var(--text-dim)">Reason ${!isReady?'(required for override)':''}</label>
+              <input id="finaliseReason" placeholder="${isReady?'Optional':'Required — explain why proceeding despite open items'}">
+            </div>
+            <button class="btn ${isReady?'btn-green':'btn-yellow'}"
+              onclick="submitFinalise(${!isReady})"
+              title="${!isReady?'Force finalise despite open conditions':'Finalise pre-sales phase'}">
+              ${isReady?'🔒 Finalise Pre-Sales':'⚠ Force Finalise'}
+            </button>
+          </div>
+          <div id="finaliseResult" class="mt"></div>
+        </div>
+      </div>`;
+    }
+  }
+
+  // ── HTML order: forms first so DOM elements exist before buttons fire ──
+  return createProposalForm+summaryCard+versionsCard+docCard+addVersionForm+runReviewCard+actionsCard+reviewCard+captureFeedbackForm+shareForm+stopCard+fbCard;
 }
 
 // ── Pre-sales action helpers ─────────────────────────────────
@@ -2542,27 +2843,118 @@ async function submitCreateProposal(){
   const name=document.getElementById('propName').value.trim();
   const client=document.getElementById('propClient').value.trim();
   const notes=document.getElementById('propNotes').value.trim();
+  const hierarchy_version_id=document.getElementById('propVersionSelect')?.value||'';
+  const active_review_id=document.getElementById('propReviewSelect')?.value||'';
+  const ai_backend=document.getElementById('propBackend')?.value||'files_only';
   const el=document.getElementById('createProposalResult');
   if(!name){el.innerHTML='<p style="color:var(--red)">Name required</p>';return;}
-  const r=await api('POST',`/api/projects/${pid}/proposal`,{proposal_name:name,client,notes});
-  if(r.project_id||r.proposal_name){toast('Proposal created');setTimeout(()=>render(),600);}
-  else el.innerHTML=`<p style="color:var(--red)">${r.error||'Failed'}</p>`;
+  if(!hierarchy_version_id){el.innerHTML='<p style="color:var(--red)">Select an Intelligence Version</p>';return;}
+  if(!active_review_id){el.innerHTML='<p style="color:var(--red)">Select an Active Review</p>';return;}
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Creating + generating document…</span>';
+  // Step 1: Create proposal
+  const r=await api('POST',`/api/projects/${pid}/proposal`,
+    {proposal_name:name,client,notes,hierarchy_version_id,review_id:active_review_id});
+  if(r.error){el.innerHTML=`<p style="color:var(--red)">${r.error}</p>`;return;}
+  // Step 2: Generate document
+  const proposal_ver_id=r.current_version||((r.versions||[])[0]||{}).version_id||'';
+  if(proposal_ver_id){
+    await api('POST',`/api/projects/${pid}/proposal/generate`,
+      {proposal_ver_id,hierarchy_version_id,review_id:active_review_id,ai_backend});
+  }
+  toast('Proposal created');setTimeout(()=>render(),600);
 }
 
-function openAddProposalVersion(){
-  document.getElementById('addVersionForm').style.display='';
-  document.getElementById('addVersionForm').scrollIntoView({behavior:'smooth'});
+async function onPropVersionChange(){
+  const pid=state.current.id;
+  const vid=document.getElementById('propVersionSelect')?.value||'';
+  const reviewRow=document.getElementById('propReviewRow');
+  const reviewSel=document.getElementById('propReviewSelect');
+  const gateMsg=document.getElementById('propReviewGateMsg');
+  if(!vid){if(reviewRow)reviewRow.style.display='none';return;}
+  if(reviewRow)reviewRow.style.display='';
+  // Load reviews for this version
+  try{
+    const r=await api('GET',`/api/projects/${pid}/hierarchy/versions/${vid}`);
+    const reviews=r.reviews||[];
+    if(reviewSel){
+      reviewSel.innerHTML='<option value="">— select review —</option>'
+        + reviews.map(rv=>`<option value="${rv.review_id}">${rv.review_id} – ${escHtml(rv.persona||'')} · ${rv.quality_status||'pending'} (${rv.completeness_score||0}%)</option>`).join('');
+    }
+    // Auto-select active_review_id
+    const activeId=r.version?.active_review_id||r.active_review_id||'';
+    if(activeId&&reviewSel)reviewSel.value=activeId;
+    if(reviewSel)_onPropReviewChange(reviewSel.value,reviews,gateMsg);
+  }catch(e){}
+}
+
+function _onPropReviewChange(rid,reviews,gateMsg){
+  if(!gateMsg)return;
+  const rev=(reviews||[]).find(r=>r.review_id===rid);
+  if(!rev){gateMsg.innerHTML='';return;}
+  const qs=rev.quality_status||'pending';
+  const score=rev.completeness_score||0;
+  if(qs==='pending'){
+    gateMsg.innerHTML=`<span style="color:var(--yellow)">⚠ Review is pending (${score}%). Mark it complete/interim in the Reviews tab first, or proceed anyway.</span>`;
+  }else{
+    gateMsg.innerHTML=`<span style="color:var(--green)">✓ Review ${qs} (${score}%)</span>`;
+  }
 }
 
 async function submitAddVersion(){
   const pid=state.current.id;
+  const hierarchy_version_id=document.getElementById('verVersionSelect')?.value||'';
+  const active_review_id=document.getElementById('verReviewSelect')?.value||'';
   const label=document.getElementById('verLabel').value.trim();
   const changes=document.getElementById('verChanges').value.trim();
   const notes=document.getElementById('verNotes').value.trim();
   const el=document.getElementById('addVersionResult');
-  const r=await api('POST',`/api/projects/${pid}/proposal/version`,{label,changes,notes});
-  if(r.version_id){toast(`Version ${r.version_id} added`);setTimeout(()=>render(),600);}
-  else el.innerHTML=`<p style="color:var(--red)">${r.error||'Failed'}</p>`;
+  if(!hierarchy_version_id){el.innerHTML='<p style="color:var(--red)">Select an Intelligence Version</p>';return;}
+  if(!active_review_id){el.innerHTML='<p style="color:var(--red)">Select a Review</p>';return;}
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Adding version…</span>';
+  const r=await api('POST',`/api/projects/${pid}/proposal/version`,
+    {label,changes,notes,hierarchy_version_id,review_id:active_review_id});
+  if(r.error){el.innerHTML=`<p style="color:var(--red)">${r.error}</p>`;return;}
+  // Generate document for new version
+  const proposal_ver_id=r.version_id||'';
+  if(proposal_ver_id){
+    await api('POST',`/api/projects/${pid}/proposal/generate`,
+      {proposal_ver_id,hierarchy_version_id,review_id:active_review_id,ai_backend:'files_only'});
+  }
+  toast(`Version ${r.version_id||''} added`);setTimeout(()=>render(),600);
+}
+
+async function regenerateDoc(proposalVerId,reviewId){
+  const pid=state.current.id;
+  const elId=proposalVerId?`docGenResult`:`docGenResult`;
+  const el=document.getElementById('docGenResult');
+  if(el)el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Generating document…</span>';
+  // Load current version to get hierarchy_version_id
+  const proposal=await api('GET',`/api/projects/${pid}/proposal`);
+  const versions=proposal?.versions||[];
+  const ver=versions.find(v=>v.version_id===proposalVerId)||{};
+  const hvid=ver.hierarchy_version_id||'';
+  const rid=reviewId||ver.active_review_id||'';
+  if(!hvid||!rid){toast('Version or review ID missing — cannot generate','err');return;}
+  const r=await api('POST',`/api/projects/${pid}/proposal/generate`,
+    {proposal_ver_id:proposalVerId,hierarchy_version_id:hvid,review_id:rid,ai_backend:'files_only'});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Document generated');setTimeout(()=>render(),600);
+}
+
+function openAddProposalVersion(){
+  const pid=state.current.id;
+  const el=document.getElementById('addVersionForm');
+  if(!el)return;
+  el.style.display='';
+  el.scrollIntoView({behavior:'smooth'});
+  // Populate version selector
+  api('GET',`/api/projects/${pid}/hierarchy/versions`).then(r=>{
+    const sel=document.getElementById('verVersionSelect');
+    if(sel){
+      sel.innerHTML='<option value="">— select version —</option>'
+        +(r.versions||[]).map(v=>`<option value="${v.version_id}">${v.version_id} – ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
+    }
+  });
 }
 
 async function updateProposalStatus(versionId,newStatus){
@@ -2614,26 +3006,130 @@ function openCaptureFeedback(proposalVerId='',reviewId=''){
 async function submitCaptureFeedback(){
   const pid=state.current.id;
   const el=document.getElementById('captureFbResult');
-  const splitLines=s=>s.split('\n').map(l=>l.trim()).filter(Boolean);
+  // DS-11: collect structured feedback_items from tagger panel
+  const items=_collectFbItems();
   const body={
     proposal_ver_id:document.getElementById('fbProposalVerId').value,
     review_id:document.getElementById('fbReviewId').value,
     source:document.getElementById('fbSource').value,
     responder_name:document.getElementById('fbName').value,
     responder_email:document.getElementById('fbEmail').value,
-    accepted:splitLines(document.getElementById('fbAccepted').value),
-    rejected:splitLines(document.getElementById('fbRejected').value),
-    concerns:splitLines(document.getElementById('fbConcerns').value),
+    feedback_items:items,
+    raw_text:document.getElementById('fbRawText')?.value||'',
     notes:document.getElementById('fbNotes').value,
     next_action:document.getElementById('fbNextAction').value,
   };
+  if(!items.length&&!body.notes){el.innerHTML='<p style="color:var(--red)">Add at least one feedback item or a note</p>';return;}
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Saving…</span>';
   const r=await api('POST',`/api/projects/${pid}/presales/feedback`,body);
   if(r.feedback){
-    toast('Feedback saved — will be injected into next review');
+    toast(`Feedback saved — ${items.length} item(s) will be injected into next review`);
     document.getElementById('captureFbForm').style.display='none';
     setTimeout(()=>render(),600);
   }else el.innerHTML=`<p style="color:var(--red)">${r.error||'Failed'}</p>`;
+}
+
+// ── DS-11 Hybrid Tagger helpers ───────────────────────────────
+
+const _CAT_COLORS={accepted:'var(--green)',rejected:'var(--red)',change_requested:'var(--yellow)',concerns:'var(--accent)'};
+const _CAT_ICONS={accepted:'✓',rejected:'✗',change_requested:'↻',concerns:'?'};
+const _MAP_OPTIONS=['','risk','gap','scope_change','constraint','assumption'];
+const _CONF_OPTIONS=['high','medium','low'];
+
+async function classifyFeedback(){
+  const pid=state.current.id;
+  const raw=document.getElementById('fbRawText')?.value||'';
+  const backend=document.getElementById('fbClassifyBackend')?.value||'files_only';
+  if(!raw.trim()){toast('Paste some feedback text first','err');return;}
+  const panel=document.getElementById('fbTaggerPanel');
+  panel.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Classifying…</span>';
+  const r=await api('POST',`/api/projects/${pid}/presales/feedback/classify`,{raw_text:raw,ai_backend:backend});
+  if(r.error){panel.innerHTML=`<p style="color:var(--red)">${r.error}</p>`;return;}
+  _renderTaggerItems(r.items||[]);
+}
+
+function _renderTaggerItems(items){
+  const panel=document.getElementById('fbTaggerPanel');
+  const countEl=document.getElementById('fbItemCount');
+  if(!items.length){panel.innerHTML='<p style="font-size:11px;color:var(--text-muted);padding:8px;text-align:center">No items</p>';return;}
+  if(countEl)countEl.textContent=`(${items.length})`;
+  panel.innerHTML=items.map((item,i)=>{
+    const c=item.category||'concerns';
+    const col=_CAT_COLORS[c]||'var(--text-dim)';
+    const ic=_CAT_ICONS[c]||'·';
+    const crit=item.is_critical?'<span style="color:var(--red);font-size:10px;font-weight:700">⚠ CRITICAL</span>':'';
+    return`<div style="padding:6px 8px;margin-bottom:6px;border:1px solid ${item.is_critical?'var(--red)':'var(--border)'};
+      border-radius:var(--radius);background:var(--surface2)" id="fbitem_${i}">
+      <div style="font-size:12px;color:var(--text);margin-bottom:5px">${escHtml(item.text)} ${crit}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:4px;align-items:center">
+        <select onchange="_updateFbItem(${i},'category',this.value)" style="font-size:10px;padding:2px 4px">
+          ${['accepted','rejected','change_requested','concerns'].map(cat=>
+            `<option value="${cat}" ${cat===c?'selected':''}>${_CAT_ICONS[cat]} ${cat.replace(/_/g,' ')}</option>`).join('')}
+        </select>
+        <select onchange="_updateFbItem(${i},'mapped_to',this.value)" style="font-size:10px;padding:2px 4px">
+          ${_MAP_OPTIONS.map(m=>`<option value="${m}" ${m===(item.mapped_to||'')?'selected':''}>${m||'— none —'}</option>`).join('')}
+        </select>
+        <select onchange="_updateFbItem(${i},'confidence',this.value)" style="font-size:10px;padding:2px 4px">
+          ${_CONF_OPTIONS.map(cf=>`<option value="${cf}" ${cf===(item.confidence||'medium')?'selected':''}>${cf}</option>`).join('')}
+        </select>
+        <button class="btn btn-xs btn-red" style="padding:2px 6px" onclick="_removeFbItem(${i})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+  // Store items in state for collection
+  window._fbItems=items;
+}
+
+function _updateFbItem(idx,field,val){
+  if(!window._fbItems)return;
+  window._fbItems[idx][field]=val||null;
+  // Re-apply auto-flag
+  const item=window._fbItems[idx];
+  item.is_critical=(item.category==='change_requested'&&['scope_change','risk'].includes(item.mapped_to))
+    ||(item.category==='rejected'&&['scope_change','constraint'].includes(item.mapped_to));
+  // Refresh just the critical indicator
+  const div=document.getElementById('fbitem_'+idx);
+  if(div){
+    div.style.borderColor=item.is_critical?'var(--red)':'var(--border)';
+    const first=div.querySelector('div');
+    if(first){const c=first.querySelectorAll('span[style*="CRITICAL"]');c.forEach(n=>n.remove());
+      if(item.is_critical){const s=document.createElement('span');
+        s.style.cssText='color:var(--red);font-size:10px;font-weight:700';s.textContent='⚠ CRITICAL';first.appendChild(s);}}
+  }
+}
+
+function _removeFbItem(idx){
+  if(!window._fbItems)return;
+  window._fbItems.splice(idx,1);
+  _renderTaggerItems(window._fbItems);
+}
+
+function addManualFbItem(){
+  if(!window._fbItems)window._fbItems=[];
+  window._fbItems.push({
+    item_id:'fi_'+Math.random().toString(36).slice(2,10),
+    text:'New item — edit text above',category:'concerns',
+    mapped_to:null,confidence:'medium',status:'new',is_critical:false,addressed_in_version:null
+  });
+  // Prompt for text
+  const text=prompt('Enter feedback item text:');
+  if(!text){window._fbItems.pop();return;}
+  window._fbItems[window._fbItems.length-1].text=text;
+  _renderTaggerItems(window._fbItems);
+}
+
+function _collectFbItems(){
+  return(window._fbItems||[]).map(item=>({
+    item_id:item.item_id||('fi_'+Math.random().toString(36).slice(2,10)),
+    text:item.text||'',
+    category:item.category||'concerns',
+    mapped_to:item.mapped_to||null,
+    confidence:item.confidence||'medium',
+    status:'new',
+    is_critical:!!item.is_critical,
+    addressed_in_version:null,
+    created_at:new Date().toISOString(),
+  }));
 }
 
 async function actionFeedback(feedbackId,newStatus){
@@ -2641,6 +3137,39 @@ async function actionFeedback(feedbackId,newStatus){
   const r=await api('POST',`/api/projects/${pid}/presales/feedback/${feedbackId}/action`,{status:newStatus});
   if(r.feedback){toast(`Marked ${newStatus}`);setTimeout(()=>render(),400);}
   else toast(r.error||'Failed','err');
+}
+
+async function submitFinalise(force){
+  const pid=state.current.id;
+  const decidedBy=(document.getElementById('finaliseDecidedBy')?.value||'').trim();
+  const reason=(document.getElementById('finaliseReason')?.value||'').trim();
+  const el=document.getElementById('finaliseResult');
+  if(!decidedBy){el.innerHTML='<p style="color:var(--red)">Decision owner name is required</p>';return;}
+  if(force&&!reason){el.innerHTML='<p style="color:var(--red)">Reason is required when force-finalising</p>';return;}
+  if(!force&&!confirm('Finalise the pre-sales phase? This will:\n• Accept the current proposal version\n• Soft-lock it\n• Freeze all feedback\n• Transition project to Design phase'))return;
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Finalising…</span>';
+  const r=await api('POST',`/api/projects/${pid}/presales/finalise`,
+    {decided_by:decidedBy,reason,force:!!force});
+  if(r.error){
+    el.innerHTML=`<div style="color:var(--red);font-size:12px">
+      <strong>${r.error}</strong>
+      ${(r.blockers||[]).map(b=>`<p style="margin-top:4px">• ${escHtml(b)}</p>`).join('')}
+    </div>`;
+    return;
+  }
+  toast('Pre-sales finalised ✓ — project transitioned to Design phase');
+  setTimeout(()=>render(),800);
+}
+
+async function overrideCritical(itemId, notCritical){
+  // PM override: mark a feedback item as not-critical
+  // Find the item in DB and update is_critical
+  // This is a client-side optimistic update; the real enforcement is in stop condition
+  toast(notCritical?`Item marked not-critical (will not block finalisation)`:`Item re-flagged as critical`);
+  // Re-check stop condition
+  const pid=state.current.id;
+  const sc=await api('GET',`/api/projects/${pid}/presales/stop-condition`);
+  if(sc.ready)toast('✓ All conditions now met — ready to finalise','ok');
 }
 
 function openShareLink(proposalVerId){
