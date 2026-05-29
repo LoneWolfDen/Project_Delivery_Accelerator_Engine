@@ -333,11 +333,58 @@ class HierarchyStore:
         return Version(**{k: v for k, v in data.items() if k in Version.__dataclass_fields__})
 
     def list_versions(self, phase_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """List all versions, optionally filtered by phase. Newest first."""
+        """List all versions, optionally filtered by phase. Newest first.
+
+        Each version summary is enriched with LIVE review data so that
+        review_count and active_review_id are always accurate, even if the
+        stored index is stale (e.g. after manual data edits or merges).
+        """
         index = self._load_version_index()
         if phase_id:
             index = [v for v in index if v.get("phase_id") == phase_id]
-        return sorted(index, key=lambda v: v.get("created_at", ""), reverse=True)
+        grouped = self._reviews_by_version()
+        enriched = [self._enrich_version_summary(v, grouped) for v in index]
+        return sorted(enriched, key=lambda v: v.get("created_at", ""), reverse=True)
+
+    # ── Live review enrichment (single source of truth) ──
+
+    def _reviews_by_version(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Group all review summaries by version_id (newest first per group)."""
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for r in self.list_reviews():  # already sorted newest-first
+            grouped.setdefault(r.get("version_id", ""), []).append(r)
+        return grouped
+
+    def _enrich_version_summary(
+        self, summary: Dict[str, Any], grouped: Dict[str, List[Dict[str, Any]]]
+    ) -> Dict[str, Any]:
+        """Recompute review_count + active_review_id from live review data.
+
+        - review_count = actual number of reviews linked to the version.
+        - active_review_id is validated; if missing/invalid it defaults to the
+          latest review for that version.
+        - active_review = the resolved active review summary (or None).
+        """
+        vid = summary.get("version_id", "")
+        v_reviews = grouped.get(vid, [])  # newest-first
+        review_ids = [r.get("review_id") for r in v_reviews if r.get("review_id")]
+
+        active_id = summary.get("active_review_id", "")
+        if active_id not in review_ids:
+            # Default to latest review (newest-first → index 0)
+            active_id = review_ids[0] if review_ids else ""
+
+        active_review = None
+        if active_id:
+            active_review = next(
+                (r for r in v_reviews if r.get("review_id") == active_id), None
+            )
+
+        enriched = dict(summary)
+        enriched["review_count"] = len(v_reviews)
+        enriched["active_review_id"] = active_id
+        enriched["active_review"] = active_review
+        return enriched
 
     def _load_version_index(self) -> List[Dict[str, Any]]:
         index_file = self.base_dir / "versions" / "index.json"
@@ -549,17 +596,29 @@ class HierarchyStore:
         self._save_phases(phases)
 
     def get_active_review_for_version(self, version_id: str) -> Optional[Review]:
-        """Get the active review for a version (or latest if none set)."""
+        """Get the active review for a version (validated, with fallback).
+
+        Resolution order:
+        1. The version's active_review_id (if it still points to a live review).
+        2. The latest review for that version.
+        3. None (no reviews exist).
+        """
         version = self.get_version(version_id)
         if version is None:
             return None
+
+        # Live list of reviews for this version (newest-first)
+        v_reviews = self.list_reviews(version_id=version_id)
+        if not v_reviews:
+            return None
+        review_ids = [r.get("review_id") for r in v_reviews]
+
         active_id = version.active_review_id
-        if active_id:
-            return self.get_review(active_id)
-        # Fallback: latest review for this version
-        if version.review_ids:
-            return self.get_review(version.review_ids[-1])
-        return None
+        if active_id not in review_ids:
+            # Fallback: latest review
+            active_id = v_reviews[0].get("review_id")
+
+        return self.get_review(active_id) if active_id else None
 
     # ── Dashboard Metrics ──
 
@@ -607,7 +666,9 @@ class HierarchyStore:
 
         # Version context
         if target_version:
-            metrics["selected_version"] = target_version.to_summary()
+            v_summary = target_version.to_summary()
+            v_summary["review_count"] = len(scoped_reviews)
+            metrics["selected_version"] = v_summary
             metrics["risks_identified"] = target_version.stats.get("risks", 0)
             metrics["dependencies"] = target_version.stats.get("dependencies", 0)
             metrics["constraints"] = target_version.stats.get("constraints", 0)

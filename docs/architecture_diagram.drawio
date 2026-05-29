@@ -47,7 +47,7 @@
         <mxCell id="ui-group" value="&lt;b&gt;USER INTERFACES&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="20" y="150" width="1160" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="ui-web" value="&lt;b&gt;Web UI (SPA)&lt;/b&gt;&lt;br&gt;static/index.html&lt;br&gt;&lt;br&gt;Multi-project selector&lt;br&gt;Dashboard / Ingest / Intelligence&lt;br&gt;Reviews / Versions / Proposals / Phases" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
+        <mxCell id="ui-web" value="&lt;b&gt;Web UI (SPA)&lt;/b&gt;&lt;br&gt;static/index.html&lt;br&gt;&lt;br&gt;Dashboard (version/review selectors)&lt;br&gt;Ingest / Intelligence / Reviews&lt;br&gt;Versions (Phase→Version→Review tree)&lt;br&gt;Phases / Deep Dive / Admin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
           <mxGeometry x="20" y="35" width="260" height="95" as="geometry" />
         </mxCell>
         <mxCell id="ui-cli" value="&lt;b&gt;CLI (cli.py)&lt;/b&gt;&lt;br&gt;&lt;br&gt;16 commands&lt;br&gt;backends / review --show-prompt&lt;br&gt;--custom-prompt / export" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
@@ -70,10 +70,10 @@
         <mxCell id="orch-group" value="&lt;b&gt;ORCHESTRATION LAYER&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="20" y="320" width="1160" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="orch-pm" value="&lt;b&gt;Project Manager&lt;/b&gt;&lt;br&gt;project_manager.py&lt;br&gt;&lt;br&gt;CRUD (max 5 projects)&lt;br&gt;File routing / orchestration&lt;br&gt;Iteration tracking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
+        <mxCell id="orch-pm" value="&lt;b&gt;Project Manager&lt;/b&gt;&lt;br&gt;project_manager.py&lt;br&gt;&lt;br&gt;CRUD (max 5 projects)&lt;br&gt;Hierarchy: Phase→Version→Review&lt;br&gt;Active review per version&lt;br&gt;Iteration tracking / Deep Dive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
           <mxGeometry x="20" y="35" width="240" height="85" as="geometry" />
         </mxCell>
-        <mxCell id="orch-persona" value="&lt;b&gt;Persona Engine&lt;/b&gt;&lt;br&gt;personas/engine.py&lt;br&gt;&lt;br&gt;4 personas (YAML)&lt;br&gt;Prompt builder + custom prompts&lt;br&gt;AI output parser&lt;br&gt;Fallback to files-only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
+        <mxCell id="orch-persona" value="&lt;b&gt;Persona Engine&lt;/b&gt;&lt;br&gt;personas/engine.py&lt;br&gt;personas/deep_dive.py&lt;br&gt;&lt;br&gt;4 personas (YAML)&lt;br&gt;Deep Dive gap analysis&lt;br&gt;Custom prompts / AI output parser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
           <mxGeometry x="280" y="35" width="240" height="85" as="geometry" />
         </mxCell>
         <mxCell id="orch-backends" value="&lt;b&gt;AI Backend Registry&lt;/b&gt;&lt;br&gt;ai_backends/registry.py&lt;br&gt;&lt;br&gt;6 backends: files_only, ollama,&lt;br&gt;bedrock, gemini, groq, openrouter&lt;br&gt;Pluggable adapter pattern" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
@@ -99,7 +99,7 @@
         <mxCell id="proc-extract" value="&lt;b&gt;Extractors&lt;/b&gt;&lt;br&gt;processors/extractors.py&lt;br&gt;&lt;br&gt;✓ Keyword patterns&lt;br&gt;✓ Table parsing&lt;br&gt;✓ Noise filtering&lt;br&gt;✓ Risk/Constraint/Dep detection&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ AI-powered extraction&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Entity recognition&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
           <mxGeometry x="470" y="30" width="210" height="120" as="geometry" />
         </mxCell>
-        <mxCell id="proc-history" value="&lt;b&gt;History &amp; Versioning&lt;/b&gt;&lt;br&gt;processors/history.py&lt;br&gt;&lt;br&gt;✓ Version snapshots&lt;br&gt;✓ Compare versions&lt;br&gt;✓ Evolution timeline&lt;br&gt;✓ Review history&lt;br&gt;✓ Review comparison" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
+        <mxCell id="proc-history" value="&lt;b&gt;Hierarchy &amp; Versioning&lt;/b&gt;&lt;br&gt;models/hierarchy.py&lt;br&gt;processors/history.py&lt;br&gt;&lt;br&gt;✓ Phase→Version→Review model&lt;br&gt;✓ Active review per version&lt;br&gt;✓ Compare versions&lt;br&gt;✓ Live enrichment (counts)&lt;br&gt;✓ Review CRUD + delete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
           <mxGeometry x="700" y="30" width="200" height="120" as="geometry" />
         </mxCell>
         <mxCell id="proc-proposals" value="&lt;b&gt;Proposals &amp; Phases&lt;/b&gt;&lt;br&gt;processors/proposals.py&lt;br&gt;processors/phases.py&lt;br&gt;&lt;br&gt;✓ Multi-version proposals&lt;br&gt;✓ Status tracking&lt;br&gt;✓ SDLC phase transitions&lt;br&gt;✓ Phase history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
@@ -142,7 +142,7 @@
         <mxCell id="data-group" value="&lt;b&gt;DATA &amp; PERSISTENCE LAYER&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="20" y="820" width="1160" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="data-json" value="&lt;b&gt;JSON File Store&lt;/b&gt;&lt;br&gt;projects_data/&lt;br&gt;&lt;br&gt;✓ projects.json (registry)&lt;br&gt;✓ {id}/context/ (ingested docs)&lt;br&gt;✓ {id}/intelligence.json&lt;br&gt;✓ {id}/reviews/&lt;br&gt;✓ {id}/versions/" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="data-group">
+        <mxCell id="data-json" value="&lt;b&gt;JSON File Store&lt;/b&gt;&lt;br&gt;projects_data/&lt;br&gt;&lt;br&gt;✓ projects.json (registry)&lt;br&gt;✓ {id}/context/ (ingested docs)&lt;br&gt;✓ {id}/intelligence/ (versioned)&lt;br&gt;✓ {id}/hierarchy/phases.json&lt;br&gt;✓ {id}/hierarchy/versions/&lt;br&gt;✓ {id}/hierarchy/reviews/" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="data-group">
           <mxGeometry x="20" y="30" width="220" height="90" as="geometry" />
         </mxCell>
         <mxCell id="data-personas" value="&lt;b&gt;Persona Definitions&lt;/b&gt;&lt;br&gt;personas/definitions/*.yaml&lt;br&gt;&lt;br&gt;✓ 4 built-in personas&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ User-defined personas&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Dynamic persona creation&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="data-group">

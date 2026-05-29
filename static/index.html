@@ -113,6 +113,40 @@ async function api(method, path, body) {
 let state = { projects:[], current:null, tab:'dashboard', backends:[], adminConfig:{}, health:{}, lastDeepDive:null };
 const TABS = ['dashboard','ingest','intelligence','versions','reviews','phases','admin'];
 
+// ─── Shared data helpers (reduce duplicated hierarchy fetching) ───
+// Loads the full hierarchy tree once and derives flat version/review lists.
+async function loadHierarchy(pid) {
+  let hierarchy = {};
+  try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
+  const tree = hierarchy.tree || [];
+  // Flatten versions (newest-first preserved from backend), each carrying its phase + reviews
+  const versions = [];
+  for (const phase of tree) {
+    for (const ver of (phase.versions || [])) {
+      versions.push({ ...ver, phase_label: phase.label, phase_is_current: phase.is_current });
+    }
+  }
+  // Sort versions newest-first by created_at
+  versions.sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
+  return {
+    tree,
+    versions,
+    totalVersions: hierarchy.total_versions || versions.length,
+    totalReviews: hierarchy.total_reviews || 0,
+    currentPhase: hierarchy.current_phase || '',
+  };
+}
+
+// Format a version's label for dropdowns/menus: "v2 - Initial (3 reviews, active: r5 · architect)"
+function formatVersionOption(v) {
+  const count = v.review_count || 0;
+  const ar = v.active_review;
+  let activeStr = '';
+  if (ar) activeStr = `, active: ${ar.review_id}${ar.persona ? ' · ' + ar.persona : ''}`;
+  const label = v.label ? ' - ' + v.label : '';
+  return `${v.version_id}${label} (${count} review${count===1?'':'s'}${activeStr})`;
+}
+
 // ─── Header ───
 function renderHeader() {
   const proj = state.current;
@@ -845,14 +879,17 @@ async function viewVersions() {
   }
 
   // Compare Versions section (M5: all versions available, review context included)
+  // Uses enriched version data (live review_count + active_review) so the dropdown
+  // accurately reflects how many reviews each version has and which is active.
   let allVersions = [];
   try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); allVersions = r.versions || []; } catch(e){}
+  const cmpOpts = allVersions.map(v=>`<option value="${v.version_id}">${formatVersionOption(v)}</option>`).join('');
   const compareHtml = allVersions.length >= 2 ? `<div class="card"><h2>Compare Versions</h2>
-    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Compare intelligence output between any two versions</p>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Compare intelligence output between any two versions. Each version compares using its active review by default.</p>
     <div class="flex">
-      <select id="cmpA">${allVersions.map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''} (${v.review_count||0} reviews)</option>`).join('')}</select>
+      <select id="cmpA">${cmpOpts}</select>
       <span style="color:var(--text-dim)">vs</span>
-      <select id="cmpB">${allVersions.slice().reverse().map(v=>`<option value="${v.version_id}">${v.version_id} ${v.label||''} (${v.review_count||0} reviews)</option>`).join('')}</select>
+      <select id="cmpB">${allVersions.slice().reverse().map(v=>`<option value="${v.version_id}">${formatVersionOption(v)}</option>`).join('')}</select>
       <button class="btn btn-sm" onclick="compareVersions()">Compare</button>
     </div><div id="cmpResult" class="mt"></div></div>` : '';
 
@@ -1027,11 +1064,14 @@ async function viewReviews() {
       <select id="personaSelect">${(personas.personas||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
       <select id="backendSelect">${backendOpts}</select>
       <button class="btn" onclick="runReview()">Run Review</button>
+      <button class="btn btn-outline" onclick="runDeepDive()" title="Structured gap analysis: missing areas, risk flags, clarification questions">Deep Dive Analysis</button>
     </div>
     <div class="form-row mt"><label>Custom Prompt (optional – additional context for AI)</label>
       <textarea id="customPrompt" rows="3" placeholder="e.g. Budget is capped at 500K. Must use only AWS services. Team has 3 senior engineers."></textarea>
     </div>
-    <div id="reviewResult" class="mt"></div></div>` + reviewListHtml;
+    <p style="font-size:10px;color:var(--text-dim);margin-top:4px">Deep Dive performs structured gap analysis (missing areas, risk flags, clarification questions, scope suggestions). Enhanced with AI when an AI backend is selected; falls back to heuristic analysis otherwise.</p>
+    <div id="reviewResult" class="mt"></div>
+    <div id="deepDiveResult" class="mt"></div></div>` + reviewListHtml;
 }
 
 async function runReview() {
