@@ -2646,7 +2646,6 @@ async function viewPresales(){
       <div class="form-row"><label>Intelligence Version <span style="color:var(--red)">*</span></label>
         <select id="propVersionSelect" onchange="onPropVersionChange()" style="width:100%">
           <option value="">— select a version —</option>
-          ${(await(async()=>{try{const rv=await api('GET',\`/api/projects/\${pid}/hierarchy/versions\`);return(rv.versions||[]).map(v=>\`<option value="\${v.version_id}">\${v.version_id} – \${escHtml(v.label||'')} (\${fmtDateShort(v.created_at)})</option>\`).join('');}catch(e){return '';}})()||''}
         </select></div>
       <div class="form-row" id="propReviewRow" style="display:none"><label>Active Review <span style="color:var(--red)">*</span></label>
         <select id="propReviewSelect" style="width:100%">
@@ -2662,7 +2661,7 @@ async function viewPresales(){
         <input id="propClient" placeholder="e.g. Acme Financial Services"></div>
       <div class="form-row"><label>AI Backend for Document Generation</label>
         <select id="propBackend" style="width:100%">
-          ${(state.backends||[]).map(b=>\`<option value="\${b.name}">\${escHtml(b.display_name||b.name)}\${b.available?'':' (unavailable)'}</option>\`).join('')}
+          ${(state.backends||[]).map(b=>`<option value="${b.name}">${escHtml(b.display_name||b.name)}${b.available?'':' (unavailable)'}</option>`).join('')}
         </select></div>
       <div class="form-row"><label>Initial Notes</label>
         <textarea id="propNotes" rows="2" placeholder="Initial submission after discovery call."></textarea></div>
@@ -2834,8 +2833,17 @@ async function viewPresales(){
 // ── Pre-sales action helpers ─────────────────────────────────
 
 function showCreateProposal(){
+  const pid=state.current.id;
   document.getElementById('createProposalForm').style.display='';
   document.getElementById('createProposalForm').scrollIntoView({behavior:'smooth'});
+  // Populate version selector when form opens
+  api('GET',`/api/projects/${pid}/hierarchy/versions`).then(r=>{
+    const sel=document.getElementById('propVersionSelect');
+    if(sel){
+      sel.innerHTML='<option value="">— select a version —</option>'
+        +(r.versions||[]).map(v=>`<option value="${v.version_id}">${v.version_id} – ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
+    }
+  });
 }
 
 async function submitCreateProposal(){
