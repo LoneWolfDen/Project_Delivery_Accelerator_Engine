@@ -173,8 +173,9 @@ async function viewDashboard() {
   const ds = metrics.data_source || {};
 
   // Version / Review selectors – Reviews FILTERED by selected version
-  const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===ds.version?'selected':''}>${v.version_id} ${v.label||''} (${v.created_at?.slice(0,10)||''})</option>`).join('');
-  const rOpts = availableReviews.map(r => `<option value="${r.review_id}" ${r.review_id===ds.review?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
+  // Use selVersion/selReview (user's choice) for selected state, NOT ds.version (API-resolved)
+  const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===selVersion?'selected':''}>${v.version_id} ${v.label||''} (${v.created_at?.slice(0,10)||''})</option>`).join('');
+  const rOpts = availableReviews.map(r => `<option value="${r.review_id}" ${r.review_id===selReview?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
 
   const selectorHtml = (versions.length) ? `<div class="card"><h2>Data Context</h2>
     <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Select a version and review to scope all dashboard data</p>
@@ -877,6 +878,7 @@ async function setActiveReview(versionId, reviewId) {
 
 // Delete a review (M6)
 async function deleteReview(reviewId) {
+  if (!reviewId || reviewId === 'undefined') { alert('Invalid review ID'); return; }
   if (!confirm('Delete this review? This cannot be undone.')) return;
   const pid = state.current.id;
   const r = await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/delete`);
@@ -885,6 +887,7 @@ async function deleteReview(reviewId) {
 }
 
 async function viewReviewDetail(reviewId) {
+  if (!reviewId || reviewId === 'undefined') { alert('Invalid review ID'); return; }
   const pid = state.current.id;
   const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews/${reviewId}`);
   if (r.error) { alert(r.error); return; }
@@ -963,40 +966,53 @@ async function viewReviews() {
   const personas = await api('POST','/api/personas');
   const backendOpts = state.backends.map(b=>`<option value="${b.name}">${b.display_name||b.name} ${b.available?'':'(not configured)'}</option>`).join('');
 
-  // Load hierarchy reviews (all reviews, grouped by version)
-  let versions = [];
-  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = r.versions || []; } catch(e){}
+  // Load full hierarchy tree (includes reviews nested under versions - single API call)
+  let hierarchy = {};
+  try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
+  const tree = hierarchy.tree || [];
 
-  // Build version-scoped review list (M7 T7.1: clickable, expandable)
+  // Flatten: collect all versions that have reviews
+  let versionsWithReviews = [];
+  for (const phase of tree) {
+    for (const ver of (phase.versions || [])) {
+      const reviews = ver.reviews || [];
+      if (reviews.length > 0) {
+        versionsWithReviews.push({ ...ver, phase_label: phase.label });
+      }
+    }
+  }
+
+  // Build version-scoped review list
   let reviewListHtml = '';
-  if (versions.length) {
+  if (versionsWithReviews.length) {
     reviewListHtml = `<div class="card"><h2>Reviews by Version</h2>
-      <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Click a review to expand details (prompt, files, output)</p>`;
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Click a review to expand details. Use Set Active to mark which review represents the current state.</p>`;
 
-    for (const ver of versions) {
-      let verReviews = [];
-      try { const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews?version_id=${ver.version_id}`); verReviews = r.reviews || []; } catch(e){}
-      if (!verReviews.length) continue;
+    for (const ver of versionsWithReviews) {
+      const verReviews = ver.reviews || [];
+      const activeId = ver.active_review_id || '';
 
       reviewListHtml += `<details open style="margin:8px 0;border-left:2px solid var(--border);padding-left:12px">
-        <summary style="cursor:pointer;font-size:12px;font-weight:600">${ver.version_id} – ${ver.label||''} <span class="tag">${verReviews.length} reviews</span></summary>`;
+        <summary style="cursor:pointer;font-size:12px;font-weight:600">${ver.version_id} – ${ver.label||''} <span class="tag">${ver.phase_label||''}</span> <span class="tag">${verReviews.length} reviews</span></summary>`;
 
       for (const rev of verReviews) {
-        const isActive = rev.review_id === ver.active_review_id;
-        reviewListHtml += `<details style="margin:4px 0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+        const rid = rev.review_id || '';
+        const vid = ver.version_id || '';
+        if (!rid) continue; // Skip malformed reviews
+        const isActive = rid === activeId;
+        const borderColor = isActive ? 'var(--accent)' : 'var(--border)';
+        reviewListHtml += `<details style="margin:4px 0;background:var(--bg);border:1px solid ${borderColor};border-radius:var(--radius);padding:8px">
           <summary style="cursor:pointer;font-size:11px">
-            <strong>${rev.review_id}</strong> ${isActive?'<span class="tag tag-ok">active</span>':''}
-            – ${rev.persona} (${rev.ai_backend}) | ${rev.total_findings||0} findings
-            <span style="float:right;font-size:10px;color:var(--text-dim)">${rev.created_at?.slice(0,16)||''}</span>
+            <strong>${rid}</strong> ${isActive?'<span class="tag tag-ok">active</span>':''}
+            – ${rev.persona||'–'} (${rev.ai_backend||'files_only'}) | ${rev.total_findings||0} findings
+            <span style="float:right;font-size:10px;color:var(--text-dim)">${(rev.created_at||'').slice(0,16)}</span>
           </summary>
           <div style="padding:8px 0;font-size:11px">
             ${rev.summary ? `<p style="margin-bottom:6px">${escHtml(rev.summary)}</p>` : ''}
-            ${rev.included_files?.length ? `<div style="margin:4px 0">Files: ${rev.included_files.map(f=>`<span class="tag">${escHtml(f)}</span>`).join(' ')}</div>` : ''}
-            ${rev.categories?.length ? `<div style="margin:4px 0">Categories: ${rev.categories.map(c=>`<span class="tag">${c}</span>`).join(' ')}</div>` : ''}
             <div class="flex mt">
-              <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rev.review_id}')">Full Details</button>
-              ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="setActiveReview('${ver.version_id}','${rev.review_id}')">Set Active</button>` : ''}
-              <button class="btn btn-sm btn-danger" onclick="deleteReview('${rev.review_id}')">Delete</button>
+              <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rid}')">Full Details</button>
+              ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="setActiveReview('${vid}','${rid}')">Set Active</button>` : ''}
+              <button class="btn btn-sm btn-danger" onclick="deleteReview('${rid}')">Delete</button>
             </div>
           </div>
         </details>`;
@@ -1226,9 +1242,15 @@ async function selectProject(id) {
 
 async function buildContext() {
   if (!state.current) return;
-  const label = prompt('Version label (optional):','');
-  const r = await api('POST',`/api/projects/${state.current.id}/build-context`,label?{label}:{});
-  if (r._build_metadata) { alert(`Built: ${r._build_metadata.total_risks||0} risks, ${r._build_metadata.total_constraints||0} constraints, ${r._build_metadata.total_dependencies||0} dependencies`); render(); }
+  // Load version count to generate next version number
+  let nextNum = 1;
+  try { const r = await api('GET',`/api/projects/${state.current.id}/hierarchy/versions`); nextNum = (r.versions||[]).length + 1; } catch(e){}
+  const example = nextNum === 1 ? 'Initial discovery' : 'Post-review update';
+  const label = prompt(`Name this version (max 20 chars).\nThis will create: v${nextNum} - [your label]\n\nExample: "${example}"`, '');
+  if (label === null) return; // User cancelled
+  const trimmed = (label || '').trim().slice(0, 20);
+  const r = await api('POST',`/api/projects/${state.current.id}/build-context`, trimmed ? {label: trimmed} : {});
+  if (r._build_metadata) { alert(`Built v${nextNum}${trimmed ? ' - ' + trimmed : ''}: ${r._build_metadata.total_risks||0} risks, ${r._build_metadata.total_constraints||0} constraints, ${r._build_metadata.total_dependencies||0} dependencies`); render(); }
   else if (r.error) alert(r.error);
 }
 
