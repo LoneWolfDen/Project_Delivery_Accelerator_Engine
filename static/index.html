@@ -429,8 +429,10 @@ function renderHeader(){
   const opts=state.projects.map(p=>
     `<option value="${p.id}" ${p.id===(proj?.id)?'selected':''}>${escHtml(p.name)}</option>`
   ).join('');
+  // Show project name in header if a project is selected, otherwise show app name
+  const displayName = proj ? proj.name : state.appName;
   document.getElementById('header').innerHTML=`
-    <span class="logo">⚡ <span>${escHtml(state.appName)}</span></span>
+    <span class="logo">⚡ <span>${escHtml(displayName)}</span></span>
     ${phase?`<span class="phase-badge">${escHtml(phase)}</span>`:''}
     ${state.projects.length?`<select class="proj-select" onchange="selectProject(this.value)">${opts}</select>`
       :'<span style="color:var(--text-dim);font-size:12px">No projects</span>'}
@@ -762,6 +764,8 @@ async function viewIngest(){
     }
     regHtml+=`</div></div>`;
   }
+  // Update counter after rendering
+  setTimeout(()=>_updateIngestCounter(),50);
   return addCard+regHtml;
 }
 
@@ -1030,6 +1034,13 @@ async function viewIntelligence(){
       </summary>
       <div class="collapse-body"><p style="font-size:12px;white-space:pre-wrap;color:var(--text-dim)">${escHtml(i.scope.slice(0,2000))}</p></div>
     </details>`;
+  }
+  // Scroll to highlighted category after render
+  if(state._intelCategory){
+    setTimeout(()=>{
+      const el=document.getElementById('intel_'+state._intelCategory);
+      if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+    },100);
   }
   state._intelCategory=null;
   return html;
