@@ -47,8 +47,8 @@
         <mxCell id="ui-group" value="&lt;b&gt;USER INTERFACES&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="20" y="150" width="1160" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="ui-web" value="&lt;b&gt;Web UI (SPA)&lt;/b&gt;&lt;br&gt;static/index.html&lt;br&gt;&lt;br&gt;Dashboard (version/review selectors)&lt;br&gt;Ingest / Intelligence / Reviews&lt;br&gt;Versions (Phase→Version→Review tree)&lt;br&gt;Phases / Deep Dive / Admin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
-          <mxGeometry x="20" y="35" width="260" height="95" as="geometry" />
+        <mxCell id="ui-web" value="&lt;b&gt;Web UI (SPA)&lt;/b&gt;&lt;br&gt;static/index.html&lt;br&gt;&lt;br&gt;Dashboard (version/review context)&lt;br&gt;Ingest / Intelligence / Reviews&lt;br&gt;Versions (Phase→Version→Review tree)&lt;br&gt;Sort by date · Expand/Collapse All&lt;br&gt;Compare Versions (enriched diff)&lt;br&gt;Review Full Details (files included)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
+          <mxGeometry x="20" y="35" width="260" height="105" as="geometry" />
         </mxCell>
         <mxCell id="ui-cli" value="&lt;b&gt;CLI (cli.py)&lt;/b&gt;&lt;br&gt;&lt;br&gt;16 commands&lt;br&gt;backends / review --show-prompt&lt;br&gt;--custom-prompt / export" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ui-group">
           <mxGeometry x="300" y="35" width="220" height="95" as="geometry" />
@@ -70,8 +70,8 @@
         <mxCell id="orch-group" value="&lt;b&gt;ORCHESTRATION LAYER&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="20" y="320" width="1160" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="orch-pm" value="&lt;b&gt;Project Manager&lt;/b&gt;&lt;br&gt;project_manager.py&lt;br&gt;&lt;br&gt;CRUD (max 5 projects)&lt;br&gt;Hierarchy: Phase→Version→Review&lt;br&gt;Active review per version&lt;br&gt;Iteration tracking / Deep Dive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
-          <mxGeometry x="20" y="35" width="240" height="85" as="geometry" />
+        <mxCell id="orch-pm" value="&lt;b&gt;Project Manager&lt;/b&gt;&lt;br&gt;project_manager.py&lt;br&gt;&lt;br&gt;CRUD (max 5 projects)&lt;br&gt;Hierarchy: Phase→Version→Review&lt;br&gt;Active review per version&lt;br&gt;Review files: Legacy + Artifact v1&lt;br&gt;Iteration tracking / Deep Dive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
+          <mxGeometry x="20" y="35" width="240" height="95" as="geometry" />
         </mxCell>
         <mxCell id="orch-persona" value="&lt;b&gt;Persona Engine&lt;/b&gt;&lt;br&gt;personas/engine.py&lt;br&gt;personas/deep_dive.py&lt;br&gt;&lt;br&gt;4 personas (YAML)&lt;br&gt;Deep Dive gap analysis&lt;br&gt;Custom prompts / AI output parser" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="orch-group">
           <mxGeometry x="280" y="35" width="240" height="85" as="geometry" />
@@ -99,8 +99,8 @@
         <mxCell id="proc-extract" value="&lt;b&gt;Extractors&lt;/b&gt;&lt;br&gt;processors/extractors.py&lt;br&gt;&lt;br&gt;✓ Keyword patterns&lt;br&gt;✓ Table parsing&lt;br&gt;✓ Noise filtering&lt;br&gt;✓ Risk/Constraint/Dep detection&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ AI-powered extraction&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Entity recognition&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
           <mxGeometry x="470" y="30" width="210" height="120" as="geometry" />
         </mxCell>
-        <mxCell id="proc-history" value="&lt;b&gt;Hierarchy &amp; Versioning&lt;/b&gt;&lt;br&gt;models/hierarchy.py&lt;br&gt;processors/history.py&lt;br&gt;&lt;br&gt;✓ Phase→Version→Review model&lt;br&gt;✓ Active review per version&lt;br&gt;✓ Compare versions&lt;br&gt;✓ Live enrichment (counts)&lt;br&gt;✓ Review CRUD + delete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
-          <mxGeometry x="700" y="30" width="200" height="120" as="geometry" />
+        <mxCell id="proc-history" value="&lt;b&gt;Hierarchy &amp; Versioning&lt;/b&gt;&lt;br&gt;models/hierarchy.py&lt;br&gt;processors/history.py&lt;br&gt;&lt;br&gt;✓ Phase→Version→Review model&lt;br&gt;✓ Active review per version&lt;br&gt;✓ Compare versions (enriched)&lt;br&gt;✓ Live review_count enrichment&lt;br&gt;✓ Review CRUD + delete&lt;br&gt;✓ BUG FIX: compare uses live data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
+          <mxGeometry x="700" y="30" width="200" height="130" as="geometry" />
         </mxCell>
         <mxCell id="proc-proposals" value="&lt;b&gt;Proposals &amp; Phases&lt;/b&gt;&lt;br&gt;processors/proposals.py&lt;br&gt;processors/phases.py&lt;br&gt;&lt;br&gt;✓ Multi-version proposals&lt;br&gt;✓ Status tracking&lt;br&gt;✓ SDLC phase transitions&lt;br&gt;✓ Phase history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="proc-group">
           <mxGeometry x="920" y="30" width="210" height="120" as="geometry" />
@@ -142,8 +142,8 @@
         <mxCell id="data-group" value="&lt;b&gt;DATA &amp; PERSISTENCE LAYER&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
           <mxGeometry x="20" y="820" width="1160" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="data-json" value="&lt;b&gt;JSON File Store&lt;/b&gt;&lt;br&gt;projects_data/&lt;br&gt;&lt;br&gt;✓ projects.json (registry)&lt;br&gt;✓ {id}/context/ (ingested docs)&lt;br&gt;✓ {id}/intelligence/ (versioned)&lt;br&gt;✓ {id}/hierarchy/phases.json&lt;br&gt;✓ {id}/hierarchy/versions/&lt;br&gt;✓ {id}/hierarchy/reviews/" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="data-group">
-          <mxGeometry x="20" y="30" width="220" height="90" as="geometry" />
+        <mxCell id="data-json" value="&lt;b&gt;JSON File Store&lt;/b&gt;&lt;br&gt;projects_data/&lt;br&gt;&lt;br&gt;✓ projects.json (registry)&lt;br&gt;✓ {id}/context/ (legacy docs)&lt;br&gt;✓ {id}/raw/ + artifacts.json (v1)&lt;br&gt;✓ {id}/intelligence/ (versioned)&lt;br&gt;✓ {id}/hierarchy/phases.json&lt;br&gt;✓ {id}/hierarchy/versions/&lt;br&gt;✓ {id}/hierarchy/reviews/" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="data-group">
+          <mxGeometry x="20" y="30" width="220" height="95" as="geometry" />
         </mxCell>
         <mxCell id="data-personas" value="&lt;b&gt;Persona Definitions&lt;/b&gt;&lt;br&gt;personas/definitions/*.yaml&lt;br&gt;&lt;br&gt;✓ 4 built-in personas&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ User-defined personas&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Dynamic persona creation&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="data-group">
           <mxGeometry x="270" y="30" width="220" height="90" as="geometry" />
@@ -177,7 +177,7 @@
         <mxCell id="ops-docs" value="&lt;b&gt;Documentation&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ API Reference&lt;br&gt;✓ Getting Started&lt;br&gt;✓ Architecture guide" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ops-group">
           <mxGeometry x="640" y="30" width="180" height="70" as="geometry" />
         </mxCell>
-        <mxCell id="ops-deploy" value="&lt;b&gt;Deployment (v3)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Docker container&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ AWS ECS/Fargate&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Health checks&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="ops-group">
+        <mxCell id="ops-deploy" value="&lt;b&gt;Deployment&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Docker container&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ AWS ECS/Fargate&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;✗ Health checks&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="ops-group">
           <mxGeometry x="840" y="30" width="170" height="70" as="geometry" />
         </mxCell>
         <mxCell id="ops-monitor" value="&lt;b&gt;Observability (v4)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Token tracking&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Cost analytics&lt;/font&gt;&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;◇ Usage dashboards&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ops-group">
@@ -338,6 +338,64 @@
         </mxCell>
         <mxCell id="f5" value="&lt;b&gt;Team Collaboration&lt;/b&gt;&lt;br&gt;Multi-user support&lt;br&gt;Auth (Cognito/OAuth)&lt;br&gt;Role-based access" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
           <mxGeometry x="920" y="540" width="180" height="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- PAGE 3: UI/UX FEATURE MAP (v3.1 refactor) -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <diagram id="uiux-features" name="UI/UX Features (v3.1)">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" /><mxCell id="1" parent="0" />
+        <mxCell id="ux-title" value="&lt;b&gt;UI/UX FEATURE MAP – v3.1 Refactor&lt;/b&gt;" style="text;html=1;align=center;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="300" y="20" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- BUG FIXES -->
+        <mxCell id="bug-group" value="&lt;b&gt;BUG FIXES&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="70" width="560" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="bug1" value="&lt;b&gt;✓ BUG #1 FIXED&lt;/b&gt;&lt;br&gt;Compare Versions showed &quot;0 reviews&quot;&lt;br&gt;&lt;br&gt;Root cause: compareVersions() re-fetched&lt;br&gt;raw version object (no enrichment).&lt;br&gt;&lt;br&gt;Fix: Use enriched allVersions list from&lt;br&gt;hierarchy tree (includes live review_count&lt;br&gt;+ active_review from _enrich_version_summary)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="bug-group">
+          <mxGeometry x="20" y="35" width="240" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="bug2" value="&lt;b&gt;✓ BUG #2 FIXED&lt;/b&gt;&lt;br&gt;Review Full Details missing files&lt;br&gt;&lt;br&gt;Root cause: run_persona_review() only&lt;br&gt;collected legacy context/ documents.&lt;br&gt;Artifact v1 uploads ignored.&lt;br&gt;&lt;br&gt;Fix: Merge legacy files + artifact v1&lt;br&gt;(include=True) before create_review()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="bug-group">
+          <mxGeometry x="300" y="35" width="240" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- UI ENHANCEMENTS -->
+        <mxCell id="ux-group" value="&lt;b&gt;UI/UX ENHANCEMENTS&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="220" width="1160" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="ux1" value="&lt;b&gt;Design System&lt;/b&gt;&lt;br&gt;&lt;br&gt;Extended CSS tokens&lt;br&gt;surface/surface2/surface3&lt;br&gt;Status tags: green/blue/yellow/red/purple&lt;br&gt;Sticky header&lt;br&gt;Toast notifications&lt;br&gt;Inline loading spinners&lt;br&gt;Loading bar on tab switch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ux-group">
+          <mxGeometry x="20" y="35" width="200" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ux2" value="&lt;b&gt;Versions Tab&lt;/b&gt;&lt;br&gt;&lt;br&gt;Expand All / Collapse All&lt;br&gt;Sort: Newest / Oldest / Most Reviews&lt;br&gt;Inline review toggle (click to expand)&lt;br&gt;Risk trend sparkline bar chart&lt;br&gt;Relative timestamps (&quot;2h ago&quot;)&lt;br&gt;Enriched compare dropdown&lt;br&gt;  (shows live review counts)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ux-group">
+          <mxGeometry x="240" y="35" width="200" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ux3" value="&lt;b&gt;Reviews Tab&lt;/b&gt;&lt;br&gt;&lt;br&gt;Expand All / Collapse All&lt;br&gt;Sort: Newest / Oldest / Most Findings&lt;br&gt;Collapsible findings per section&lt;br&gt;Files Included (merged both systems)&lt;br&gt;AI metadata (tokens, latency, model)&lt;br&gt;Prompt / Raw output collapsible&lt;br&gt;No-file-recorded fallback message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ux-group">
+          <mxGeometry x="460" y="35" width="200" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ux4" value="&lt;b&gt;Compare Versions Diff&lt;/b&gt;&lt;br&gt;&lt;br&gt;Per-category collapsible rows&lt;br&gt;Added items (green +)&lt;br&gt;Removed items (red −)&lt;br&gt;Net change count + arrow&lt;br&gt;Overall trend badge&lt;br&gt;Timestamps shown&lt;br&gt;Overflow: &quot;… and N more&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ux-group">
+          <mxGeometry x="680" y="35" width="200" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ux5" value="&lt;b&gt;Intelligence Tab&lt;/b&gt;&lt;br&gt;&lt;br&gt;Expand All / Collapse All&lt;br&gt;Collapsible per category&lt;br&gt;Auto-open highlighted category&lt;br&gt;Scope version/review context label&lt;br&gt;Rebuild button inline&lt;br&gt;Empty state with CTA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="ux-group">
+          <mxGeometry x="900" y="35" width="200" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- DATA FLOW UX -->
+        <mxCell id="flow-group" value="&lt;b&gt;KEY DATA FLOWS (Fixed)&lt;/b&gt;" style="swimlane;startSize=25;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="440" width="880" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="flow1" value="Compare Versions Flow (Fixed)&lt;br&gt;&lt;br&gt;GET /hierarchy → tree (enriched)&lt;br&gt;→ allVersions (live review_count)&lt;br&gt;→ cmpA/cmpB dropdowns&lt;br&gt;→ POST /compare-versions&lt;br&gt;→ per-category diff display" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="flow-group">
+          <mxGeometry x="20" y="35" width="250" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="flow2" value="Review Files Flow (Fixed)&lt;br&gt;&lt;br&gt;POST /api/review&lt;br&gt;→ legacy context/ files (file_toggles)&lt;br&gt;→ artifact v1 (include=True)&lt;br&gt;→ merge + dedup&lt;br&gt;→ create_review(included_files=merged)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="flow-group">
+          <mxGeometry x="300" y="35" width="250" height="85" as="geometry" />
+        </mxCell>
+        <mxCell id="flow3" value="Sort + Filter Flow (New)&lt;br&gt;&lt;br&gt;state._versionSort / _reviewSort&lt;br&gt;→ client-side array sort&lt;br&gt;→ render() (no extra API calls)&lt;br&gt;&lt;br&gt;Expand/Collapse: DOM toggle only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="flow-group">
+          <mxGeometry x="580" y="35" width="250" height="85" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

@@ -3,29 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Project Delivery Accelerator v3</title>
+<title>Contexta – Project Delivery Accelerator</title>
 <style>
+/* ─── Design Tokens ─────────────────────────────────────────── */
 :root {
-  --bg: #0f1419; --surface: #1a2332; --surface2: #243447;
-  --border: #2d4055; --text: #e6edf3; --text-dim: #8b949e;
-  --accent: #58a6ff; --accent2: #3fb950; --warn: #d29922; --danger: #f85149;
-  --radius: 8px; --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  --bg:       #0d1117;
+  --surface:  #161b22;
+  --surface2: #21262d;
+  --surface3: #30363d;
+  --border:   #30363d;
+  --border2:  #484f58;
+  --text:     #e6edf3;
+  --text-dim: #8b949e;
+  --text-muted: #6e7681;
+  --accent:   #58a6ff;
+  --accent-dim:#1f6feb;
+  --green:    #3fb950;
+  --green-dim:#238636;
+  --yellow:   #d29922;
+  --red:      #f85149;
+  --purple:   #bc8cff;
+  --radius:   6px;
+  --radius-lg:10px;
+  --shadow:   0 4px 16px rgba(0,0,0,0.4);
+  --transition: 0.15s ease;
 }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: var(--bg); color: var(--text); line-height: 1.5; }
-header { background: var(--surface); border-bottom: 1px solid var(--border);
-  padding: 10px 24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-header h1 { font-size: 16px; font-weight: 600; white-space:nowrap; }
-header .phase-badge { background: var(--accent); color:#000; padding:2px 10px;
-  border-radius: 12px; font-size: 11px; font-weight: 600; }
-.proj-select { background:var(--surface2); border:1px solid var(--border);
-  color:var(--text); padding:5px 10px; border-radius:var(--radius); font-size:12px; }
-nav { display:flex; gap:3px; margin-left:auto; flex-wrap:wrap; }
-nav button { background:transparent; color:var(--text-dim); border:none;
-  padding:7px 12px; border-radius:var(--radius); cursor:pointer; font-size:12px; }
-nav button:hover, nav button.active { background:var(--surface2); color:var(--accent); }
-main { max-width:1100px; margin:0 auto; padding:20px; }
 </style>
 </head>
 <body>
@@ -34,1532 +36,1915 @@ main { max-width:1100px; margin:0 auto; padding:20px; }
   <main id="main"></main>
 </div>
 
+
 <style>
-.card { background:var(--surface); border:1px solid var(--border);
-  border-radius:var(--radius); padding:18px; margin-bottom:14px; }
-.card h2 { font-size:14px; margin-bottom:10px; color:var(--accent); }
-.card h3 { font-size:12px; margin:10px 0 5px; color:var(--text-dim); }
-.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
-.stat { text-align:center; padding:10px; background:var(--surface2); border-radius:var(--radius); }
-.stat .num { font-size:24px; font-weight:700; color:var(--accent); }
-.stat .label { font-size:10px; color:var(--text-dim); text-transform:uppercase; }
-ul.items { list-style:none; }
-ul.items li { padding:5px 0; border-bottom:1px solid var(--border); font-size:12px; }
-ul.items li:last-child { border:none; }
-.btn { background:var(--accent); color:#000; border:none; padding:7px 14px;
-  border-radius:var(--radius); cursor:pointer; font-size:12px; font-weight:600; }
-.btn:hover { opacity:0.85; }
-.btn-outline { background:transparent; color:var(--accent); border:1px solid var(--accent); }
-.btn-sm { padding:4px 10px; font-size:11px; }
-.btn-warn { background:var(--warn); color:#000; }
-.btn-danger { background:var(--danger); color:#fff; }
-input,select,textarea { background:var(--surface2); border:1px solid var(--border);
-  color:var(--text); padding:7px 10px; border-radius:var(--radius); font-size:12px; width:100%; }
-select { width:auto; min-width:140px; }
-textarea { resize:vertical; min-height:60px; font-family:inherit; }
-.form-row { margin-bottom:10px; }
-.form-row label { display:block; font-size:11px; color:var(--text-dim); margin-bottom:3px; }
-.flex { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-.mt { margin-top:10px; }
-.empty { text-align:center; padding:32px; color:var(--text-dim); }
-.tag { display:inline-block; background:var(--surface2); padding:2px 8px;
-  border-radius:10px; font-size:10px; margin:2px; }
-.tag-ok { border:1px solid var(--accent2); color:var(--accent2); }
-.tag-off { border:1px solid var(--text-dim); color:var(--text-dim); }
-.findings-section { margin:8px 0; }
-.findings-section .title { font-size:11px; font-weight:600; color:var(--text-dim);
-  margin-bottom:3px; text-transform:uppercase; }
-.findings-section li { font-size:12px; padding:3px 0; }
-.prompt-box { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);
-  padding:10px; font-family:monospace; font-size:11px; white-space:pre-wrap;
-  max-height:300px; overflow-y:auto; margin-top:8px; color:var(--text-dim); }
-.collapsible summary { cursor:pointer; font-size:12px; color:var(--accent); margin-top:8px; }
-.backend-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:6px; margin-top:8px; }
-.backend-chip { padding:6px 10px; border-radius:var(--radius); font-size:11px;
-  background:var(--surface2); border:1px solid var(--border); text-align:center; }
-.backend-chip.available { border-color:var(--accent2); }
-/* File Explorer */
-.file-explorer { border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
-.file-item { border-bottom:1px solid var(--border); }
-.file-item:last-child { border-bottom:none; }
-.file-header { display:flex; align-items:center; gap:8px; padding:10px 12px; cursor:pointer;
-  font-size:12px; transition:background 0.15s; }
-.file-header:hover { background:var(--surface2); }
-.file-chevron { font-size:9px; color:var(--text-dim); transition:transform 0.2s; width:12px; }
-.file-item.expanded .file-chevron { transform:rotate(90deg); }
-.file-icon { font-size:14px; }
-.file-name { font-weight:600; color:var(--text); }
-.file-body { display:none; padding:0 12px 10px 34px; }
-.file-item.expanded .file-body { display:block; }
-.file-section { padding:3px 0; font-size:11px; color:var(--text-dim);
-  border-left:2px solid var(--border); padding-left:8px; margin:3px 0; }
-.section-title { color:var(--text); font-weight:500; }
-.file-toggle { font-size:10px; padding:3px 8px; border-radius:10px; cursor:pointer;
-  margin-left:auto; font-weight:600; user-select:none; white-space:nowrap; }
-.toggle-on { background:rgba(63,185,80,0.15); color:var(--accent2); border:1px solid var(--accent2); }
-.toggle-off { background:rgba(248,81,73,0.1); color:var(--danger); border:1px solid var(--danger); }
+/* ─── Reset & Base ──────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;font-size:13px;}
+a{color:var(--accent);text-decoration:none;}
+a:hover{text-decoration:underline;}
+
+/* ─── Header ────────────────────────────────────────────────── */
+header{background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  min-height:48px;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,.5);}
+.logo{font-size:15px;font-weight:700;color:var(--text);white-space:nowrap;letter-spacing:-.3px;}
+.logo span{color:var(--accent);}
+.phase-badge{background:var(--accent-dim);color:var(--accent);padding:2px 10px;
+  border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
+.proj-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  padding:5px 10px;border-radius:var(--radius);font-size:12px;cursor:pointer;}
+.proj-select:focus{outline:none;border-color:var(--accent);}
+nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap;}
+nav button{background:transparent;color:var(--text-dim);border:none;padding:6px 11px;
+  border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:500;
+  transition:background var(--transition),color var(--transition);}
+nav button:hover{background:var(--surface2);color:var(--text);}
+nav button.active{background:var(--surface2);color:var(--accent);}
+
+/* ─── Layout ────────────────────────────────────────────────── */
+main{max-width:1080px;margin:0 auto;padding:20px 16px;}
+
+/* ─── Cards ─────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:16px 18px;margin-bottom:12px;}
+.card-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;}
+.card-title .icon{font-size:15px;}
+.card-subtitle{font-size:11px;color:var(--text-dim);margin-bottom:10px;}
+.card-section{font-size:11px;font-weight:600;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.6px;margin:10px 0 5px;}
+
+/* ─── Stat Grid ─────────────────────────────────────────────── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;}
+.stat{background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:12px 14px;text-align:center;
+  cursor:pointer;transition:border-color var(--transition),background var(--transition);}
+.stat:hover{border-color:var(--accent);background:var(--surface3);}
+.stat .num{font-size:26px;font-weight:700;color:var(--accent);line-height:1.2;}
+.stat .lbl{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+.stat.green .num{color:var(--green);}
+.stat.yellow .num{color:var(--yellow);}
+.stat.red .num{color:var(--red);}
+.stat.purple .num{color:var(--purple);}
 </style>
 
+
+<style>
+/* ─── Buttons ───────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:5px;background:var(--accent);
+  color:#000;border:none;padding:6px 14px;border-radius:var(--radius);
+  cursor:pointer;font-size:12px;font-weight:600;transition:opacity var(--transition);}
+.btn:hover{opacity:.85;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+.btn-sm{padding:4px 10px;font-size:11px;}
+.btn-xs{padding:2px 8px;font-size:10px;border-radius:4px;}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+.btn-outline:hover{background:rgba(88,166,255,.08);}
+.btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border);}
+.btn-ghost:hover{color:var(--text);border-color:var(--border2);}
+.btn-green{background:var(--green-dim);color:#fff;}
+.btn-yellow{background:var(--yellow);color:#000;}
+.btn-red{background:var(--red);color:#fff;}
+.btn-icon{padding:5px 7px;background:transparent;border:1px solid var(--border);
+  color:var(--text-dim);border-radius:var(--radius);cursor:pointer;font-size:12px;
+  transition:all var(--transition);}
+.btn-icon:hover{border-color:var(--accent);color:var(--accent);}
+
+/* ─── Forms ─────────────────────────────────────────────────── */
+input,select,textarea{background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:6px 10px;border-radius:var(--radius);font-size:12px;width:100%;
+  transition:border-color var(--transition);}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);}
+input::placeholder,textarea::placeholder{color:var(--text-muted);}
+select{width:auto;min-width:130px;cursor:pointer;}
+textarea{resize:vertical;min-height:60px;font-family:inherit;line-height:1.5;}
+.form-row{margin-bottom:10px;}
+.form-row label{display:block;font-size:11px;color:var(--text-dim);
+  margin-bottom:4px;font-weight:500;}
+.form-group{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+
+/* ─── Tags & Badges ─────────────────────────────────────────── */
+.tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;
+  font-weight:500;border:1px solid var(--border2);color:var(--text-dim);white-space:nowrap;}
+.tag-green{border-color:var(--green-dim);color:var(--green);background:rgba(63,185,80,.08);}
+.tag-blue{border-color:var(--accent-dim);color:var(--accent);background:rgba(88,166,255,.08);}
+.tag-yellow{border-color:var(--yellow);color:var(--yellow);background:rgba(210,153,34,.08);}
+.tag-red{border-color:var(--red);color:var(--red);background:rgba(248,81,73,.08);}
+.tag-purple{border-color:var(--purple);color:var(--purple);background:rgba(188,140,255,.08);}
+
+/* ─── Items List ────────────────────────────────────────────── */
+ul.items{list-style:none;}
+ul.items li{padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;
+  color:var(--text-dim);}
+ul.items li:last-child{border:none;}
+ul.items li::before{content:'›';color:var(--text-muted);margin-right:6px;}
+
+/* ─── Flex helpers ──────────────────────────────────────────── */
+.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;}
+.mt{margin-top:10px;}
+.mt-sm{margin-top:6px;}
+.mb{margin-bottom:10px;}
+.gap-sm{gap:5px;}
+
+/* ─── Empty state ───────────────────────────────────────────── */
+.empty{text-align:center;padding:40px 20px;color:var(--text-dim);}
+.empty .empty-icon{font-size:36px;margin-bottom:10px;opacity:.5;}
+.empty p{font-size:13px;margin-bottom:14px;}
+</style>
+
+
+<style>
+/* ─── Collapsible / Details ─────────────────────────────────── */
+details>summary{cursor:pointer;user-select:none;list-style:none;}
+details>summary::-webkit-details-marker{display:none;}
+.collapse-header{display:flex;align-items:center;gap:8px;padding:10px 12px;
+  border-radius:var(--radius);background:var(--surface2);cursor:pointer;
+  transition:background var(--transition);}
+.collapse-header:hover{background:var(--surface3);}
+.chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;display:inline-block;}
+details[open] .chevron{transform:rotate(90deg);}
+.collapse-body{padding:10px 0 4px;}
+
+/* ─── File Explorer ─────────────────────────────────────────── */
+.file-explorer{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+.file-item{border-bottom:1px solid var(--border);}
+.file-item:last-child{border-bottom:none;}
+.file-header{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;
+  font-size:12px;transition:background var(--transition);}
+.file-header:hover{background:var(--surface2);}
+.file-chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;width:10px;flex-shrink:0;}
+.file-item.expanded .file-chevron{transform:rotate(90deg);}
+.file-name{font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.file-body{display:none;padding:0 12px 10px 32px;}
+.file-item.expanded .file-body{display:block;}
+
+/* ─── Toggle pill ───────────────────────────────────────────── */
+.toggle-pill{font-size:10px;padding:2px 9px;border-radius:20px;cursor:pointer;
+  font-weight:600;user-select:none;white-space:nowrap;border:1px solid;
+  transition:all var(--transition);}
+.toggle-on{background:rgba(63,185,80,.12);color:var(--green);border-color:var(--green-dim);}
+.toggle-off{background:rgba(248,81,73,.08);color:var(--red);border-color:var(--red);}
+
+/* ─── Prompt / Code box ─────────────────────────────────────── */
+.prompt-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px 12px;font-family:'Cascadia Code','Fira Code',monospace;font-size:11px;
+  white-space:pre-wrap;max-height:280px;overflow-y:auto;color:var(--text-dim);
+  margin-top:8px;line-height:1.6;}
+
+/* ─── Backend chips ─────────────────────────────────────────── */
+.backend-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-top:8px;}
+.backend-chip{padding:7px 10px;border-radius:var(--radius);font-size:11px;
+  background:var(--surface2);border:1px solid var(--border);text-align:center;line-height:1.4;}
+.backend-chip.ok{border-color:var(--green-dim);background:rgba(63,185,80,.06);}
+
+/* ─── Sort controls ─────────────────────────────────────────── */
+.sort-bar{display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap;}
+.sort-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);
+  padding:3px 10px;border-radius:20px;font-size:11px;cursor:pointer;
+  transition:all var(--transition);}
+.sort-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.08);}
+.sort-btn:hover{border-color:var(--border2);color:var(--text);}
+
+/* ─── Section expand all bar ────────────────────────────────── */
+.expand-bar{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
+.expand-bar span{font-size:11px;color:var(--text-dim);}
+
+/* ─── Compare diff ──────────────────────────────────────────── */
+.diff-card{background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius-lg);overflow:hidden;margin-top:10px;}
+.diff-cat-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  cursor:pointer;transition:background var(--transition);}
+.diff-cat-header:hover{background:var(--surface3);}
+.diff-cat-body{padding:6px 12px 10px;}
+.diff-added{color:var(--green);font-size:11px;padding:2px 0;}
+.diff-added::before{content:'+ ';font-weight:700;}
+.diff-removed{color:var(--red);font-size:11px;padding:2px 0;}
+.diff-removed::before{content:'− ';font-weight:700;}
+.diff-count{font-size:11px;background:var(--surface3);border-radius:20px;
+  padding:1px 7px;font-weight:600;}
+.diff-trend{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;}
+.diff-trend.up{background:rgba(248,81,73,.12);color:var(--red);}
+.diff-trend.down{background:rgba(63,185,80,.12);color:var(--green);}
+.diff-trend.same{background:rgba(139,148,158,.12);color:var(--text-dim);}
+
+/* ─── Review item ───────────────────────────────────────────── */
+.review-item{background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--radius);margin:5px 0;overflow:hidden;
+  transition:border-color var(--transition);}
+.review-item:hover{border-color:var(--border2);}
+.review-item.active-review{border-color:var(--accent);}
+.review-item-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  cursor:pointer;transition:background var(--transition);}
+.review-item-header:hover{background:var(--surface2);}
+.review-item-body{padding:8px 12px 10px;border-top:1px solid var(--border);}
+
+/* ─── Findings section ──────────────────────────────────────── */
+.findings-section{margin:8px 0;}
+.findings-title{font-size:10px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;}
+.findings-item{font-size:12px;padding:3px 0 3px 10px;color:var(--text-dim);
+  border-left:2px solid var(--border);margin-bottom:2px;}
+
+/* ─── Phase progress bar ────────────────────────────────────── */
+.phase-bar{display:flex;align-items:center;gap:0;margin:10px 0;overflow-x:auto;}
+.phase-step{padding:7px 18px;font-size:11px;font-weight:600;cursor:pointer;
+  transition:all var(--transition);white-space:nowrap;text-align:center;
+  border:1px solid var(--border);margin-right:-1px;}
+.phase-step:first-child{border-radius:var(--radius) 0 0 var(--radius);}
+.phase-step:last-child{border-radius:0 var(--radius) var(--radius) 0;margin-right:0;}
+.phase-step.done{background:var(--green-dim);color:#fff;border-color:var(--green-dim);}
+.phase-step.current{background:var(--accent-dim);color:#fff;border-color:var(--accent);}
+.phase-step.pending{background:var(--surface2);color:var(--text-dim);}
+
+/* ─── Loading overlay ───────────────────────────────────────── */
+.loading-bar{height:2px;background:var(--accent-dim);border-radius:2px;
+  animation:loadbar 1.2s ease-in-out infinite;width:60%;}
+@keyframes loadbar{0%{width:0%;opacity:1}70%{width:80%;opacity:1}100%{width:100%;opacity:0}}
+.loading-inline{display:inline-flex;align-items:center;gap:6px;color:var(--text-dim);font-size:12px;}
+.spin{animation:spin .8s linear infinite;display:inline-block;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+
+/* ─── Toast notification ────────────────────────────────────── */
+#toast{position:fixed;bottom:20px;right:20px;background:var(--surface3);
+  border:1px solid var(--border2);color:var(--text);padding:10px 16px;
+  border-radius:var(--radius-lg);font-size:12px;opacity:0;
+  transition:opacity .3s;z-index:9999;max-width:320px;pointer-events:none;}
+#toast.show{opacity:1;}
+#toast.ok{border-color:var(--green-dim);color:var(--green);}
+#toast.err{border-color:var(--red);color:var(--red);}
+</style>
+
+
+<div id="toast"></div>
+
 <script>
-// ─── API Helper ───
-async function api(method, path, body) {
-  const opts = { method, headers: {'Content-Type':'application/json'} };
-  if (body) opts.body = JSON.stringify(body);
-  try { const r = await fetch(path, opts); return r.json(); }
-  catch(e) { return {error: e.message}; }
+// ═══════════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════════
+function escHtml(s){
+  if(typeof s!=='string')s=String(s||'');
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(iso){
+  if(!iso)return'–';
+  return iso.slice(0,16).replace('T',' ');
+}
+function fmtDateShort(iso){
+  if(!iso)return'–';
+  return iso.slice(0,10);
+}
+function relativeTime(iso){
+  if(!iso)return'';
+  const diff=Date.now()-new Date(iso).getTime();
+  const m=Math.floor(diff/60000);
+  if(m<1)return'just now';
+  if(m<60)return`${m}m ago`;
+  const h=Math.floor(m/60);
+  if(h<24)return`${h}h ago`;
+  return`${Math.floor(h/24)}d ago`;
 }
 
-// ─── State ───
-let state = { projects:[], current:null, tab:'dashboard', backends:[], adminConfig:{}, health:{}, lastDeepDive:null };
-const TABS = ['dashboard','ingest','intelligence','versions','reviews','phases','admin'];
+// Toast
+let _toastTimer=null;
+function toast(msg,type='ok'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.className='show '+(type==='err'?'err':'ok');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>el.className='',3000);
+}
 
-// ─── Shared data helpers (reduce duplicated hierarchy fetching) ───
-// Loads the full hierarchy tree once and derives flat version/review lists.
-async function loadHierarchy(pid) {
-  let hierarchy = {};
-  try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
-  const tree = hierarchy.tree || [];
-  // Flatten versions (newest-first preserved from backend), each carrying its phase + reviews
-  const versions = [];
-  for (const phase of tree) {
-    for (const ver of (phase.versions || [])) {
-      versions.push({ ...ver, phase_label: phase.label, phase_is_current: phase.is_current });
+// API helper with loading state
+async function api(method,path,body){
+  const opts={method,headers:{'Content-Type':'application/json'}};
+  if(body)opts.body=JSON.stringify(body);
+  try{
+    const r=await fetch(path,opts);
+    return r.json();
+  }catch(e){return{error:e.message};}
+}
+
+// Toggle file expand in file explorer
+function toggleFileExpand(el){
+  el.closest('.file-item').classList.toggle('expanded');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let state={
+  projects:[],current:null,tab:'dashboard',
+  backends:[],adminConfig:{},
+  lastDeepDive:null,
+  _dashVersion:'',_dashReview:'',
+  _intelCategory:null,
+  _versionSort:'newest',
+  _reviewSort:'newest',
+  _debugMode:false,
+};
+const TABS=['dashboard','ingest','intelligence','versions','reviews','phases','admin'];
+
+// Shared hierarchy loader
+async function loadHierarchy(pid){
+  let h={};
+  try{h=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
+  const tree=h.tree||[];
+  const versions=[];
+  for(const phase of tree){
+    for(const ver of(phase.versions||[])){
+      versions.push({...ver,phase_label:phase.label,phase_is_current:phase.is_current});
     }
   }
-  // Sort versions newest-first by created_at
-  versions.sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
-  return {
-    tree,
-    versions,
-    totalVersions: hierarchy.total_versions || versions.length,
-    totalReviews: hierarchy.total_reviews || 0,
-    currentPhase: hierarchy.current_phase || '',
-  };
+  versions.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+  return{tree,versions,
+    totalVersions:h.total_versions||versions.length,
+    totalReviews:h.total_reviews||0,
+    currentPhase:h.current_phase||''};
 }
 
-// Format a version's label for dropdowns/menus: "v2 - Initial (3 reviews, active: r5 · architect)"
-function formatVersionOption(v) {
-  const count = v.review_count || 0;
-  const ar = v.active_review;
-  let activeStr = '';
-  if (ar) activeStr = `, active: ${ar.review_id}${ar.persona ? ' · ' + ar.persona : ''}`;
-  const label = v.label ? ' - ' + v.label : '';
-  return `${v.version_id}${label} (${count} review${count===1?'':'s'}${activeStr})`;
+function formatVersionOption(v){
+  const cnt=v.review_count||0;
+  const ar=v.active_review;
+  let aStr='';
+  if(ar)aStr=`, active: ${ar.review_id}${ar.persona?' · '+ar.persona:''}`;
+  const lbl=v.label?' – '+v.label:'';
+  return`${v.version_id}${lbl} (${cnt} review${cnt===1?'':'s'}${aStr})`;
 }
+</script>
 
-// ─── Header ───
-function renderHeader() {
-  const proj = state.current;
-  const phase = proj ? proj.phase : '';
-  const options = state.projects.map(p =>
-    `<option value="${p.id}" ${p.id===(proj?.id)?'selected':''}>${p.name}</option>`
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// HEADER & RENDER
+// ═══════════════════════════════════════════════════════════════
+function renderHeader(){
+  const proj=state.current;
+  const phase=proj?proj.phase:'';
+  const opts=state.projects.map(p=>
+    `<option value="${p.id}" ${p.id===(proj?.id)?'selected':''}>${escHtml(p.name)}</option>`
   ).join('');
-  document.getElementById('header').innerHTML = `
-    <h1>Accelerator</h1>
-    ${phase ? `<span class="phase-badge">${phase}</span>` : ''}
-    ${state.projects.length ? `<select class="proj-select" onchange="selectProject(this.value)">${options}</select>` : '<span style="color:var(--text-dim);font-size:12px">No projects</span>'}
-    <nav>${TABS.map(t=>`<button class="${state.tab===t?'active':''}" onclick="switchTab('${t}')">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
-      <button class="${state.tab==='settings'?'active':''}" onclick="switchTab('settings')">⚙</button>
+  document.getElementById('header').innerHTML=`
+    <span class="logo">⚡ <span>Contexta</span></span>
+    ${phase?`<span class="phase-badge">${escHtml(phase)}</span>`:''}
+    ${state.projects.length?`<select class="proj-select" onchange="selectProject(this.value)">${opts}</select>`
+      :'<span style="color:var(--text-dim);font-size:12px">No projects</span>'}
+    <nav>
+      ${TABS.map(t=>`<button class="${state.tab===t?'active':''}" onclick="switchTab('${t}')">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
+      <button class="${state.tab==='settings'?'active':''}" onclick="switchTab('settings')" title="Settings">⚙</button>
     </nav>`;
 }
 
-function switchTab(tab) { state.tab = tab; render(); }
+function switchTab(tab){state.tab=tab;render();}
 
-async function render() {
+async function render(){
   renderHeader();
-  const main = document.getElementById('main');
-  const views = {
-    dashboard: viewDashboard, ingest: viewIngest, intelligence: viewIntelligence,
-    versions: viewVersions, reviews: viewReviews,
-    phases: viewPhases, settings: viewSettings, admin: viewAdmin
+  const main=document.getElementById('main');
+  main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
+  const views={
+    dashboard:viewDashboard,ingest:viewIngest,intelligence:viewIntelligence,
+    versions:viewVersions,reviews:viewReviews,phases:viewPhases,
+    settings:viewSettings,admin:viewAdmin
   };
-  main.innerHTML = await (views[state.tab] || viewDashboard)();
+  main.innerHTML=await(views[state.tab]||viewDashboard)();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NO PROJECT VIEW
+// ═══════════════════════════════════════════════════════════════
+function viewNoProject(){
+  return`<div class="card">
+    <div class="empty">
+      <div class="empty-icon">📁</div>
+      <p>Create or select a project to get started.</p>
+      <div style="max-width:340px;margin:0 auto">
+        <div class="form-row"><label>Project Name</label>
+          <input id="newName" placeholder="e.g. Cloud Migration Assessment"></div>
+        <div class="form-row"><label>Description</label>
+          <input id="newDesc" placeholder="Optional description"></div>
+        <button class="btn" onclick="createProject()">Create Project</button>
+        <div id="createProjectError" class="mt"></div>
+      </div>
+    </div>
+    ${state.projects.length?`<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+      <p class="card-section">Existing Projects</p>
+      <ul class="items">${state.projects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')">${escHtml(p.name)}</a> <span class="tag">${p.phase||'–'}</span></li>`).join('')}</ul>`:''}</div>`;
 }
 </script>
 
+
 <script>
-// ─── Dashboard View (V3: Hierarchy-aware with version/review selectors) ───
-async function viewDashboard() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewDashboard(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+  const selV=state._dashVersion||'';
+  const selR=state._dashReview||'';
 
-  // Use stored version/review state if user made a selection
-  const selVersion = state._dashVersion || '';
-  const selReview = state._dashReview || '';
+  let metricsUrl=`/api/projects/${pid}/hierarchy/metrics`;
+  const ps=[];
+  if(selV)ps.push(`version_id=${selV}`);
+  if(selR)ps.push(`review_id=${selR}`);
+  if(ps.length)metricsUrl+='?'+ps.join('&');
 
-  // Load hierarchy metrics scoped to selection
-  let metricsUrl = `/api/projects/${pid}/hierarchy/metrics`;
-  const params = [];
-  if (selVersion) params.push(`version_id=${selVersion}`);
-  if (selReview) params.push(`review_id=${selReview}`);
-  if (params.length) metricsUrl += '?' + params.join('&');
+  let metrics={},versions=[];
+  try{[metrics]=await Promise.all([api('GET',metricsUrl)]);}catch(e){}
+  try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions`);versions=r.versions||[];}catch(e){}
 
-  let metrics = {};
-  try { metrics = await api('GET', metricsUrl); } catch(e){}
+  const avail=metrics.available_reviews||[];
+  const ds=metrics.data_source||{};
 
-  // Load all versions for selector
-  let versions = [];
-  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = r.versions || []; } catch(e){}
+  const vOpts=versions.map(v=>`<option value="${v.version_id}" ${v.version_id===selV?'selected':''}>${escHtml(v.version_id)} ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
+  const rOpts=avail.map(r=>`<option value="${r.review_id}" ${r.review_id===selR?'selected':''}>${r.review_id} – ${escHtml(r.persona)} (${fmtDateShort(r.created_at)})</option>`).join('');
 
-  // Available reviews are scoped to the selected version from metrics response
-  const availableReviews = metrics.available_reviews || [];
+  const ctxCard=versions.length?`
+    <div class="card">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">🎯</span>Data Context</div>
+        <span class="tag tag-blue">${escHtml(ds.phase||'–')}</span>
+      </div>
+      <p class="card-subtitle">Scope all dashboard metrics to a specific version and review.</p>
+      <div class="flex">
+        <div style="flex:1;min-width:160px">
+          <label class="form-row" style="margin-bottom:0"><span style="font-size:10px;color:var(--text-dim)">Version</span>
+          <select id="dashVersion" onchange="onVersionChange()" style="width:100%;margin-top:3px">
+            <option value="">Latest Version</option>${vOpts}
+          </select></label>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <label class="form-row" style="margin-bottom:0"><span style="font-size:10px;color:var(--text-dim)">Review</span>
+          <select id="dashReview" onchange="updateDashMetrics()" style="width:100%;margin-top:3px">
+            <option value="">Active Review</option>${rOpts}
+          </select></label>
+        </div>
+      </div>
+      ${ds.version?`<p style="font-size:11px;color:var(--accent);margin-top:8px">
+        Showing: <strong>${escHtml(ds.version_label||ds.version||'latest')}</strong>
+        → <strong>${ds.review_persona?escHtml(ds.review_persona)+' ('+ds.review+')':ds.review||'latest review'}</strong>
+      </p>`:''}
+    </div>`:''
 
-  const ds = metrics.data_source || {};
+  const risks=metrics.risks_identified||0;
+  const constraints=metrics.constraints||0;
+  const deps=metrics.dependencies||0;
+  const assumptions=metrics.assumptions||0;
+  const actions=metrics.action_items||0;
+  const totalV=metrics.total_versions||versions.length;
+  const totalR=metrics.total_reviews||0;
+  const gaps=metrics.gaps_identified||0;
+  const findings=metrics.total_findings||0;
+  const artifacts=metrics.artifact_count||0;
 
-  // Version / Review selectors – Reviews FILTERED by selected version
-  // Use selVersion/selReview (user's choice) for selected state, NOT ds.version (API-resolved)
-  const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===selVersion?'selected':''}>${v.version_id} ${v.label||''} (${v.created_at?.slice(0,10)||''})</option>`).join('');
-  const rOpts = availableReviews.map(r => `<option value="${r.review_id}" ${r.review_id===selReview?'selected':''}>${r.review_id} – ${r.persona} (${r.created_at?.slice(0,10)||''})</option>`).join('');
+  const statsHtml=`
+    <div class="stat-grid mb">
+      <div class="stat red" onclick="navigateToIntelligence('risks')"><div class="num">${risks}</div><div class="lbl">Risks</div></div>
+      <div class="stat yellow" onclick="navigateToIntelligence('constraints')"><div class="num">${constraints}</div><div class="lbl">Constraints</div></div>
+      <div class="stat purple" onclick="navigateToIntelligence('dependencies')"><div class="num">${deps}</div><div class="lbl">Dependencies</div></div>
+      <div class="stat" onclick="navigateToIntelligence('assumptions')"><div class="num">${assumptions}</div><div class="lbl">Assumptions</div></div>
+      <div class="stat" onclick="navigateToIntelligence('action_items')"><div class="num">${actions}</div><div class="lbl">Action Items</div></div>
+      <div class="stat green" onclick="switchTab('versions')"><div class="num">${totalV}</div><div class="lbl">Versions</div></div>
+      <div class="stat green" onclick="switchTab('reviews')"><div class="num">${totalR}</div><div class="lbl">Reviews</div></div>
+      ${artifacts?`<div class="stat" onclick="switchTab('ingest')"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}
+      ${findings?`<div class="stat yellow" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
+      ${gaps?`<div class="stat red"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
+    </div>`;
 
-  const selectorHtml = (versions.length) ? `<div class="card"><h2>Data Context</h2>
-    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Select a version and review to scope all dashboard data</p>
-    <div class="flex">
-      <label style="font-size:11px;color:var(--text-dim)">Version:</label>
-      <select id="dashVersion" onchange="onVersionChange()" style="min-width:180px"><option value="">Latest Version</option>${vOpts}</select>
-      <label style="font-size:11px;color:var(--text-dim)">Review:</label>
-      <select id="dashReview" onchange="updateDashMetrics()" style="min-width:200px"><option value="">Active Review</option>${rOpts}</select>
-    </div>
-    <p id="contextLabel" style="font-size:11px;color:var(--accent);margin-top:8px;font-weight:600">
-      Showing: ${ds.version_label||ds.version||'latest'} > ${ds.review_persona ? ds.review_persona + ' (' + ds.review + ')' : ds.review||'latest'} | Phase: ${ds.phase||'-'}
-    </p>
-  </div>` : '';
-
-  // Use hierarchy metrics
-  const risks = metrics.risks_identified || 0;
-  const constraints = metrics.constraints || 0;
-  const deps = metrics.dependencies || 0;
-  const assumptions = metrics.assumptions || 0;
-  const actions = metrics.action_items || 0;
-  const totalVersions = metrics.total_versions || versions.length;
-  const totalReviews = metrics.total_reviews || 0;
-  const gaps = metrics.gaps_identified || 0;
-  const findings = metrics.total_findings || 0;
-
-  // Trend visualization
-  const trend = metrics.trend || [];
-  let trendHtml = '';
-  if (trend.length > 1) {
-    trendHtml = `<div class="card"><h2>Trend (Last ${trend.length} Versions)</h2>
-      <div style="display:flex;gap:12px;overflow-x:auto;padding:8px 0">
-        ${trend.map(t => `<div style="text-align:center;min-width:70px;cursor:pointer" onclick="navigateToVersion('${t.version_id}')">
-          <div style="font-size:10px;color:var(--text-dim)">${t.version_id}</div>
-          <div style="font-size:16px;font-weight:700;color:var(--accent)">${t.stats?.risks||0}</div>
-          <div style="font-size:9px;color:var(--text-dim)">risks</div>
-          <div style="font-size:9px;color:var(--text-dim)">${t.created_at?.slice(5,10)||''}</div>
-        </div>`).join('')}
-      </div></div>`;
+  const trend=metrics.trend||[];
+  let trendHtml='';
+  if(trend.length>1){
+    const maxR=Math.max(...trend.map(t=>t.stats?.risks||0),1);
+    trendHtml=`<div class="card">
+      <div class="flex-between mb"><div class="card-title"><span class="icon">📈</span>Risk Trend</div>
+      <span style="font-size:11px;color:var(--text-dim)">Last ${trend.length} versions</span></div>
+      <div style="display:flex;gap:10px;align-items:flex-end;padding:6px 0;min-height:56px">
+        ${trend.map(t=>{const h=Math.max(8,Math.round((t.stats?.risks||0)/maxR*48));
+          return`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;cursor:pointer"
+            onclick="navigateToVersion('${t.version_id}')">
+            <span style="font-size:9px;color:var(--text-dim)">${t.stats?.risks||0}</span>
+            <div style="width:100%;height:${h}px;background:var(--red);border-radius:3px 3px 0 0;opacity:.7;transition:opacity .2s"
+              onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7"></div>
+            <span style="font-size:9px;color:var(--text-muted)">${t.version_id}</span>
+          </div>`;}).join('')}
+      </div>
+    </div>`;
   }
 
-  // Debug state visibility (M8)
-  const debugHtml = state._debugMode ? `<div class="card" style="border-color:var(--warn)">
-    <h2 style="color:var(--warn)">Debug State</h2>
-    <div style="font-size:11px;font-family:monospace;color:var(--text-dim)">
-      <div>projectId: <strong>${pid}</strong></div>
-      <div>versionId: <strong>${ds.version||'(latest)'}</strong></div>
-      <div>reviewId: <strong>${ds.review||'(active)'}</strong></div>
-      <div>phase: <strong>${ds.phase||'-'}</strong></div>
-      <div>version_reviews: <strong>${metrics.version_reviews||0}</strong></div>
+  const qa=`<div class="card">
+    <div class="card-title mb"><span class="icon">⚡</span>Quick Actions</div>
+    <div class="flex">
+      <button class="btn" onclick="switchTab('ingest')">📎 Ingest Artefacts</button>
+      <button class="btn btn-outline" onclick="buildContext()">🔨 Run Intelligence</button>
+      <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Run Review</button>
+      <button class="btn btn-ghost btn-sm" onclick="switchTab('versions')">📋 Browse Versions</button>
+      <button class="btn-icon" title="Toggle debug" onclick="toggleDebug()" style="margin-left:auto">🐛</button>
     </div>
-  </div>` : '';
-
-  // Clickable tiles (M2 T2.4) - each tile routes to relevant detail view
-  return selectorHtml + `
-    <div class="grid">
-      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('risks')"><div class="num">${risks}</div><div class="label">Risks</div></div>
-      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('constraints')"><div class="num">${constraints}</div><div class="label">Constraints</div></div>
-      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('dependencies')"><div class="num">${deps}</div><div class="label">Dependencies</div></div>
-      <div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('assumptions')"><div class="num">${assumptions}</div><div class="label">Assumptions</div></div>
-      <div class="stat" style="cursor:pointer" onclick="switchTab('versions')"><div class="num">${totalVersions}</div><div class="label">Versions</div></div>
-      <div class="stat" style="cursor:pointer" onclick="switchTab('reviews')"><div class="num">${totalReviews}</div><div class="label">Reviews</div></div>
-    </div>
-    ${findings ? `<div class="grid mt"><div class="stat" style="cursor:pointer" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="label">Findings</div></div><div class="stat"><div class="num">${gaps}</div><div class="label">Gaps</div></div></div>` : ''}
-    <div class="card mt"><h2>Quick Actions</h2>
-      <div class="flex mt">
-        <button class="btn" onclick="switchTab('ingest')">Ingest Artefacts</button>
-        <button class="btn btn-outline" onclick="buildContext()">Run Intelligence</button>
-        <button class="btn btn-outline" onclick="switchTab('reviews')">Run Review</button>
-        <button class="btn btn-outline" onclick="switchTab('versions')">Browse History</button>
-        <button class="btn btn-sm" style="margin-left:auto;background:var(--warn);color:#000" onclick="toggleDebug()">Debug</button>
-      </div>
-    </div>` + trendHtml + debugHtml;
-}
-
-// Navigate to version detail from trend chart
-function navigateToVersion(versionId) {
-  state._dashVersion = versionId;
-  state._dashReview = '';
-  state.tab = 'dashboard';
-  render();
-}
-
-// Navigate to intelligence view with category focus
-function navigateToIntelligence(category) {
-  state._intelCategory = category;
-  switchTab('intelligence');
-}
-
-// Toggle debug mode (M8)
-function toggleDebug() {
-  state._debugMode = !state._debugMode;
-  render();
-}
-
-// On version change, reset review selection (M1: filter reviews by version)
-function onVersionChange() {
-  const vEl = document.getElementById('dashVersion');
-  state._dashVersion = vEl ? vEl.value : '';
-  state._dashReview = ''; // Reset review since it depends on version
-  render();
-}
-
-async function updateDashMetrics() {
-  const vEl = document.getElementById('dashVersion');
-  const rEl = document.getElementById('dashReview');
-  state._dashVersion = vEl ? vEl.value : '';
-  state._dashReview = rEl ? rEl.value : '';
-  render();
-}
-
-function viewNoProject() {
-  return `<div class="card"><h2>Getting Started</h2>
-    <p style="color:var(--text-dim);margin-bottom:14px;font-size:13px">Create a project to begin. Upload documents, build intelligence, then run AI reviews.</p>
-    <div class="form-row"><label>Project Name</label><input id="newName" placeholder="e.g. Cloud Migration Assessment"></div>
-    <div class="form-row"><label>Description</label><input id="newDesc" placeholder="Optional description"></div>
-    <button class="btn" onclick="createProject()">Create Project</button>
-    <div id="createProjectError"></div>
-    ${state.projects.length ? `<h3 class="mt">Existing Projects</h3><ul class="items">${state.projects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')" style="color:var(--accent)">${p.name}</a> <span class="tag">${p.phase}</span></li>`).join('')}</ul>` : ''}
   </div>`;
+
+  const debugHtml=state._debugMode?`<div class="card" style="border-color:var(--yellow)">
+    <div class="card-title" style="color:var(--yellow)">🐛 Debug</div>
+    <code style="font-size:11px;color:var(--text-dim)">
+      project=${pid} | version=${ds.version||'(latest)'} | review=${ds.review||'(active)'} | phase=${ds.phase||'–'}
+    </code></div>`:''
+
+  return ctxCard+statsHtml+trendHtml+qa+debugHtml;
+}
+
+function navigateToVersion(vid){state._dashVersion=vid;state._dashReview='';state.tab='dashboard';render();}
+function navigateToIntelligence(cat){state._intelCategory=cat;switchTab('intelligence');}
+function toggleDebug(){state._debugMode=!state._debugMode;render();}
+function onVersionChange(){
+  const v=document.getElementById('dashVersion');
+  state._dashVersion=v?v.value:'';
+  state._dashReview='';
+  render();
+}
+async function updateDashMetrics(){
+  const v=document.getElementById('dashVersion');
+  const r=document.getElementById('dashReview');
+  state._dashVersion=v?v.value:'';
+  state._dashReview=r?r.value:'';
+  render();
 }
 </script>
 
+
 <script>
-// ─── Ingest View (V3 Redesign: Upload + Paste Text + Category) ───
-const ARTIFACT_CATEGORIES = [
-  {value:'project_artefact', label:'Project Artefact', icon:'📋'},
-  {value:'meetings_comms', label:'Meetings & Comms', icon:'📞'},
-  {value:'delivery_notes', label:'Delivery Notes', icon:'📝'},
-  {value:'client_context', label:'Client Context', icon:'🏢'},
-  {value:'architecture_design', label:'Architecture & Design', icon:'🏗️'},
-  {value:'external_data', label:'External Data', icon:'🌐'},
+// ═══════════════════════════════════════════════════════════════
+// INGEST VIEW
+// ═══════════════════════════════════════════════════════════════
+const ARTIFACT_CATEGORIES=[
+  {value:'project_artefact',label:'Project Artefact',icon:'📋'},
+  {value:'meetings_comms',label:'Meetings & Comms',icon:'📞'},
+  {value:'delivery_notes',label:'Delivery Notes',icon:'📝'},
+  {value:'client_context',label:'Client Context',icon:'🏢'},
+  {value:'architecture_design',label:'Architecture & Design',icon:'🏗️'},
+  {value:'external_data',label:'External Data',icon:'🌐'},
 ];
+const CATEGORY_META_SCHEMA={
+  project_artefact:[{name:'version',type:'string',label:'Version',required:false},{name:'owner',type:'string',label:'Owner',required:false}],
+  meetings_comms:[{name:'date',type:'date',label:'Date',required:false},{name:'participants',type:'array',label:'Participants (comma-sep)',required:false}],
+  delivery_notes:[{name:'sprint',type:'string',label:'Sprint / Iteration',required:false},{name:'date',type:'date',label:'Date',required:false}],
+  client_context:[{name:'source',type:'enum',label:'Source',required:true,options:['retrospective','historical','lessons_learned','other']},
+    {name:'relevance',type:'enum',label:'Relevance',required:false,options:['delivery','operations','commercial','security','other']}],
+  architecture_design:[{name:'systemName',type:'string',label:'System Name',required:false},
+    {name:'layer',type:'enum',label:'Layer',required:false,options:['frontend','backend','data','platform','integration','other']}],
+  external_data:[{name:'sourceUrl',type:'string',label:'Source URL',required:false},{name:'retrievedAt',type:'date',label:'Retrieved At',required:false}],
+};
 
-async function viewIngest() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
+async function viewIngest(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+  let artifacts=[];
+  try{const r=await api('GET',`/api/v1/projects/${pid}/artifacts`);artifacts=r.artifacts||[];}catch(e){}
+  let legacyDocs=[];
+  let toggles={};
+  try{const ctx=await api('GET',`/api/projects/${pid}/context`);legacyDocs=ctx.documents||[];toggles=ctx.file_toggles||{};}catch(e){}
 
-  // Load artifacts (new v1 API)
-  let artifacts = [];
-  try { const r = await api('GET',`/api/v1/projects/${pid}/artifacts`); artifacts = r.artifacts || []; } catch(e){}
+  const catOpts=ARTIFACT_CATEGORIES.map(c=>`<option value="${c.value}">${c.icon} ${c.label}</option>`).join('');
 
-  // Also load legacy context for backward compatibility
-  let legacyDocs = [];
-  try { const ctx = await api('GET',`/api/projects/${pid}/context`); legacyDocs = ctx.documents || []; } catch(e){}
+  const included=artifacts.filter(a=>a.include).length+legacyDocs.length;
+  const total=artifacts.length+legacyDocs.length;
 
-  const categoryOpts = ARTIFACT_CATEGORIES.map(c => `<option value="${c.value}">${c.icon} ${c.label}</option>`).join('');
-
-  // Entry methods: Upload File | Paste Text | Legacy File Paths
-  const entryHtml = `<div class="card"><h2>Add Artefact</h2>
-    <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Upload a file or paste text. Category is required for context classification.</p>
-    <div style="display:flex;gap:4px;margin-bottom:12px">
-      <button class="btn btn-sm" id="tabUpload" onclick="switchIngestTab('upload')" style="background:var(--accent)">Upload File</button>
-      <button class="btn btn-sm btn-outline" id="tabPaste" onclick="switchIngestTab('paste')">Paste Text</button>
-      <button class="btn btn-sm btn-outline" id="tabPaths" onclick="switchIngestTab('paths')">File Paths (Legacy)</button>
+  const addCard=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">📎</span>Add Artefact</div>
+      ${total?`<span class="tag tag-green">${included}/${total} included</span>`:''}
+    </div>
+    <div class="flex gap-sm mb">
+      <button class="btn btn-sm" id="tabUpload" onclick="switchIngestTab('upload')">Upload File</button>
+      <button class="btn btn-sm btn-ghost" id="tabPaste" onclick="switchIngestTab('paste')">Paste Text</button>
+      <button class="btn btn-sm btn-ghost" id="tabPaths" onclick="switchIngestTab('paths')">File Paths</button>
     </div>
 
-    <!-- Upload File Tab -->
     <div id="ingestUpload">
-      <div class="form-row"><label>Category (required)</label><select id="uploadCategory" onchange="renderMetadataFields('upload')">${categoryOpts}</select></div>
+      <div class="form-row"><label>Category <span style="color:var(--red)">*</span></label>
+        <select id="uploadCategory" onchange="renderMetadataFields('upload')">${catOpts}</select></div>
       <div id="uploadMetaFields"></div>
-      <div class="form-row"><label>Title (optional)</label><input id="uploadTitle" placeholder="e.g. Client scope document"></div>
+      <div class="form-row"><label>Title</label><input id="uploadTitle" placeholder="e.g. Client scope document"></div>
       <div class="form-row"><label>File</label>
         <input type="file" id="uploadFile" accept=".txt,.md,.csv,.eml,.json,.yaml,.yml,.pdf,.docx,.xlsx,.pptx"
-          style="background:var(--surface2);padding:8px;border-radius:var(--radius);width:100%">
-      </div>
-      <button class="btn mt" onclick="doUploadArtifact()">Upload</button>
+          style="background:var(--surface2);padding:8px;border-radius:var(--radius);width:100%"></div>
+      <button class="btn" onclick="doUploadArtifact()">Upload</button>
     </div>
 
-    <!-- Paste Text Tab -->
     <div id="ingestPaste" style="display:none">
-      <div class="form-row"><label>Category (required)</label><select id="pasteCategory" onchange="renderMetadataFields('paste')">${categoryOpts}</select></div>
+      <div class="form-row"><label>Category <span style="color:var(--red)">*</span></label>
+        <select id="pasteCategory" onchange="renderMetadataFields('paste')">${catOpts}</select></div>
       <div id="pasteMetaFields"></div>
-      <div class="form-row"><label>Title (optional)</label><input id="pasteTitle" placeholder="e.g. Sprint 2 meeting notes"></div>
-      <div class="form-row"><label>Text Content</label>
-        <textarea id="pasteText" rows="6" placeholder="Paste your text content here..."></textarea>
-      </div>
-      <button class="btn mt" onclick="doPasteArtifact()">Save Text</button>
+      <div class="form-row"><label>Title</label><input id="pasteTitle" placeholder="e.g. Sprint 2 meeting notes"></div>
+      <div class="form-row"><label>Text Content <span style="color:var(--red)">*</span></label>
+        <textarea id="pasteText" rows="5" placeholder="Paste your content here…"></textarea></div>
+      <button class="btn" onclick="doPasteArtifact()">Save Text</button>
     </div>
 
-    <!-- Legacy File Paths Tab -->
     <div id="ingestPaths" style="display:none">
-      <p style="color:var(--text-dim);font-size:11px;margin-bottom:8px">Legacy: Enter file paths (one per line) relative to project root.</p>
-      <div class="form-row"><label>File Paths</label>
-        <textarea id="ingestPathsArea" rows="4" placeholder="sample_data/scope.txt&#10;sample_data/scope_cpg.txt"></textarea>
-      </div>
+      <p class="card-subtitle">Legacy: file paths relative to project root, one per line.</p>
+      <div class="form-row"><textarea id="ingestPathsArea" rows="3" placeholder="sample_data/scope.txt"></textarea></div>
       <button class="btn" onclick="doIngest()">Ingest Files</button>
     </div>
-
     <div id="ingestResult" class="mt"></div>
   </div>`;
 
-  // Artifact Registry
-  let registryHtml = '';
-  if (artifacts.length || legacyDocs.length) {
-    const totalCount = artifacts.length + legacyDocs.length;
-    const includedCount = artifacts.filter(a => a.include).length + legacyDocs.length;
-
-    registryHtml = `<div class="card"><h2>Artefact Registry (${totalCount})</h2>
-      <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">${includedCount} of ${totalCount} included in intelligence. Toggle to exclude/include.</p>
-      <div class="flex" style="margin-bottom:10px">
-        <button class="btn btn-sm btn-outline" onclick="processAllArtifacts()">Process All Included</button>
+  let regHtml='';
+  if(total){
+    regHtml=`<div class="card">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">🗂️</span>Artefact Registry</div>
+        <div class="flex gap-sm">
+          <button class="btn btn-sm btn-ghost" onclick="expandAllFiles()">Expand All</button>
+          <button class="btn btn-sm btn-ghost" onclick="collapseAllFiles()">Collapse All</button>
+          <button class="btn btn-sm btn-outline" onclick="processAllArtifacts()">Process All</button>
+        </div>
       </div>
       <div class="file-explorer">`;
 
-    // New artifacts
-    for (const a of artifacts) {
-      const catInfo = ARTIFACT_CATEGORIES.find(c => c.value === a.category) || {icon:'📄', label:a.category};
-      const toggleClass = a.include ? 'toggle-on' : 'toggle-off';
-      const toggleLabel = a.include ? 'Included' : 'Excluded';
-      const statusColor = a.status === 'processed' ? 'var(--accent2)' : a.status === 'failed' ? 'var(--danger)' : a.status === 'processing' ? 'var(--warn)' : 'var(--text-dim)';
-
-      // Format metadata display
-      const metaEntries = Object.entries(a.metadata || {});
-      const metaHtml = metaEntries.length ? metaEntries.map(([k,v]) =>
-        `<span style="font-size:10px;background:var(--surface2);padding:1px 6px;border-radius:8px;margin:1px">${k}: ${Array.isArray(v)?v.join(', '):v}</span>`
-      ).join(' ') : '';
-
-      registryHtml += `<div class="file-item">
+    for(const a of artifacts){
+      const ci=ARTIFACT_CATEGORIES.find(c=>c.value===a.category)||{icon:'📄',label:a.category};
+      const statusTag=a.status==='processed'?'tag-green':a.status==='failed'?'tag-red':a.status==='processing'?'tag-yellow':'';
+      const meta=Object.entries(a.metadata||{});
+      regHtml+=`<div class="file-item">
         <div class="file-header" onclick="toggleFileExpand(this)">
           <span class="file-chevron">▶</span>
-          <span class="file-icon">${catInfo.icon}</span>
-          <span class="file-name">${escHtml(a.title || a.fileName || 'Untitled')}</span>
-          <span class="tag">${catInfo.label}</span>
-          <span class="tag" style="border-color:${statusColor};color:${statusColor}">${a.status}</span>
-          <span style="font-size:10px;color:var(--text-dim)">${a.createdAt?.slice(0,10)||''}</span>
-          <span class="file-toggle ${toggleClass}" onclick="event.stopPropagation();toggleArtifact('${a.artifactId}',${!a.include})">${toggleLabel}</span>
+          <span style="font-size:13px">${ci.icon}</span>
+          <span class="file-name">${escHtml(a.title||a.fileName||'Untitled')}</span>
+          <span class="tag">${escHtml(ci.label)}</span>
+          <span class="tag ${statusTag}">${a.status}</span>
+          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(a.createdAt)}</span>
+          <span class="toggle-pill ${a.include?'toggle-on':'toggle-off'}"
+            onclick="event.stopPropagation();toggleArtifact('${a.artifactId}',${!a.include})">
+            ${a.include?'Included':'Excluded'}</span>
         </div>
         <div class="file-body">
-          <div style="font-size:11px;color:var(--text-dim);padding:4px 0">
-            <span>Type: ${a.type}</span> · <span>Category: ${a.category}</span>
-            ${a.fileName ? ` · <span>File: ${escHtml(a.fileName)}</span>` : ''}
-          </div>
-          ${metaHtml ? `<div style="margin:4px 0;display:flex;flex-wrap:wrap;gap:3px">${metaHtml}</div>` : ''}
-          <div class="flex mt">
+          <p style="font-size:11px;color:var(--text-dim);margin-bottom:5px">
+            ${a.fileName?`File: <strong>${escHtml(a.fileName)}</strong> · `:''}Type: ${a.type}
+          </p>
+          ${meta.length?`<div class="flex gap-sm" style="margin-bottom:6px">${meta.map(([k,v])=>`<span class="tag">${k}: ${Array.isArray(v)?v.join(', '):escHtml(String(v))}</span>`).join('')}</div>`:''}
+          <div class="flex gap-sm">
             <button class="btn btn-sm btn-outline" onclick="processArtifact('${a.artifactId}')">Process</button>
-            <button class="btn btn-sm btn-danger" onclick="deleteArtifact('${a.artifactId}')">Remove</button>
+            <button class="btn btn-sm btn-red" onclick="deleteArtifact('${a.artifactId}')">Remove</button>
           </div>
         </div>
       </div>`;
     }
-
-    // Legacy documents (backward compat)
-    const toggles = {};
-    try { const ctx = await api('GET',`/api/projects/${pid}/context`); Object.assign(toggles, ctx.file_toggles || {}); } catch(e){}
-    for (const d of legacyDocs) {
-      const fname = d.filename || d.metadata?.filename || '';
-      const srcType = d.metadata?.source_type || 'unknown';
-      const words = d.metadata?.word_count || 0;
-      const sections = d.sections || [];
-      const isActive = toggles[fname] !== false;
-      const toggleClass = isActive ? 'toggle-on' : 'toggle-off';
-      const toggleLabel = isActive ? 'Included' : 'Excluded';
-
-      const sectionHtml = sections.length ? sections.map(s =>
-        `<div class="file-section"><span class="section-title">${escHtml(s.title || s.heading || 'Section')}</span> <span style="color:var(--text-dim);font-size:10px">${(s.content||'').length} chars</span></div>`
-      ).join('') : '<div style="font-size:11px;color:var(--text-dim);padding:4px 0">No section data</div>';
-
-      registryHtml += `<div class="file-item">
+    for(const d of legacyDocs){
+      const fn=d.filename||d.metadata?.filename||'';
+      const st=d.metadata?.source_type||'doc';
+      const words=d.metadata?.word_count||0;
+      const secs=d.sections||[];
+      const isOn=toggles[fn]!==false;
+      regHtml+=`<div class="file-item">
         <div class="file-header" onclick="toggleFileExpand(this)">
           <span class="file-chevron">▶</span>
-          <span class="file-icon">${srcType==='csv'?'📊':srcType==='email'?'📧':'📄'}</span>
-          <span class="file-name">${escHtml(fname)}</span>
-          <span class="tag">${srcType}</span>
-          <span style="font-size:10px;color:var(--text-dim)">${words} words · ${sections.length} sections</span>
-          <span class="file-toggle ${toggleClass}" onclick="event.stopPropagation();toggleFileActive('${escHtml(fname)}',${!isActive})">${toggleLabel}</span>
+          <span style="font-size:13px">${st==='csv'?'📊':st==='email'?'📧':'📄'}</span>
+          <span class="file-name">${escHtml(fn)}</span>
+          <span class="tag">${st}</span>
+          <span style="font-size:10px;color:var(--text-muted)">${words} words · ${secs.length} sections</span>
+          <span class="toggle-pill ${isOn?'toggle-on':'toggle-off'}"
+            onclick="event.stopPropagation();toggleFileActive('${escHtml(fn)}',${!isOn})">
+            ${isOn?'Included':'Excluded'}</span>
         </div>
-        <div class="file-body">${sectionHtml}</div>
+        <div class="file-body">
+          ${secs.length?secs.map(s=>`<div style="font-size:11px;color:var(--text-dim);padding:2px 0 2px 8px;border-left:2px solid var(--border);margin:2px 0">
+            <span style="color:var(--text)">${escHtml(s.title||s.heading||'Section')}</span>
+            <span style="color:var(--text-muted);font-size:10px"> · ${(s.content||'').length} chars</span>
+          </div>`).join(''):'<p style="font-size:11px;color:var(--text-muted)">No section data</p>'}
+        </div>
       </div>`;
     }
-
-    registryHtml += `</div></div>`;
+    regHtml+=`</div></div>`;
   }
-
-  return entryHtml + registryHtml;
+  return addCard+regHtml;
 }
 
-function switchIngestTab(tab) {
-  document.getElementById('ingestUpload').style.display = tab==='upload' ? '' : 'none';
-  document.getElementById('ingestPaste').style.display = tab==='paste' ? '' : 'none';
-  document.getElementById('ingestPaths').style.display = tab==='paths' ? '' : 'none';
-  // Update button styles
-  document.getElementById('tabUpload').className = tab==='upload' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
-  document.getElementById('tabPaste').className = tab==='paste' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
-  document.getElementById('tabPaths').className = tab==='paths' ? 'btn btn-sm' : 'btn btn-sm btn-outline';
-  if (tab==='upload') document.getElementById('tabUpload').style.background='var(--accent)';
-  else document.getElementById('tabUpload').style.background='';
-  if (tab==='paste') document.getElementById('tabPaste').style.background='var(--accent)';
-  else document.getElementById('tabPaste').style.background='';
-  if (tab==='paths') document.getElementById('tabPaths').style.background='var(--accent)';
-  else document.getElementById('tabPaths').style.background='';
-  // Render metadata fields for active tab
-  if (tab === 'upload') renderMetadataFields('upload');
-  if (tab === 'paste') renderMetadataFields('paste');
-}
+function expandAllFiles(){document.querySelectorAll('.file-item').forEach(el=>el.classList.add('expanded'));}
+function collapseAllFiles(){document.querySelectorAll('.file-item').forEach(el=>el.classList.remove('expanded'));}
 
-// ─── Category Metadata Schema (mirrors backend CATEGORY_METADATA_SCHEMA) ───
-const CATEGORY_META_SCHEMA = {
-  project_artefact: [
-    {name:'version', type:'string', label:'Version', required:false},
-    {name:'owner', type:'string', label:'Owner', required:false},
-  ],
-  meetings_comms: [
-    {name:'date', type:'date', label:'Date', required:false},
-    {name:'participants', type:'array', label:'Participants (comma-separated)', required:false},
-  ],
-  delivery_notes: [
-    {name:'sprint', type:'string', label:'Sprint / Iteration', required:false},
-    {name:'date', type:'date', label:'Date', required:false},
-  ],
-  client_context: [
-    {name:'source', type:'enum', label:'Source', required:true, options:['retrospective','historical','lessons_learned','other']},
-    {name:'relevance', type:'enum', label:'Relevance', required:false, options:['delivery','operations','commercial','security','other']},
-  ],
-  architecture_design: [
-    {name:'systemName', type:'string', label:'System Name', required:false},
-    {name:'layer', type:'enum', label:'Layer', required:false, options:['frontend','backend','data','platform','integration','other']},
-  ],
-  external_data: [
-    {name:'sourceUrl', type:'string', label:'Source URL', required:false},
-    {name:'retrievedAt', type:'date', label:'Retrieved At', required:false},
-  ],
-};
-
-function renderMetadataFields(prefix) {
-  const catEl = document.getElementById(prefix + 'Category');
-  const container = document.getElementById(prefix + 'MetaFields');
-  if (!catEl || !container) return;
-  const category = catEl.value;
-  const fields = CATEGORY_META_SCHEMA[category] || [];
-  if (!fields.length) { container.innerHTML = ''; return; }
-  let html = '<div style="border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin:8px 0;background:var(--bg)"><p style="font-size:10px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase">Context Fields</p>';
-  for (const f of fields) {
-    const reqMark = f.required ? ' <span style="color:var(--danger)">*</span>' : '';
-    const fieldId = `${prefix}_meta_${f.name}`;
-    if (f.type === 'enum') {
-      const opts = f.options.map(o => `<option value="${o}">${o.replace(/_/g,' ')}</option>`).join('');
-      html += `<div class="form-row"><label>${f.label}${reqMark}</label><select id="${fieldId}"><option value="">-- select --</option>${opts}</select></div>`;
-    } else if (f.type === 'date') {
-      html += `<div class="form-row"><label>${f.label}${reqMark}</label><input id="${fieldId}" type="date"></div>`;
-    } else if (f.type === 'array') {
-      html += `<div class="form-row"><label>${f.label}${reqMark}</label><input id="${fieldId}" placeholder="e.g. Alice, Bob, Charlie"></div>`;
-    } else {
-      html += `<div class="form-row"><label>${f.label}${reqMark}</label><input id="${fieldId}" placeholder="${f.label}"></div>`;
-    }
-  }
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-function collectMetadata(prefix) {
-  const catEl = document.getElementById(prefix + 'Category');
-  if (!catEl) return {};
-  const category = catEl.value;
-  const fields = CATEGORY_META_SCHEMA[category] || [];
-  const metadata = {};
-  for (const f of fields) {
-    const el = document.getElementById(`${prefix}_meta_${f.name}`);
-    if (!el) continue;
-    let val = el.value.trim();
-    if (!val) continue;
-    if (f.type === 'array') {
-      metadata[f.name] = val.split(',').map(s => s.trim()).filter(Boolean);
-    } else {
-      metadata[f.name] = val;
-    }
-  }
-  return metadata;
-}
-
-function validateMetadata(prefix) {
-  const catEl = document.getElementById(prefix + 'Category');
-  if (!catEl) return {valid:true, errors:[]};
-  const category = catEl.value;
-  const fields = CATEGORY_META_SCHEMA[category] || [];
-  const errors = [];
-  for (const f of fields) {
-    if (!f.required) continue;
-    const el = document.getElementById(`${prefix}_meta_${f.name}`);
-    if (!el || !el.value.trim()) {
-      errors.push(`${f.label} is required for category '${category.replace(/_/g,' ')}'`);
-    }
-  }
-  return {valid: errors.length === 0, errors};
-}
-
-async function doUploadArtifact() {
-  const pid = state.current.id;
-  const fileInput = document.getElementById('uploadFile');
-  const category = document.getElementById('uploadCategory').value;
-  const title = document.getElementById('uploadTitle').value;
-  const el = document.getElementById('ingestResult');
-
-  if (!fileInput.files.length) { el.innerHTML = '<p style="color:var(--danger)">Please select a file</p>'; return; }
-  if (!category) { el.innerHTML = '<p style="color:var(--danger)">Category is required</p>'; return; }
-
-  // Validate metadata (required fields check)
-  const {valid, errors} = validateMetadata('upload');
-  if (!valid) { el.innerHTML = `<p style="color:var(--danger)">${errors.join('<br>')}</p>`; return; }
-
-  const metadata = collectMetadata('upload');
-  const file = fileInput.files[0];
-  el.innerHTML = '<p style="color:var(--text-dim)">Uploading...</p>';
-
-  // Use FormData for multipart upload
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('category', category);
-  if (title) formData.append('title', title);
-  if (Object.keys(metadata).length) formData.append('metadata', JSON.stringify(metadata));
-
-  try {
-    const resp = await fetch(`/api/v1/projects/${pid}/artifacts/upload`, { method: 'POST', body: formData });
-    const r = await resp.json();
-    if (r.artifact) {
-      el.innerHTML = `<p style="color:var(--accent2)">Uploaded: ${escHtml(r.artifact.title || r.artifact.fileName)}</p>`;
-      fileInput.value = '';
-      document.getElementById('uploadTitle').value = '';
-      setTimeout(() => render(), 800);
-    } else {
-      el.innerHTML = `<p style="color:var(--danger)">${r.error || 'Upload failed'}</p>`;
-    }
-  } catch(e) {
-    el.innerHTML = `<p style="color:var(--danger)">Upload error: ${e.message}</p>`;
-  }
-}
-
-async function doPasteArtifact() {
-  const pid = state.current.id;
-  const category = document.getElementById('pasteCategory').value;
-  const title = document.getElementById('pasteTitle').value;
-  const text = document.getElementById('pasteText').value;
-  const el = document.getElementById('ingestResult');
-
-  if (!text.trim()) { el.innerHTML = '<p style="color:var(--danger)">Text content is required</p>'; return; }
-  if (!category) { el.innerHTML = '<p style="color:var(--danger)">Category is required</p>'; return; }
-
-  // Validate metadata (required fields check)
-  const {valid, errors} = validateMetadata('paste');
-  if (!valid) { el.innerHTML = `<p style="color:var(--danger)">${errors.join('<br>')}</p>`; return; }
-
-  const metadata = collectMetadata('paste');
-  el.innerHTML = '<p style="color:var(--text-dim)">Saving...</p>';
-  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/text`, { category, title, text, metadata });
-  if (r.artifact) {
-    el.innerHTML = `<p style="color:var(--accent2)">Saved: ${escHtml(r.artifact.title)}</p>`;
-    document.getElementById('pasteText').value = '';
-    document.getElementById('pasteTitle').value = '';
-    setTimeout(() => render(), 800);
-  } else {
-    el.innerHTML = `<p style="color:var(--danger)">${r.error || r.message || 'Save failed'}</p>`;
-  }
-}
-
-async function toggleArtifact(artifactId, include) {
-  const pid = state.current.id;
-  await api('POST', `/api/v1/projects/${pid}/artifacts/${artifactId}/toggle`, {include});
-  render();
-}
-
-async function deleteArtifact(artifactId) {
-  if (!confirm('Remove this artefact? This cannot be undone.')) return;
-  const pid = state.current.id;
-  await api('POST', `/api/v1/projects/${pid}/artifacts/${artifactId}/delete`, {});
-  render();
-}
-
-async function processArtifact(artifactId) {
-  const pid = state.current.id;
-  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/${artifactId}/process`, {});
-  if (r.job) {
-    alert(`Processing queued (job: ${r.job.jobId})`);
-    setTimeout(() => render(), 500);
-  } else {
-    alert(r.error || r.message || 'Processing failed');
-  }
-}
-
-async function processAllArtifacts() {
-  const pid = state.current.id;
-  const r = await api('POST', `/api/v1/projects/${pid}/artifacts/process`, {onlyIncluded: true});
-  if (r.queuedArtifactIds) {
-    alert(`Queued ${r.queuedArtifactIds.length} artifact(s) for processing`);
-    setTimeout(() => render(), 500);
-  } else {
-    alert(r.error || r.message || 'Processing failed');
-  }
-}
-
-function toggleFileExpand(el) {
-  const item = el.closest('.file-item');
-  item.classList.toggle('expanded');
-}
-
-async function toggleFileActive(filename, active) {
-  await api('POST', `/api/projects/${state.current.id}/toggle-file`, {filename, active});
-  render();
-}
-
-async function doIngest() {
-  const paths = document.getElementById('ingestPathsArea').value.split('\n').map(p=>p.trim()).filter(Boolean);
-  if (!paths.length) return;
-  const r = await api('POST','/api/ingest',{project_id:state.current.id,file_paths:paths});
-  let html = `<div class="card"><h3>Ingested: ${r.ingested||0} file(s)</h3>`;
-  if (r.documents) html += `<ul class="items">${r.documents.map(d=>`<li>✓ ${d.filename} (${d.source_type}, ${d.sections} sections, ${d.word_count} words)</li>`).join('')}</ul>`;
-  if (r.errors?.length) html += `<p style="color:var(--danger);margin-top:6px">${r.errors.map(e=>`✗ ${e.file}: ${e.error}`).join('<br>')}</p>`;
-  if (r.error) html += `<p style="color:var(--danger)">${r.error}</p>`;
-  html += '</div>';
-  document.getElementById('ingestResult').innerHTML = html;
-}
-
-// ─── Intelligence View (M3: Scoped to selected Version and Review) ───
-async function viewIntelligence() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
-
-  // Use the current version/review context from dashboard selection
-  const selVersion = state._dashVersion || '';
-  const selReview = state._dashReview || '';
-
-  // Load scoped metrics to get the right review's findings
-  let metricsUrl = `/api/projects/${pid}/hierarchy/metrics`;
-  const params = [];
-  if (selVersion) params.push(`version_id=${selVersion}`);
-  if (selReview) params.push(`review_id=${selReview}`);
-  if (params.length) metricsUrl += '?' + params.join('&');
-
-  let metrics = {};
-  try { metrics = await api('GET', metricsUrl); } catch(e){}
-
-  // Load intelligence data (raw)
-  const data = await api('GET',`/api/projects/${pid}/intelligence`);
-  const i = data.intelligence || data;
-
-  if (!i.risks && !i.constraints && !i.scope) return `<div class="card empty"><p>No intelligence built yet.</p><button class="btn mt" onclick="buildContext()">Build Now</button></div>`;
-
-  // If we have a selected review, load its specific findings
-  let reviewFindings = {};
-  const ds = metrics.data_source || {};
-  if (ds.review) {
-    try {
-      const rd = await api('GET', `/api/projects/${pid}/hierarchy/reviews/${ds.review}`);
-      if (rd && rd.findings) reviewFindings = rd.findings;
-    } catch(e){}
-  }
-
-  // Context header showing what data is being displayed
-  const contextHtml = `<div class="card"><h2>Project Intelligence</h2>
-    <p style="font-size:11px;color:var(--accent);margin-bottom:8px">
-      Scope: ${ds.version||'latest'} > ${ds.review||'latest'} | Phase: ${ds.phase||'-'}
-    </p>
-    <div class="flex">
-      <button class="btn btn-sm btn-outline" onclick="buildContext()">Rebuild</button>
-      <button class="btn btn-sm btn-outline" onclick="switchTab('versions')">View Versions</button>
-      <button class="btn btn-sm btn-outline" onclick="switchTab('dashboard')">Back to Dashboard</button>
-    </div></div>`;
-
-  // If review has findings, show review-scoped data
-  const cats = ['risks','assumptions','dependencies','constraints','action_items'];
-  let dataHtml = '';
-
-  if (Object.keys(reviewFindings).length) {
-    // Show review-scoped findings
-    for (const c of Object.keys(reviewFindings)) {
-      const items = reviewFindings[c] || [];
-      if (!items.length) continue;
-      const highlighted = state._intelCategory === c;
-      dataHtml += `<div class="card" ${highlighted?'style="border-color:var(--accent)"':''}><h2>${c.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())} (${items.length})</h2><ul class="items">${items.map(x=>`<li>${typeof x==='object'?(x.description||JSON.stringify(x)):escHtml(x)}</li>`).join('')}</ul></div>`;
-    }
-  } else {
-    // Fallback: show global intelligence data
-    for (const c of cats) {
-      const items = i[c]||[];
-      if (!items.length) continue;
-      const highlighted = state._intelCategory === c;
-      dataHtml += `<div class="card" ${highlighted?'style="border-color:var(--accent)"':''}><h2>${c.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())} (${items.length})</h2><ul class="items">${items.map(x=>`<li>${typeof x==='object'?(x.description||JSON.stringify(x)):escHtml(x)}</li>`).join('')}</ul></div>`;
-    }
-  }
-
-  dataHtml += i.scope ? `<div class="card"><h2>Scope</h2><p style="font-size:12px;white-space:pre-wrap">${escHtml(i.scope.slice(0,1500))}</p></div>` : '';
-
-  // Clear the highlight after rendering
-  state._intelCategory = null;
-
-  return contextHtml + dataHtml;
+function switchIngestTab(tab){
+  ['upload','paste','paths'].forEach(t=>{
+    const el=document.getElementById('ingest'+t[0].toUpperCase()+t.slice(1));
+    const btn=document.getElementById('tab'+t[0].toUpperCase()+t.slice(1));
+    if(el)el.style.display=t===tab?'':'none';
+    if(btn){btn.className='btn btn-sm '+(t===tab?'':'btn-ghost');}
+  });
+  if(tab==='upload')renderMetadataFields('upload');
+  if(tab==='paste')renderMetadataFields('paste');
 }
 </script>
 
+
 <script>
-// ─── Versions View (M4: Full Phase → Version → Review hierarchy, no limits) ───
-async function viewVersions() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
+// ─── Metadata fields helpers ─────────────────────────────────
+function renderMetadataFields(prefix){
+  const catEl=document.getElementById(prefix+'Category');
+  const cnt=document.getElementById(prefix+'MetaFields');
+  if(!catEl||!cnt)return;
+  const fields=CATEGORY_META_SCHEMA[catEl.value]||[];
+  if(!fields.length){cnt.innerHTML='';return;}
+  let html=`<div style="border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin:6px 0 8px;background:var(--bg)">
+    <p class="card-section" style="margin-top:0">Context Fields</p>`;
+  for(const f of fields){
+    const id=`${prefix}_meta_${f.name}`;
+    const req=f.required?` <span style="color:var(--red)">*</span>`:'';
+    if(f.type==='enum'){
+      html+=`<div class="form-row"><label>${f.label}${req}</label><select id="${id}"><option value="">— select —</option>${f.options.map(o=>`<option value="${o}">${o.replace(/_/g,' ')}</option>`).join('')}</select></div>`;
+    }else if(f.type==='date'){
+      html+=`<div class="form-row"><label>${f.label}${req}</label><input id="${id}" type="date"></div>`;
+    }else if(f.type==='array'){
+      html+=`<div class="form-row"><label>${f.label}${req}</label><input id="${id}" placeholder="e.g. Alice, Bob"></div>`;
+    }else{
+      html+=`<div class="form-row"><label>${f.label}${req}</label><input id="${id}" placeholder="${f.label}"></div>`;
+    }
+  }
+  html+='</div>';
+  cnt.innerHTML=html;
+}
 
-  // Load full hierarchy tree (no limit on versions)
-  let hierarchy = {};
-  try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
-  const tree = hierarchy.tree || [];
-  const totalV = hierarchy.total_versions || 0;
-  const totalR = hierarchy.total_reviews || 0;
+function collectMetadata(prefix){
+  const catEl=document.getElementById(prefix+'Category');
+  if(!catEl)return{};
+  const fields=CATEGORY_META_SCHEMA[catEl.value]||[];
+  const md={};
+  for(const f of fields){
+    const el=document.getElementById(`${prefix}_meta_${f.name}`);
+    if(!el)continue;
+    const v=el.value.trim();
+    if(!v)continue;
+    md[f.name]=f.type==='array'?v.split(',').map(s=>s.trim()).filter(Boolean):v;
+  }
+  return md;
+}
 
-  if (!totalV) return `<div class="card empty"><p>No versions yet. Build intelligence to create the first version.</p>
-    <button class="btn mt" onclick="buildContext()">Run Intelligence</button></div>`;
+function validateMetadata(prefix){
+  const catEl=document.getElementById(prefix+'Category');
+  if(!catEl)return{valid:true,errors:[]};
+  const fields=CATEGORY_META_SCHEMA[catEl.value]||[];
+  const errors=[];
+  for(const f of fields){
+    if(!f.required)continue;
+    const el=document.getElementById(`${prefix}_meta_${f.name}`);
+    if(!el||!el.value.trim())errors.push(`${f.label} is required`);
+  }
+  return{valid:errors.length===0,errors};
+}
 
-  // Build collapsible tree: Phase → Version → Review (M4 T4.2, T4.3)
-  let treeHtml = '';
-  for (const phase of tree) {
-    const phaseVersions = phase.versions || [];
-    if (!phaseVersions.length && !phase.is_current) continue;
-    const phaseActive = phase.is_current ? ' style="border-left:3px solid var(--accent)"' : '';
-    const phaseReviewCount = phaseVersions.reduce((sum, v) => sum + (v.reviews||[]).length, 0);
-    treeHtml += `<div class="card"${phaseActive}>
-      <details ${phase.is_current ? 'open' : ''}>
-        <summary style="cursor:pointer;font-size:13px;font-weight:600;color:${phase.is_current?'var(--accent)':'var(--text)'}">
-          ${phase.label} <span class="tag">${phaseVersions.length} versions</span>
-          <span class="tag">${phaseReviewCount} reviews</span>
-          ${phase.is_current ? '<span class="tag tag-ok">current</span>' : ''}
-        </summary>
-        <p style="font-size:11px;color:var(--text-dim);margin:4px 0 8px">${phase.description||''}</p>`;
+async function doUploadArtifact(){
+  const pid=state.current.id;
+  const fi=document.getElementById('uploadFile');
+  const cat=document.getElementById('uploadCategory').value;
+  const title=document.getElementById('uploadTitle').value;
+  const el=document.getElementById('ingestResult');
+  if(!fi.files.length){el.innerHTML='<p style="color:var(--red)">Select a file</p>';return;}
+  if(!cat){el.innerHTML='<p style="color:var(--red)">Category required</p>';return;}
+  const{valid,errors}=validateMetadata('upload');
+  if(!valid){el.innerHTML=`<p style="color:var(--red)">${errors.join('<br>')}</p>`;return;}
+  const md=collectMetadata('upload');
+  const file=fi.files[0];
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Uploading…</span>';
+  const fd=new FormData();
+  fd.append('file',file);fd.append('category',cat);
+  if(title)fd.append('title',title);
+  if(Object.keys(md).length)fd.append('metadata',JSON.stringify(md));
+  try{
+    const resp=await fetch(`/api/v1/projects/${pid}/artifacts/upload`,{method:'POST',body:fd});
+    const r=await resp.json();
+    if(r.artifact){
+      toast(`Uploaded: ${r.artifact.title||r.artifact.fileName}`);
+      el.innerHTML='';fi.value='';document.getElementById('uploadTitle').value='';
+      setTimeout(()=>render(),600);
+    }else{el.innerHTML=`<p style="color:var(--red)">${r.error||'Upload failed'}</p>`;}
+  }catch(ex){el.innerHTML=`<p style="color:var(--red)">${ex.message}</p>`;}
+}
 
-    if (!phaseVersions.length) {
-      treeHtml += `<p style="font-size:12px;color:var(--text-dim);padding:8px 0">No versions in this phase yet</p>`;
-    } else {
-      for (const ver of phaseVersions) {
-        const verReviews = ver.reviews || [];
-        const activeReviewId = ver.active_review_id || '';
-        treeHtml += `<details open style="margin:6px 0;padding-left:12px;border-left:2px solid var(--border)">
-          <summary style="cursor:pointer;font-size:12px">
-            <strong>${ver.version_id}</strong> – ${ver.label||''}
-            <span style="color:var(--text-dim);font-size:10px">${ver.created_at?.slice(0,10)||''}</span>
+async function doPasteArtifact(){
+  const pid=state.current.id;
+  const cat=document.getElementById('pasteCategory').value;
+  const title=document.getElementById('pasteTitle').value;
+  const text=document.getElementById('pasteText').value;
+  const el=document.getElementById('ingestResult');
+  if(!text.trim()){el.innerHTML='<p style="color:var(--red)">Text required</p>';return;}
+  if(!cat){el.innerHTML='<p style="color:var(--red)">Category required</p>';return;}
+  const{valid,errors}=validateMetadata('paste');
+  if(!valid){el.innerHTML=`<p style="color:var(--red)">${errors.join('<br>')}</p>`;return;}
+  const md=collectMetadata('paste');
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Saving…</span>';
+  const r=await api('POST',`/api/v1/projects/${pid}/artifacts/text`,{category:cat,title,text,metadata:md});
+  if(r.artifact){
+    toast(`Saved: ${r.artifact.title}`);
+    el.innerHTML='';document.getElementById('pasteText').value='';document.getElementById('pasteTitle').value='';
+    setTimeout(()=>render(),600);
+  }else{el.innerHTML=`<p style="color:var(--red)">${r.error||r.message||'Save failed'}</p>`;}
+}
+
+async function toggleArtifact(id,inc){
+  await api('POST',`/api/v1/projects/${state.current.id}/artifacts/${id}/toggle`,{include:inc});render();
+}
+async function deleteArtifact(id){
+  if(!confirm('Remove this artefact?'))return;
+  await api('POST',`/api/v1/projects/${state.current.id}/artifacts/${id}/delete`,{});
+  toast('Artefact removed');render();
+}
+async function processArtifact(id){
+  const r=await api('POST',`/api/v1/projects/${state.current.id}/artifacts/${id}/process`,{});
+  if(r.job){toast(`Processing queued (${r.job.jobId})`);setTimeout(()=>render(),500);}
+  else toast(r.error||'Processing failed','err');
+}
+async function processAllArtifacts(){
+  const r=await api('POST',`/api/v1/projects/${state.current.id}/artifacts/process`,{onlyIncluded:true});
+  if(r.queuedArtifactIds){toast(`Queued ${r.queuedArtifactIds.length} artefact(s)`);setTimeout(()=>render(),500);}
+  else toast(r.error||'Failed','err');
+}
+async function toggleFileActive(fname,active){
+  await api('POST',`/api/projects/${state.current.id}/toggle-file`,{filename:fname,active});render();
+}
+async function doIngest(){
+  const paths=document.getElementById('ingestPathsArea').value.split('\n').map(p=>p.trim()).filter(Boolean);
+  if(!paths.length)return;
+  const r=await api('POST','/api/ingest',{project_id:state.current.id,file_paths:paths});
+  let html=`<div class="card"><div class="card-title">Ingested: ${r.ingested||0} file(s)</div>`;
+  if(r.documents)html+=`<ul class="items">${r.documents.map(d=>`<li>✓ ${escHtml(d.filename)} (${d.source_type}, ${d.sections} sections)</li>`).join('')}</ul>`;
+  if(r.errors?.length)html+=`<p style="color:var(--red);margin-top:6px">${r.errors.map(e=>`✗ ${escHtml(e.file)}: ${escHtml(e.error)}`).join('<br>')}</p>`;
+  if(r.error)html+=`<p style="color:var(--red)">${r.error}</p>`;
+  html+='</div>';
+  document.getElementById('ingestResult').innerHTML=html;
+}
+</script>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// INTELLIGENCE VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewIntelligence(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+  const selV=state._dashVersion||'';
+  const selR=state._dashReview||'';
+  let metricsUrl=`/api/projects/${pid}/hierarchy/metrics`;
+  const ps=[];
+  if(selV)ps.push(`version_id=${selV}`);
+  if(selR)ps.push(`review_id=${selR}`);
+  if(ps.length)metricsUrl+='?'+ps.join('&');
+  let metrics={};
+  try{metrics=await api('GET',metricsUrl);}catch(e){}
+  const data=await api('GET',`/api/projects/${pid}/intelligence`);
+  const i=data.intelligence||data;
+  if(!i.risks&&!i.constraints&&!i.scope)
+    return`<div class="card"><div class="empty"><div class="empty-icon">🧠</div>
+      <p>No intelligence built yet.</p>
+      <button class="btn mt" onclick="buildContext()">Run Intelligence Now</button></div></div>`;
+
+  const ds=metrics.data_source||{};
+  let revFindings={};
+  if(ds.review){
+    try{const rd=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${ds.review}`);
+      if(rd&&rd.findings)revFindings=rd.findings;}catch(e){}
+  }
+
+  const cats=['risks','assumptions','dependencies','constraints','action_items'];
+  const catIcons={risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',action_items:'✅'};
+
+  const header=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">🧠</span>Project Intelligence</div>
+      <div class="flex gap-sm">
+        <button class="btn btn-sm btn-ghost" onclick="expandAllIntel()">Expand All</button>
+        <button class="btn btn-sm btn-ghost" onclick="collapseAllIntel()">Collapse All</button>
+        <button class="btn btn-sm btn-outline" onclick="buildContext()">Rebuild</button>
+      </div>
+    </div>
+    ${ds.version?`<p style="font-size:11px;color:var(--accent)">
+      Scope: <strong>${escHtml(ds.version_label||ds.version)}</strong> → <strong>${ds.review_persona?escHtml(ds.review_persona)+' ('+ds.review+')':ds.review||'latest'}</strong>
+    </p>`:''}
+  </div>`;
+
+  const useReview=Object.keys(revFindings).length>0;
+  const src=useReview?revFindings:i;
+
+  let html=header;
+  const allCats=useReview?Object.keys(revFindings):cats;
+  for(const c of allCats){
+    const items=src[c]||[];
+    if(!items.length)continue;
+    const highlighted=state._intelCategory===c;
+    const icon=catIcons[c]||'📌';
+    html+=`<details class="card" ${highlighted?'open':''} id="intel_${c}">
+      <summary class="collapse-header" style="list-style:none;${highlighted?'border-left:3px solid var(--accent);':''};margin:-16px -18px 0;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+        <span class="chevron">▶</span>
+        <span>${icon}</span>
+        <strong>${c.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</strong>
+        <span class="tag ${highlighted?'tag-blue':''}" style="margin-left:4px">${items.length}</span>
+      </summary>
+      <div class="collapse-body">
+        <ul class="items">${items.map(x=>`<li>${typeof x==='object'?(x.description||JSON.stringify(x)):escHtml(String(x))}</li>`).join('')}</ul>
+      </div>
+    </details>`;
+  }
+  if(i.scope){
+    html+=`<details class="card">
+      <summary class="collapse-header" style="list-style:none;margin:-16px -18px 0;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
+        <span class="chevron">▶</span> <span>📄</span> <strong>Scope</strong>
+      </summary>
+      <div class="collapse-body"><p style="font-size:12px;white-space:pre-wrap;color:var(--text-dim)">${escHtml(i.scope.slice(0,2000))}</p></div>
+    </details>`;
+  }
+  state._intelCategory=null;
+  return html;
+}
+
+function expandAllIntel(){document.querySelectorAll('#main details').forEach(d=>d.open=true);}
+function collapseAllIntel(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
+</script>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// VERSIONS VIEW  –  Bug #1 Fixed: compare uses enriched allVersions
+// ═══════════════════════════════════════════════════════════════
+async function viewVersions(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+
+  let hierarchy={};
+  try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
+  const tree=hierarchy.tree||[];
+  const totalV=hierarchy.total_versions||0;
+  const totalR=hierarchy.total_reviews||0;
+
+  if(!totalV)return`<div class="card"><div class="empty">
+    <div class="empty-icon">📋</div>
+    <p>No versions yet. Build intelligence to create the first snapshot.</p>
+    <button class="btn mt" onclick="buildContext()">Run Intelligence</button></div></div>`;
+
+  // Sort control
+  const sort=state._versionSort||'newest';
+  const sortBar=`<div class="sort-bar">
+    <span>Sort:</span>
+    <button class="sort-btn ${sort==='newest'?'active':''}" onclick="setVersionSort('newest')">Newest First</button>
+    <button class="sort-btn ${sort==='oldest'?'active':''}" onclick="setVersionSort('oldest')">Oldest First</button>
+    <button class="sort-btn ${sort==='most-reviews'?'active':''}" onclick="setVersionSort('most-reviews')">Most Reviews</button>
+  </div>`;
+
+  // Expand/collapse all control
+  const expandBar=`<div class="expand-bar">
+    <button class="btn btn-sm btn-ghost" onclick="expandAllVersions()">Expand All</button>
+    <button class="btn btn-sm btn-ghost" onclick="collapseAllVersions()">Collapse All</button>
+    <span style="margin-left:auto;color:var(--text-dim)">${totalV} versions · ${totalR} reviews</span>
+  </div>`;
+
+  // Build phase tree
+  let treeHtml='';
+  for(const phase of tree){
+    let phaseVersions=phase.versions||[];
+    if(!phaseVersions.length&&!phase.is_current)continue;
+
+    // Apply sort
+    phaseVersions=[...phaseVersions];
+    if(sort==='oldest')phaseVersions.sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
+    else if(sort==='most-reviews')phaseVersions.sort((a,b)=>(b.reviews||[]).length-(a.reviews||[]).length);
+    else phaseVersions.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+
+    const phRevCnt=phaseVersions.reduce((s,v)=>s+(v.reviews||[]).length,0);
+    const isCurrent=phase.is_current;
+    treeHtml+=`<details ${isCurrent?'open':''} class="card" style="${isCurrent?'border-left:3px solid var(--accent)':''}">
+      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;margin:-16px -18px 0;padding:14px 18px;border-radius:var(--radius-lg) var(--radius-lg) 0 0;background:var(--surface)">
+        <span class="chevron">▶</span>
+        <strong style="font-size:13px;color:${isCurrent?'var(--accent)':'var(--text)'}">${escHtml(phase.label)}</strong>
+        ${isCurrent?'<span class="tag tag-green">current</span>':''}
+        <span class="tag">${phaseVersions.length} ver</span>
+        <span class="tag">${phRevCnt} rev</span>
+        ${phase.description?`<span style="font-size:11px;color:var(--text-muted)">${escHtml(phase.description)}</span>`:''}
+      </summary>
+      <div style="padding-top:12px">`;
+
+    if(!phaseVersions.length){
+      treeHtml+=`<p style="font-size:12px;color:var(--text-dim);padding:8px 0">No versions in this phase yet.</p>`;
+    }else{
+      for(const ver of phaseVersions){
+        const verRevs=ver.reviews||[];
+        const activeRid=ver.active_review_id||'';
+        treeHtml+=`<details open style="margin:6px 0;padding-left:10px;border-left:2px solid var(--border)">
+          <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:var(--radius);transition:background .15s"
+            onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+            <span class="chevron">▶</span>
+            <strong>${escHtml(ver.version_id)}</strong>
+            ${ver.label?`<span style="color:var(--text-dim)">– ${escHtml(ver.label)}</span>`:''}
+            <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(ver.created_at)}</span>
             <span class="tag">${ver.artifact_count||0} files</span>
-            <span class="tag">${verReviews.length} reviews</span>
-            ${ver.stats?.risks ? `<span style="font-size:10px;color:var(--warn)">${ver.stats.risks} risks</span>` : ''}
+            <span class="tag ${verRevs.length?'tag-blue':''}">${verRevs.length} reviews</span>
+            ${ver.stats?.risks?`<span class="tag tag-red">${ver.stats.risks} risks</span>`:''}
           </summary>
-          <div style="padding:8px 0 4px 16px">
-            <p style="font-size:11px;color:var(--text-dim)">Persona: ${ver.persona||'–'} | Backend: files_only</p>
-            <div class="flex mt"><button class="btn btn-sm btn-outline" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button></div>`;
+          <div style="padding:8px 0 4px 18px">
+            <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+              ${ver.persona?`Persona: ${escHtml(ver.persona)} · `:''}Backend: ${escHtml(ver.ai_backend||'files_only')} · ${fmtDate(ver.created_at)}
+            </p>
+            <div class="flex gap-sm mb">
+              <button class="btn btn-sm btn-ghost" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button>
+            </div>`;
 
-        if (verReviews.length) {
-          treeHtml += `<div style="margin-top:6px">`;
-          for (const rev of verReviews) {
-            const isActive = rev.review_id === activeReviewId;
-            treeHtml += `<div style="padding:6px 10px;margin:4px 0;background:var(--bg);border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:var(--radius);cursor:pointer" onclick="viewReviewDetail('${rev.review_id}')">
-              <div class="flex" style="justify-content:space-between">
-                <span style="font-size:11px;font-weight:600">${rev.review_id} ${isActive?'<span class="tag tag-ok">active</span>':''}</span>
-                <span style="font-size:10px;color:var(--text-dim)">${rev.created_at?.slice(0,16)||''}</span>
+        if(verRevs.length){
+          for(const rev of verRevs){
+            const rid=rev.review_id||'';if(!rid)continue;
+            const isActive=rid===activeRid;
+            treeHtml+=`<div class="review-item ${isActive?'active-review':''}">
+              <div class="review-item-header" onclick="toggleRevItem(this)">
+                <span class="chevron">▶</span>
+                <strong style="font-size:11px">${rid}</strong>
+                ${isActive?'<span class="tag tag-green">active</span>':''}
+                <span class="tag">${escHtml(rev.persona||'–')}</span>
+                <span class="tag">${escHtml(rev.ai_backend||'files_only')}</span>
+                ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
+                <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${relativeTime(rev.created_at)}</span>
               </div>
-              <div style="font-size:11px;color:var(--text-dim);margin-top:3px">
-                Persona: <strong>${rev.persona}</strong> | Backend: ${rev.ai_backend}
-                | Findings: ${rev.total_findings||0}
-              </div>
-              ${rev.summary ? `<p style="font-size:11px;margin-top:3px">${escHtml(rev.summary.slice(0,100))}</p>` : ''}
-              <div class="flex mt">
-                <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();viewReviewDetail('${rev.review_id}')">Details</button>
-                ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();setActiveReview('${ver.version_id}','${rev.review_id}')">Set Active</button>` : ''}
-                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteReview('${rev.review_id}')">Delete</button>
+              <div class="review-item-body" style="display:none">
+                ${rev.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(rev.summary.slice(0,160))}</p>`:''}
+                <div class="flex gap-sm">
+                  <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rid}')">Full Details</button>
+                  ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
+                  <button class="btn btn-sm btn-red" onclick="deleteReview('${rid}')">Delete</button>
+                </div>
               </div>
             </div>`;
           }
-          treeHtml += `</div>`;
-        } else {
-          treeHtml += `<p style="font-size:11px;color:var(--text-dim);margin-top:4px">No reviews for this version yet</p>`;
+        }else{
+          treeHtml+=`<p style="font-size:11px;color:var(--text-muted)">No reviews yet.</p>`;
         }
-        treeHtml += `</div></details>`;
+        treeHtml+=`</div></details>`;
       }
     }
-    treeHtml += `</details></div>`;
+    treeHtml+=`</div></details>`;
   }
 
-  // Compare Versions section (M5: all versions available, review context included)
-  // Uses enriched version data (live review_count + active_review) so the dropdown
-  // accurately reflects how many reviews each version has and which is active.
-  let allVersions = [];
-  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); allVersions = r.versions || []; } catch(e){}
-  const cmpOpts = allVersions.map(v=>`<option value="${v.version_id}">${formatVersionOption(v)}</option>`).join('');
-  const compareHtml = allVersions.length >= 2 ? `<div class="card"><h2>Compare Versions</h2>
-    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Compare intelligence output between any two versions. Each version compares using its active review by default.</p>
-    <div class="flex">
-      <select id="cmpA">${cmpOpts}</select>
-      <span style="color:var(--text-dim)">vs</span>
-      <select id="cmpB">${allVersions.slice().reverse().map(v=>`<option value="${v.version_id}">${formatVersionOption(v)}</option>`).join('')}</select>
-      <button class="btn btn-sm" onclick="compareVersions()">Compare</button>
-    </div><div id="cmpResult" class="mt"></div></div>` : '';
+  // ── Compare Versions (BUG #1 FIX: use enriched allVersions from hierarchy list)
+  // allVersions is already loaded from the hierarchy tree above – includes live review_count + active_review
+  const allVersions=[];
+  for(const phase of tree){
+    for(const ver of(phase.versions||[])){
+      allVersions.push(ver);
+    }
+  }
+  // Sort newest first for dropdown
+  allVersions.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
 
-  return `<div class="card"><h2>Project History</h2>
-    <p style="font-size:12px;color:var(--text-dim)">Navigate: Phase > Version > Review. ${totalV} versions, ${totalR} reviews total.</p></div>`
-    + treeHtml + compareHtml;
-}
-
-// Select a version context from the tree and navigate to dashboard
-function selectVersionContext(versionId) {
-  state._dashVersion = versionId;
-  state._dashReview = '';
-  switchTab('dashboard');
-}
-
-// Set active review for a version (M6)
-async function setActiveReview(versionId, reviewId) {
-  const pid = state.current.id;
-  const r = await api('POST', `/api/projects/${pid}/hierarchy/versions/${versionId}/set-active-review`, {review_id: reviewId});
-  if (r.error) { alert(r.error); return; }
-  render();
-}
-
-// Delete a review (M6)
-async function deleteReview(reviewId) {
-  if (!reviewId || reviewId === 'undefined') { alert('Invalid review ID'); return; }
-  if (!confirm('Delete this review? This cannot be undone.')) return;
-  const pid = state.current.id;
-  const r = await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/delete`);
-  if (r.error) { alert(r.error); return; }
-  render();
-}
-
-async function viewReviewDetail(reviewId) {
-  if (!reviewId || reviewId === 'undefined') { alert('Invalid review ID'); return; }
-  const pid = state.current.id;
-  const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews/${reviewId}`);
-  if (r.error) { alert(r.error); return; }
-
-  const vc = r.version_context || {};
-  let html = `<div class="card"><h2>Review: ${r.review_id}</h2>
-    <div style="font-size:12px;margin-bottom:8px">
-      <strong>Version:</strong> ${r.version_id} | <strong>Phase:</strong> ${r.phase_id}
-      | <strong>Date:</strong> ${r.created_at?.slice(0,16)||''}
-    </div>
-    <div style="font-size:12px;margin-bottom:8px">
-      <strong>Persona:</strong> ${r.persona} | <strong>Backend:</strong> ${r.ai_backend}
+  let compareHtml='';
+  if(allVersions.length>=2){
+    const mkOpts=(vers)=>vers.map(v=>`<option value="${v.version_id}">${escHtml(formatVersionOption(v))}</option>`).join('');
+    const optsAsc=[...allVersions].reverse();
+    compareHtml=`<div class="card">
+      <div class="card-title mb"><span class="icon">⚖️</span>Compare Versions</div>
+      <p class="card-subtitle">Compare intelligence output and review findings between any two versions.</p>
+      <div class="flex mb">
+        <select id="cmpA" style="flex:1">${mkOpts(optsAsc)}</select>
+        <span style="color:var(--text-muted);font-weight:700">→</span>
+        <select id="cmpB" style="flex:1">${mkOpts(allVersions)}</select>
+        <button class="btn" onclick="compareVersions()">Compare</button>
+      </div>
+      <div id="cmpResult"></div>
     </div>`;
-
-  // Files included
-  if (r.included_files?.length) {
-    html += `<h3>Files Included</h3><div style="margin:4px 0">${r.included_files.map(f=>`<span class="tag tag-ok">${escHtml(f)}</span>`).join(' ')}</div>`;
-  }
-  if (r.categories?.length) {
-    html += `<div style="margin:4px 0">Categories: ${r.categories.map(c=>`<span class="tag">${c}</span>`).join(' ')}</div>`;
   }
 
-  // Findings
-  for (const [s, items] of Object.entries(r.findings||{})) {
-    if (items.length) html += `<div class="findings-section"><div class="title">${s.replace(/_/g,' ')}</div><ul class="items">${items.map(i=>`<li>${escHtml(i)}</li>`).join('')}</ul></div>`;
-  }
-  if (r.questions?.length) html += `<div class="findings-section"><div class="title">Questions</div><ul class="items">${r.questions.map(q=>`<li>? ${escHtml(q)}</li>`).join('')}</ul></div>`;
-
-  // Prompt
-  if (r.prompt_used) html += `<details class="collapsible"><summary>Prompt Used</summary><div class="prompt-box">${escHtml(r.prompt_used)}</div></details>`;
-  if (r.custom_prompt) html += `<details class="collapsible"><summary>Custom Prompt</summary><div class="prompt-box">${escHtml(r.custom_prompt)}</div></details>`;
-
-  html += `<button class="btn btn-sm mt" onclick="render()">← Back</button></div>`;
-  document.getElementById('main').innerHTML = html;
+  return`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">📋</span>Project History</div>
+    </div>
+    ${sortBar}
+    ${expandBar}
+  </div>`+treeHtml+compareHtml;
 }
 
-async function compareVersions() {
-  const a = document.getElementById('cmpA').value;
-  const b = document.getElementById('cmpB').value;
-  if (a===b) { document.getElementById('cmpResult').innerHTML='<p style="color:var(--warn)">Select different versions</p>'; return; }
-  const pid = state.current.id;
+function setVersionSort(s){state._versionSort=s;render();}
 
-  // Get review context for display (M5 T5.2)
-  let reviewA = '', reviewB = '';
-  try {
-    const va = await api('GET',`/api/projects/${pid}/hierarchy/versions/${a}`);
-    const vb = await api('GET',`/api/projects/${pid}/hierarchy/versions/${b}`);
-    if (va.active_review_id) reviewA = va.active_review_id;
-    else if (va.review_ids?.length) reviewA = va.review_ids[va.review_ids.length-1];
-    if (vb.active_review_id) reviewB = vb.active_review_id;
-    else if (vb.review_ids?.length) reviewB = vb.review_ids[vb.review_ids.length-1];
-  } catch(e){}
+function toggleRevItem(el){
+  const body=el.nextElementSibling;
+  const isOpen=body.style.display!=='none';
+  body.style.display=isOpen?'none':'block';
+  const chev=el.querySelector('.chevron');
+  if(chev)chev.style.transform=isOpen?'':'rotate(90deg)';
+}
 
-  const r = await api('POST',`/api/projects/${pid}/compare-versions`,{version_a:a,version_b:b});
-  if (r.error) { document.getElementById('cmpResult').innerHTML=`<p style="color:var(--danger)">${r.error}</p>`; return; }
-  const cats = r.categories || {};
-  let html = `<div class="card mt"><h3>Changes: ${a}${reviewA?' ('+reviewA+')':''} > ${b}${reviewB?' ('+reviewB+')':''}</h3>`;
-  for (const [cat, data] of Object.entries(cats)) {
-    const dir = data.net_change>0?'&#x2191;':data.net_change<0?'&#x2193;':'&#x2192;';
-    html += `<div style="margin:6px 0;font-size:12px"><strong>${cat}</strong> ${data.count_before}&#x2192;${data.count_after} ${dir} (${data.net_change>=0?'+':''}${data.net_change})`;
-    if (data.added?.length) html += data.added.slice(0,3).map(i=>`<div style="color:var(--accent2);margin-left:12px">+ ${escHtml(i.slice(0,80))}</div>`).join('');
-    if (data.removed?.length) html += data.removed.slice(0,3).map(i=>`<div style="color:var(--danger);margin-left:12px">- ${escHtml(i.slice(0,80))}</div>`).join('');
-    html += '</div>';
-  }
-  const s = r.summary||{};
-  html += `<p class="mt" style="font-size:11px;color:var(--text-dim)">Trend: ${s.trend||'?'} | +${s.total_added||0} added, <span style="color:var(--danger)">-${s.total_removed||0} resolved</span></p></div>`;
-  document.getElementById('cmpResult').innerHTML = html;
+function expandAllVersions(){
+  document.querySelectorAll('#main details').forEach(d=>d.open=true);
+  document.querySelectorAll('.review-item-body').forEach(b=>b.style.display='block');
+  document.querySelectorAll('.review-item-header .chevron').forEach(c=>c.style.transform='rotate(90deg)');
+}
+function collapseAllVersions(){
+  document.querySelectorAll('#main details').forEach(d=>d.open=false);
+  document.querySelectorAll('.review-item-body').forEach(b=>b.style.display='none');
+  document.querySelectorAll('.review-item-header .chevron').forEach(c=>c.style.transform='');
+}
+
+function selectVersionContext(vid){state._dashVersion=vid;state._dashReview='';switchTab('dashboard');}
+async function setActiveReview(vid,rid){
+  const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/versions/${vid}/set-active-review`,{review_id:rid});
+  if(r.error){toast(r.error,'err');return;}
+  toast(`Active review set to ${rid}`);render();
+}
+async function deleteReview(rid){
+  if(!rid||rid==='undefined'){toast('Invalid review ID','err');return;}
+  if(!confirm('Delete this review? Cannot be undone.'))return;
+  const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/reviews/${rid}/delete`);
+  if(r.error){toast(r.error,'err');return;}
+  toast('Review deleted');render();
 }
 </script>
 
+
 <script>
-// ─── Reviews View (M7: Review selection, expansion, version-scoped) ───
-async function viewReviews() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
-  const personas = await api('POST','/api/personas');
-  const backendOpts = state.backends.map(b=>`<option value="${b.name}">${b.display_name||b.name} ${b.available?'':'(not configured)'}</option>`).join('');
+// ═══════════════════════════════════════════════════════════════
+// COMPARE VERSIONS (enriched diff display)
+// ═══════════════════════════════════════════════════════════════
+async function compareVersions(){
+  const a=document.getElementById('cmpA').value;
+  const b=document.getElementById('cmpB').value;
+  const el=document.getElementById('cmpResult');
+  if(a===b){el.innerHTML='<p style="color:var(--yellow)">⚠ Select two different versions.</p>';return;}
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Comparing…</span>';
+  const pid=state.current.id;
 
-  // Load full hierarchy tree (includes reviews nested under versions - single API call)
-  let hierarchy = {};
-  try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
-  const tree = hierarchy.tree || [];
+  const r=await api('POST',`/api/projects/${pid}/compare-versions`,{version_a:a,version_b:b});
+  if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
 
-  // Flatten: collect all versions that have reviews
-  let versionsWithReviews = [];
-  for (const phase of tree) {
-    for (const ver of (phase.versions || [])) {
-      const reviews = ver.reviews || [];
-      if (reviews.length > 0) {
-        versionsWithReviews.push({ ...ver, phase_label: phase.label });
-      }
+  const cats=r.categories||{};
+  const s=r.summary||{};
+
+  // Trend badge
+  const trendMap={improving:'tag-green',risks_increasing:'tag-red',complexity_increasing:'tag-yellow',stable:''};
+  const trendTag=`<span class="tag ${trendMap[s.trend]||''}">${s.trend||'–'}</span>`;
+
+  let html=`<div class="diff-card">
+    <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <strong style="font-size:12px">${escHtml(a)}</strong>
+      <span style="color:var(--text-muted)">→</span>
+      <strong style="font-size:12px">${escHtml(b)}</strong>
+      ${trendTag}
+      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">
+        <span style="color:var(--green)">+${s.total_added||0} added</span> &nbsp;
+        <span style="color:var(--red)">–${s.total_removed||0} removed</span>
+      </span>
+    </div>`;
+
+  const catIcons={risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',action_items:'✅'};
+  for(const[cat,data]of Object.entries(cats)){
+    const net=data.net_change||0;
+    const netCol=net>0?'var(--red)':net<0?'var(--green)':'var(--text-dim)';
+    const arrow=net>0?'↑':net<0?'↓':'→';
+    const added=data.added||[];
+    const removed=data.removed||[];
+    const hasChanges=added.length||removed.length;
+    html+=`<details ${hasChanges?'open':''} style="border-bottom:1px solid var(--border)">
+      <summary class="diff-cat-header">
+        <span class="chevron">▶</span>
+        <span>${catIcons[cat]||'📌'}</span>
+        <strong style="font-size:12px;text-transform:capitalize">${cat.replace(/_/g,' ')}</strong>
+        <span class="diff-count">${data.count_before} → ${data.count_after}</span>
+        <span style="font-size:12px;font-weight:700;color:${netCol}">${arrow} ${Math.abs(net)}</span>
+        ${hasChanges?'':'<span style="font-size:11px;color:var(--text-muted);margin-left:4px">no changes</span>'}
+      </summary>
+      <div class="diff-cat-body">
+        ${added.length?`<div style="margin-bottom:4px">
+          <p style="font-size:10px;color:var(--text-muted);margin-bottom:3px">ADDED (${added.length})</p>
+          ${added.slice(0,6).map(i=>`<div class="diff-added">${escHtml(String(i).slice(0,120))}</div>`).join('')}
+          ${added.length>6?`<p style="font-size:10px;color:var(--text-muted);margin-top:2px">… and ${added.length-6} more</p>`:''}
+        </div>`:''}
+        ${removed.length?`<div>
+          <p style="font-size:10px;color:var(--text-muted);margin-bottom:3px">REMOVED (${removed.length})</p>
+          ${removed.slice(0,6).map(i=>`<div class="diff-removed">${escHtml(String(i).slice(0,120))}</div>`).join('')}
+          ${removed.length>6?`<p style="font-size:10px;color:var(--text-muted);margin-top:2px">… and ${removed.length-6} more</p>`:''}
+        </div>`:''}
+        ${!hasChanges?`<p style="font-size:11px;color:var(--text-muted)">No changes in this category.</p>`:''}
+      </div>
+    </details>`;
+  }
+  html+=`<div style="padding:8px 14px;font-size:11px;color:var(--text-dim)">
+    Compare: ${fmtDate(r.timestamp_a)} → ${fmtDate(r.timestamp_b)}
+  </div></div>`;
+  el.innerHTML=html;
+}
+</script>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// REVIEW FULL DETAIL VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewReviewDetail(rid){
+  if(!rid||rid==='undefined'){toast('Invalid review ID','err');return;}
+  const pid=state.current.id;
+  const r=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${rid}`);
+  if(r.error){toast(r.error,'err');return;}
+
+  const vc=r.version_context||{};
+  let html=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">🔍</span>Review ${escHtml(r.review_id)}</div>
+      <button class="btn btn-sm btn-ghost" onclick="render()">← Back</button>
+    </div>
+    <div class="flex gap-sm mb" style="flex-wrap:wrap">
+      <span class="tag tag-blue">Version: ${escHtml(r.version_id)}</span>
+      <span class="tag">${escHtml(r.phase_id)}</span>
+      <span class="tag tag-purple">${escHtml(r.persona)}</span>
+      <span class="tag">${escHtml(r.ai_backend||'files_only')}</span>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${fmtDate(r.created_at)}</span>
+    </div>`;
+
+  // Files included (Bug #2 fix result: now shows both artifact v1 + legacy files)
+  if(r.included_files?.length){
+    html+=`<div class="mb">
+      <p class="card-section">Files Included (${r.included_files.length})</p>
+      <div class="flex gap-sm" style="flex-wrap:wrap">
+        ${r.included_files.map(f=>`<span class="tag tag-green">${escHtml(f)}</span>`).join('')}
+      </div>
+    </div>`;
+  }else{
+    html+=`<div class="mb"><p class="card-section">Files Included</p>
+      <p style="font-size:11px;color:var(--text-muted)">No file information recorded for this review.</p></div>`;
+  }
+
+  if(r.categories?.length){
+    html+=`<div class="flex gap-sm mb">${r.categories.filter(Boolean).map(c=>`<span class="tag">${escHtml(c)}</span>`).join('')}</div>`;
+  }
+
+  if(r.summary){
+    html+=`<div class="mb" style="background:var(--surface2);border-radius:var(--radius);padding:10px">
+      <p style="font-size:12px;color:var(--text-dim)">${escHtml(r.summary)}</p>
+    </div>`;
+  }
+
+  // Findings with expand/collapse
+  const findings=r.findings||{};
+  if(Object.keys(findings).length){
+    html+=`<div class="flex-between mb"><p class="card-section" style="margin:0">Findings</p>
+      <div class="flex gap-sm">
+        <button class="btn-icon" onclick="expandAllIntel()" title="Expand all">⊕</button>
+        <button class="btn-icon" onclick="collapseAllIntel()" title="Collapse all">⊖</button>
+      </div></div>`;
+    for(const[s,items]of Object.entries(findings)){
+      if(!items.length)continue;
+      html+=`<details open>
+        <summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+          <span class="chevron">▶</span>
+          <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">${escHtml(s.replace(/_/g,' '))}</strong>
+          <span class="tag" style="margin-left:4px">${items.length}</span>
+        </summary>
+        <div class="collapse-body" style="padding-left:12px">
+          ${items.map(it=>`<div class="findings-item">${escHtml(String(it))}</div>`).join('')}
+        </div>
+      </details>`;
     }
   }
 
-  // Build version-scoped review list
-  let reviewListHtml = '';
-  if (versionsWithReviews.length) {
-    reviewListHtml = `<div class="card"><h2>Reviews by Version</h2>
-      <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Click a review to expand details. Use Set Active to mark which review represents the current state.</p>`;
+  if(r.questions?.length){
+    html+=`<details open>
+      <summary class="collapse-header" style="list-style:none;margin:6px 0 4px">
+        <span class="chevron">▶</span>
+        <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Open Questions</strong>
+        <span class="tag" style="margin-left:4px">${r.questions.length}</span>
+      </summary>
+      <div class="collapse-body" style="padding-left:12px">
+        ${r.questions.map(q=>`<div class="findings-item">❓ ${escHtml(q)}</div>`).join('')}
+      </div>
+    </details>`;
+  }
 
-    for (const ver of versionsWithReviews) {
-      const verReviews = ver.reviews || [];
-      const activeId = ver.active_review_id || '';
+  if(r.prompt_used){
+    html+=`<details style="margin-top:8px">
+      <summary class="collapse-header" style="list-style:none;margin-bottom:0">
+        <span class="chevron">▶</span> <span style="font-size:12px;color:var(--accent)">Prompt Used</span>
+      </summary>
+      <div class="prompt-box" style="margin-top:6px">${escHtml(r.prompt_used)}</div>
+    </details>`;
+  }
+  if(r.custom_prompt){
+    html+=`<details style="margin-top:6px">
+      <summary class="collapse-header" style="list-style:none;margin-bottom:0">
+        <span class="chevron">▶</span> <span style="font-size:12px;color:var(--accent)">Custom Prompt</span>
+      </summary>
+      <div class="prompt-box" style="margin-top:6px">${escHtml(r.custom_prompt)}</div>
+    </details>`;
+  }
+  if(r.ai_metadata?.tokens_used){
+    html+=`<p style="font-size:11px;color:var(--text-muted);margin-top:10px">
+      Tokens: ${r.ai_metadata.tokens_used} · Latency: ${r.ai_metadata.latency_ms}ms · Model: ${escHtml(r.ai_metadata.model||'–')}
+    </p>`;
+  }
+  html+=`</div>`;
+  document.getElementById('main').innerHTML=html;
+}
+</script>
 
-      reviewListHtml += `<details open style="margin:8px 0;border-left:2px solid var(--border);padding-left:12px">
-        <summary style="cursor:pointer;font-size:12px;font-weight:600">${ver.version_id} – ${ver.label||''} <span class="tag">${ver.phase_label||''}</span> <span class="tag">${verReviews.length} reviews</span></summary>`;
 
-      for (const rev of verReviews) {
-        const rid = rev.review_id || '';
-        const vid = ver.version_id || '';
-        if (!rid) continue; // Skip malformed reviews
-        const isActive = rid === activeId;
-        const borderColor = isActive ? 'var(--accent)' : 'var(--border)';
-        reviewListHtml += `<details style="margin:4px 0;background:var(--bg);border:1px solid ${borderColor};border-radius:var(--radius);padding:8px">
-          <summary style="cursor:pointer;font-size:11px">
-            <strong>${rid}</strong> ${isActive?'<span class="tag tag-ok">active</span>':''}
-            – ${rev.persona||'–'} (${rev.ai_backend||'files_only'}) | ${rev.total_findings||0} findings
-            <span style="float:right;font-size:10px;color:var(--text-dim)">${(rev.created_at||'').slice(0,16)}</span>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// REVIEWS VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewReviews(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+  const personas=await api('POST','/api/personas');
+  const backendOpts=state.backends.map(b=>`<option value="${b.name}">${escHtml(b.display_name||b.name)}${b.available?'':' (not configured)'}</option>`).join('');
+
+  let hierarchy={};
+  try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
+  const tree=hierarchy.tree||[];
+
+  let versionsWithReviews=[];
+  for(const phase of tree){
+    for(const ver of(phase.versions||[])){
+      if((ver.reviews||[]).length>0)versionsWithReviews.push({...ver,phase_label:phase.label});
+    }
+  }
+
+  // Sort reviews
+  const sort=state._reviewSort||'newest';
+  const sortBar=`<div class="sort-bar">
+    <span>Sort:</span>
+    <button class="sort-btn ${sort==='newest'?'active':''}" onclick="setReviewSort('newest')">Newest First</button>
+    <button class="sort-btn ${sort==='oldest'?'active':''}" onclick="setReviewSort('oldest')">Oldest First</button>
+    <button class="sort-btn ${sort==='most-findings'?'active':''}" onclick="setReviewSort('most-findings')">Most Findings</button>
+  </div>`;
+
+  const runCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">🔍</span>Run Persona Review</div>
+    <div class="flex mb">
+      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">Persona</label>
+        <select id="personaSelect" style="width:100%;margin-top:3px">${(personas.personas||[]).map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select></div>
+      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">AI Backend</label>
+        <select id="backendSelect" style="width:100%;margin-top:3px">${backendOpts}</select></div>
+    </div>
+    <div class="form-row"><label>Custom Prompt <span style="font-size:10px;color:var(--text-muted)">(optional – additional context for AI)</span></label>
+      <textarea id="customPrompt" rows="2" placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available."></textarea>
+    </div>
+    <div class="flex gap-sm">
+      <button class="btn" onclick="runReview()">▶ Run Review</button>
+      <button class="btn btn-outline" onclick="runDeepDive()" title="Structured gap analysis">🔬 Deep Dive Analysis</button>
+    </div>
+    <p style="font-size:10px;color:var(--text-muted);margin-top:6px">Deep Dive: scope validation, gap identification, risk flags, clarification questions. Enhanced with AI when an AI backend is selected.</p>
+    <div id="reviewResult" class="mt"></div>
+    <div id="deepDiveResult" class="mt"></div>
+  </div>`;
+
+  let listHtml='';
+  if(versionsWithReviews.length){
+    listHtml=`<div class="card">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">📜</span>Review History</div>
+        <div class="flex gap-sm">
+          <button class="btn btn-sm btn-ghost" onclick="expandAllReviews()">Expand All</button>
+          <button class="btn btn-sm btn-ghost" onclick="collapseAllReviews()">Collapse All</button>
+        </div>
+      </div>
+      ${sortBar}`;
+
+    for(const ver of versionsWithReviews){
+      let revs=[...(ver.reviews||[])];
+      if(sort==='oldest')revs.sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
+      else if(sort==='most-findings')revs.sort((a,b)=>(b.total_findings||0)-(a.total_findings||0));
+      else revs.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+      const activeId=ver.active_review_id||'';
+
+      listHtml+=`<details open style="border-left:2px solid var(--border);padding-left:10px;margin:8px 0">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:var(--radius)"
+          onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+          <span class="chevron">▶</span>
+          <strong style="font-size:12px">${escHtml(ver.version_id)}</strong>
+          ${ver.label?`<span style="color:var(--text-dim);font-size:12px">– ${escHtml(ver.label)}</span>`:''}
+          <span class="tag">${escHtml(ver.phase_label||'')}</span>
+          <span class="tag tag-blue">${revs.length} reviews</span>
+        </summary>`;
+
+      for(const rev of revs){
+        const rid=rev.review_id||'';if(!rid)continue;
+        const isActive=rid===activeId;
+        listHtml+=`<details style="margin:4px 0;background:var(--bg);border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:var(--radius);overflow:hidden">
+          <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:7px 10px"
+            onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+            <span class="chevron">▶</span>
+            <strong style="font-size:11px">${rid}</strong>
+            ${isActive?'<span class="tag tag-green">active</span>':''}
+            <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
+            <span class="tag">${escHtml(rev.ai_backend||'files_only')}</span>
+            ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
+            <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${relativeTime(rev.created_at)} · ${fmtDateShort(rev.created_at)}</span>
           </summary>
-          <div style="padding:8px 0;font-size:11px">
-            ${rev.summary ? `<p style="margin-bottom:6px">${escHtml(rev.summary)}</p>` : ''}
-            <div class="flex mt">
+          <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
+            ${rev.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(rev.summary.slice(0,180))}</p>`:''}
+            <div class="flex gap-sm">
               <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rid}')">Full Details</button>
-              ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="setActiveReview('${vid}','${rid}')">Set Active</button>` : ''}
-              <button class="btn btn-sm btn-danger" onclick="deleteReview('${rid}')">Delete</button>
+              ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
+              <button class="btn btn-sm btn-red" onclick="deleteReview('${rid}')">Delete</button>
             </div>
           </div>
         </details>`;
       }
-      reviewListHtml += `</details>`;
+      listHtml+=`</details>`;
     }
-    reviewListHtml += `</div>`;
+    listHtml+=`</div>`;
   }
-
-  return `<div class="card"><h2>Run Persona Review</h2>
-    <div class="flex">
-      <select id="personaSelect">${(personas.personas||[]).map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
-      <select id="backendSelect">${backendOpts}</select>
-      <button class="btn" onclick="runReview()">Run Review</button>
-      <button class="btn btn-outline" onclick="runDeepDive()" title="Structured gap analysis: missing areas, risk flags, clarification questions">Deep Dive Analysis</button>
-    </div>
-    <div class="form-row mt"><label>Custom Prompt (optional – additional context for AI)</label>
-      <textarea id="customPrompt" rows="3" placeholder="e.g. Budget is capped at 500K. Must use only AWS services. Team has 3 senior engineers."></textarea>
-    </div>
-    <p style="font-size:10px;color:var(--text-dim);margin-top:4px">Deep Dive performs structured gap analysis (missing areas, risk flags, clarification questions, scope suggestions). Enhanced with AI when an AI backend is selected; falls back to heuristic analysis otherwise.</p>
-    <div id="reviewResult" class="mt"></div>
-    <div id="deepDiveResult" class="mt"></div></div>` + reviewListHtml;
+  return runCard+listHtml;
 }
 
-async function runReview() {
-  const persona = document.getElementById('personaSelect').value;
-  const backend = document.getElementById('backendSelect').value;
-  const custom = document.getElementById('customPrompt').value.trim();
-  document.getElementById('reviewResult').innerHTML = '<p style="color:var(--text-dim)">Running review...</p>';
-  const body = {project_id:state.current.id, persona, ai_backend:backend};
-  if (custom) body.custom_prompt = custom;
-  const r = await api('POST','/api/review', body);
-  if (r.error) { document.getElementById('reviewResult').innerHTML=`<p style="color:var(--danger)">${r.error}</p>`; return; }
-  let html = `<div class="card"><h3>${r.persona} <span class="tag">${r.ai_backend}</span></h3>
-    <p style="font-size:11px;color:var(--text-dim)">${r.summary||''}</p>`;
-  if (r.ai_metadata?.tokens_used) html += `<p style="font-size:11px;color:var(--accent2)">Tokens: ${r.ai_metadata.tokens_used} | Latency: ${r.ai_metadata.latency_ms}ms</p>`;
-  for (const [s, items] of Object.entries(r.findings||{})) {
-    if (items.length) html += `<div class="findings-section"><div class="title">${s.replace(/_/g,' ')}</div><ul class="items">${items.map(i=>`<li>${i}</li>`).join('')}</ul></div>`;
-  }
-  if (r.questions?.length) html += `<div class="findings-section"><div class="title">Open Questions</div><ul class="items">${r.questions.map(q=>`<li>? ${q}</li>`).join('')}</ul></div>`;
-  if (r.prompt_used) html += `<details class="collapsible"><summary>View Prompt Sent to AI</summary><div class="prompt-box">${escHtml(r.prompt_used)}</div></details>`;
-  if (r.raw_output) html += `<details class="collapsible"><summary>View Raw AI Output</summary><div class="prompt-box">${escHtml(r.raw_output)}</div></details>`;
-  html += '</div>';
-  document.getElementById('reviewResult').innerHTML = html;
-}
+function setReviewSort(s){state._reviewSort=s;render();}
+function expandAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=true);}
+function collapseAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
 
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+async function runReview(){
+  const persona=document.getElementById('personaSelect').value;
+  const backend=document.getElementById('backendSelect').value;
+  const custom=document.getElementById('customPrompt').value.trim();
+  const el=document.getElementById('reviewResult');
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running review…</span>';
+  const body={project_id:state.current.id,persona,ai_backend:backend};
+  if(custom)body.custom_prompt=custom;
+  const r=await api('POST','/api/review',body);
+  if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
+
+  let html=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">✅</span>${escHtml(r.persona)}</div>
+      <div class="flex gap-sm">
+        <span class="tag tag-purple">${escHtml(r.ai_backend)}</span>
+        ${r.ai_metadata?.tokens_used?`<span class="tag tag-green">${r.ai_metadata.tokens_used} tokens</span>`:''}
+      </div>
+    </div>
+    ${r.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">${escHtml(r.summary)}</p>`:''}`;
+
+  for(const[s,items]of Object.entries(r.findings||{})){
+    if(items.length)html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+        <span class="chevron">▶</span>
+        <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">${escHtml(s.replace(/_/g,' '))}</strong>
+        <span class="tag" style="margin-left:4px">${items.length}</span>
+      </summary>
+      <div class="collapse-body" style="padding-left:12px">
+        ${items.map(i=>`<div class="findings-item">${escHtml(String(i))}</div>`).join('')}
+      </div></details>`;
+  }
+  if(r.questions?.length){
+    html+=`<details open><summary class="collapse-header" style="list-style:none;margin:4px 0">
+      <span class="chevron">▶</span>
+      <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Open Questions</strong>
+      <span class="tag" style="margin-left:4px">${r.questions.length}</span>
+    </summary>
+    <div class="collapse-body" style="padding-left:12px">
+      ${r.questions.map(q=>`<div class="findings-item">❓ ${escHtml(q)}</div>`).join('')}
+    </div></details>`;
+  }
+  if(r.prompt_used)html+=`<details style="margin-top:8px"><summary class="collapse-header" style="list-style:none">
+    <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">View Prompt</span>
+    </summary><div class="prompt-box">${escHtml(r.prompt_used)}</div></details>`;
+  if(r.raw_output)html+=`<details style="margin-top:4px"><summary class="collapse-header" style="list-style:none">
+    <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">Raw AI Output</span>
+    </summary><div class="prompt-box">${escHtml(r.raw_output)}</div></details>`;
+  html+=`<button class="btn btn-sm btn-ghost mt" onclick="render()">Refresh List</button></div>`;
+  el.innerHTML=html;
+}
 </script>
 
+
 <script>
-// ─── Phases View (V3: First-class hierarchy navigation, replaces old Proposals + Phases) ───
-async function viewPhases() {
-  if (!state.current) return viewNoProject();
-  const pid = state.current.id;
+// ═══════════════════════════════════════════════════════════════
+// DEEP DIVE
+// ═══════════════════════════════════════════════════════════════
+async function runDeepDive(){
+  if(!state.current)return;
+  const el=document.getElementById('deepDiveResult');
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running Deep Dive…</span>';
+  const persona=document.getElementById('personaSelect')?.value||'';
+  const custom=document.getElementById('customPrompt')?.value||'';
+  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive`,{persona,custom_prompt:custom});
+  if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
+  state.lastDeepDive=r;
+  const dd=r.deep_dive||{};
+  const sv=r.scope_validation||{};
 
-  // Load hierarchy phases
-  let phases = [];
-  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/phases`); phases = r.phases || []; } catch(e){}
+  let html=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">🔬</span>Deep Dive Results</div>
+      <span class="tag ${sv.completeness_score>=0.7?'tag-green':sv.completeness_score>=0.4?'tag-yellow':'tag-red'}">
+        Scope: ${Math.round((sv.completeness_score||0)*100)}% complete
+      </span>
+    </div>`;
 
-  // Fallback: if no hierarchy phases, show default
-  if (!phases.length) {
-    phases = [
-      {id:'pre-sales', label:'Pre-sales', order:1, description:'Client engagement, proposals, scoping', is_current:true, version_count:0, review_count:0},
-      {id:'design', label:'Design', order:2, description:'Architecture, solution design, planning', is_current:false, version_count:0, review_count:0},
-      {id:'delivery', label:'Delivery', order:3, description:'Execution, development, implementation', is_current:false, version_count:0, review_count:0},
-      {id:'support', label:'Support', order:4, description:'Operations, maintenance, handover', is_current:false, version_count:0, review_count:0},
-    ];
+  let idx=0;
+  function ddItems(items,mapFn){
+    return items.map(item=>{
+      const text=mapFn(item);
+      const id=idx++;
+      return`<li style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;font-size:12px">
+        <input type="checkbox" class="dd-item" data-idx="${id}" checked style="margin-top:2px;flex-shrink:0">
+        ${text}
+      </li>`;
+    }).join('');
   }
 
-  const current = phases.find(p => p.is_current) || phases[0];
+  if(dd.missing_areas?.length){
+    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+      <span class="chevron">▶</span><strong>Missing Areas</strong><span class="tag tag-red" style="margin-left:4px">${dd.missing_areas.length}</span>
+    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
+      ${ddItems(dd.missing_areas,m=>`<span class="tag ${m.severity==='high'?'tag-red':'tag-yellow'}">${m.severity}</span> <span>${escHtml(m.area)}: ${escHtml(m.suggestion)}</span>`)}
+    </ul></details>`;
+  }
+  if(dd.risk_flags?.length){
+    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+      <span class="chevron">▶</span><strong>Risk Flags</strong><span class="tag tag-red" style="margin-left:4px">${dd.risk_flags.length}</span>
+    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
+      ${ddItems(dd.risk_flags.slice(0,10),f=>`<span class="tag ${f.severity==='high'?'tag-red':'tag-yellow'}">${f.severity}</span> ${escHtml(f.flag)}`)}
+    </ul></details>`;
+  }
+  if(dd.clarification_questions?.length){
+    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+      <span class="chevron">▶</span><strong>Clarification Questions</strong><span class="tag" style="margin-left:4px">${dd.clarification_questions.length}</span>
+    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
+      ${ddItems(dd.clarification_questions,q=>`❓ ${escHtml(q)}`)}
+    </ul></details>`;
+  }
+  if(dd.suggested_additions?.length){
+    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+      <span class="chevron">▶</span><strong>Suggested Additions</strong><span class="tag" style="margin-left:4px">${dd.suggested_additions.length}</span>
+    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
+      ${ddItems(dd.suggested_additions,s=>`<span class="tag ${s.priority==='high'?'tag-red':'tag-yellow'}">${s.priority}</span> <span class="tag">${s.category}</span> ${escHtml(s.suggestion)}`)}
+    </ul></details>`;
+  }
 
-  // Phase progression bar
-  const phaseBar = phases.sort((a,b) => a.order - b.order).map(p => {
-    const active = p.is_current;
-    const passed = p.order < current.order;
-    const style = active ? 'background:var(--accent);color:#000;font-weight:600' : passed ? 'background:var(--accent2);color:#000' : 'background:var(--surface2)';
-    return `<span style="padding:6px 14px;border-radius:var(--radius);font-size:11px;${style};cursor:pointer" onclick="viewPhaseDetail('${p.id}')">${p.label}</span>`;
-  }).join('<span style="color:var(--text-dim);margin:0 2px">→</span>');
+  html+=`<div class="flex gap-sm mt">
+    <button class="btn btn-sm" onclick="acceptAllSuggestions()">Accept All</button>
+    <button class="btn btn-sm btn-outline" onclick="addSelectedToPrompt()">Add Selected to Prompt</button>
+    <button class="btn btn-sm btn-ghost" onclick="toggleAllDDItems(true)">Select All</button>
+    <button class="btn btn-sm btn-ghost" onclick="toggleAllDDItems(false)">Deselect All</button>
+  </div>
+  <div id="ddFeedbackResult" class="mt"></div></div>`;
+  el.innerHTML=html;
+}
 
-  // Phase detail cards
-  let phaseCards = '';
-  for (const p of phases.sort((a,b) => a.order - b.order)) {
-    const borderStyle = p.is_current ? 'border-left:3px solid var(--accent)' : '';
-    phaseCards += `<div class="card" style="${borderStyle}">
-      <div class="flex" style="justify-content:space-between">
-        <h2 style="margin:0">${p.label} ${p.is_current ? '<span class="tag tag-ok">current</span>' : ''}</h2>
-        <span style="font-size:10px;color:var(--text-dim)">${p.entered_at ? 'Since: '+p.entered_at.slice(0,10) : ''}</span>
+function toggleAllDDItems(c){document.querySelectorAll('.dd-item').forEach(cb=>cb.checked=c);}
+
+function _getSelectedDDItems(){
+  const dd=state.lastDeepDive?.deep_dive||{};
+  const all=[
+    ...(dd.missing_areas||[]).map(m=>`[Missing] ${m.area}: ${m.suggestion}`),
+    ...(dd.risk_flags||[]).slice(0,10).map(f=>`[Risk] ${f.flag}`),
+    ...(dd.clarification_questions||[]).map(q=>`[Question] ${q}`),
+    ...(dd.suggested_additions||[]).map(s=>`[Suggestion] ${s.suggestion}`),
+  ];
+  const sel=[];
+  document.querySelectorAll('.dd-item').forEach((cb,i)=>{if(cb.checked&&all[i])sel.push(all[i]);});
+  return sel;
+}
+
+async function acceptAllSuggestions(){
+  if(!state.current)return;
+  const items=_getSelectedDDItems();
+  if(!items.length){toast('No items selected','err');return;}
+  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive/feedback`,{accepted:items});
+  if(r.error){toast(r.error,'err');return;}
+  toast(`Accepted ${r.accepted_count} items`);
+  document.getElementById('ddFeedbackResult').innerHTML=`<p style="color:var(--green);font-size:12px">✓ Accepted ${r.accepted_count} items</p>`;
+}
+
+async function addSelectedToPrompt(){
+  if(!state.current)return;
+  const items=_getSelectedDDItems();
+  if(!items.length){toast('No items selected','err');return;}
+  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive/feedback`,{added_to_prompt:items});
+  if(r.error){toast(r.error,'err');return;}
+  toast(`Added ${r.added_to_prompt_count} items to prompt`);
+  const ta=document.getElementById('customPrompt');
+  if(ta){ta.value=(ta.value?ta.value+'\n':'')+items.join('\n');}
+  document.getElementById('ddFeedbackResult').innerHTML=`<p style="color:var(--green);font-size:12px">✓ Added ${r.added_to_prompt_count} items to prompt</p>`;
+}
+</script>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// PHASES VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewPhases(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+  let phases=[];
+  try{const r=await api('GET',`/api/projects/${pid}/hierarchy/phases`);phases=r.phases||[];}catch(e){}
+  if(!phases.length){
+    phases=[
+      {id:'pre-sales',label:'Pre-sales',order:1,description:'Client engagement, proposals, scoping',is_current:true,version_count:0,review_count:0},
+      {id:'design',label:'Design',order:2,description:'Architecture, solution design, planning',is_current:false,version_count:0,review_count:0},
+      {id:'delivery',label:'Delivery',order:3,description:'Execution, development, implementation',is_current:false,version_count:0,review_count:0},
+      {id:'support',label:'Support',order:4,description:'Operations, maintenance, handover',is_current:false,version_count:0,review_count:0},
+    ];
+  }
+  const sorted=phases.sort((a,b)=>a.order-b.order);
+  const current=sorted.find(p=>p.is_current)||sorted[0];
+
+  const bar=sorted.map(p=>{
+    const done=p.order<current.order;
+    const cls=p.is_current?'current':done?'done':'pending';
+    return`<div class="phase-step ${cls}" onclick="viewPhaseDetail('${p.id}')" title="${escHtml(p.description)}">${escHtml(p.label)}</div>`;
+  }).join('');
+
+  let cards='';
+  for(const p of sorted){
+    const borderStyle=p.is_current?'border-left:3px solid var(--accent)':'';
+    cards+=`<div class="card" style="${borderStyle}">
+      <div class="flex-between mb">
+        <div class="card-title" style="margin:0">
+          <span class="icon">${p.is_current?'🟢':'⚪'}</span> ${escHtml(p.label)}
+          ${p.is_current?'<span class="tag tag-green" style="margin-left:4px">current</span>':''}
+        </div>
+        ${p.entered_at?`<span style="font-size:10px;color:var(--text-muted)">Since ${fmtDateShort(p.entered_at)}</span>`:''}
       </div>
-      <p style="font-size:12px;color:var(--text-dim);margin:4px 0">${p.description||''}</p>
-      <div class="flex mt">
-        <span class="tag">${p.version_count||0} versions</span>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(p.description||'')}</p>
+      <div class="flex gap-sm">
+        <span class="tag tag-blue">${p.version_count||0} versions</span>
         <span class="tag">${p.review_count||0} reviews</span>
+        ${!p.is_current?`<button class="btn btn-xs btn-outline" style="margin-left:auto"
+          onclick="doHierarchyTransition('${p.id}')">Transition Here</button>`:''}
       </div>
     </div>`;
   }
 
-  // Phase transition
-  const transitionHtml = `<div class="card"><h2>Transition Phase</h2>
-    <div class="flex">
-      <select id="nextPhaseH">${phases.filter(p=>!p.is_current).map(p=>`<option value="${p.id}">${p.label}</option>`).join('')}</select>
-      <input id="phaseReasonH" placeholder="Reason for transition" style="flex:1">
+  const trans=`<div class="card">
+    <div class="card-title mb"><span class="icon">🔄</span>Transition Phase</div>
+    <div class="flex gap-sm">
+      <select id="nextPhaseH">${phases.filter(p=>!p.is_current).map(p=>`<option value="${p.id}">${escHtml(p.label)}</option>`).join('')}</select>
+      <input id="phaseReasonH" placeholder="Reason (optional)" style="flex:1">
       <button class="btn btn-sm" onclick="doHierarchyTransition()">Transition</button>
-    </div><div id="phaseHResult" class="mt"></div></div>`;
-
-  return `<div class="card"><h2>Project Lifecycle</h2>
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Phases are first-class entities. Each phase contains versions and reviews.</p>
-    <div class="flex mt">${phaseBar}</div></div>`
-    + phaseCards + transitionHtml;
-}
-
-async function viewPhaseDetail(phaseId) {
-  const pid = state.current.id;
-  let versions = [];
-  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = (r.versions||[]).filter(v=>v.phase_id===phaseId); } catch(e){}
-
-  let html = `<div class="card"><h2>Phase: ${phaseId}</h2>
-    <p style="font-size:12px;color:var(--text-dim)">${versions.length} versions in this phase</p></div>`;
-
-  if (versions.length) {
-    for (const v of versions) {
-      html += `<div class="card"><div class="flex" style="justify-content:space-between">
-        <strong>${v.version_id}</strong> <span style="font-size:11px;color:var(--text-dim)">${v.created_at?.slice(0,10)||''}</span>
-      </div>
-      <p style="font-size:11px;color:var(--text-dim)">${v.label||''} | ${v.artifact_count||0} files | ${v.review_count||0} reviews</p></div>`;
-    }
-  } else {
-    html += `<div class="card empty"><p>No versions in this phase yet</p></div>`;
-  }
-  html += `<button class="btn btn-sm mt" onclick="render()">← Back to Phases</button>`;
-  document.getElementById('main').innerHTML = html;
-}
-
-async function doHierarchyTransition() {
-  const phase = document.getElementById('nextPhaseH').value;
-  const reason = document.getElementById('phaseReasonH').value;
-  const r = await api('POST',`/api/projects/${state.current.id}/hierarchy/phase`,{phase_id:phase, reason});
-  if (r.error) { document.getElementById('phaseHResult').innerHTML=`<p style="color:var(--danger)">${r.error}</p>`; return; }
-  document.getElementById('phaseHResult').innerHTML=`<p style="color:var(--accent2)">Transitioned to ${phase}</p>`;
-  // Also update legacy phase
-  await api('POST',`/api/projects/${state.current.id}/phase`,{new_phase:phase, reason});
-  state.current.phase = phase;
-  setTimeout(() => render(), 600);
-}
-
-// Legacy viewProposals redirects to Phases (Pre-sales)
-async function viewProposals() { return viewPhases(); }
-</script>
-
-<script>
-// ─── Settings View ───
-async function viewSettings() {
-  const r = await api('GET','/api/projects/all');
-  state.allProjects = r.projects || state.projects;
-  const backendHtml = state.backends.map(b =>
-    `<div class="backend-chip ${b.available?'available':''}">${b.available?'●':'○'} <strong>${b.name}</strong><br><span style="font-size:10px">${b.display_name}</span></div>`
-  ).join('');
-  const projectActions = state.current ? `<div class="card"><h2>Project Actions</h2>
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">Current: <strong>${state.current.name}</strong> (${state.current.id})</p>
-    <div class="flex">
-      <button class="btn btn-sm btn-warn" onclick="archiveProject()">Archive Project</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteProject()">Delete Project</button>
     </div>
-    <p style="font-size:10px;color:var(--text-dim);margin-top:8px">Both actions require PIN (default: 1234)</p></div>` : '';
-  // Get admin config for project limit
-  let maxProjects = 5;
-  try { const cfg = await api('GET','/api/admin/config'); maxProjects = cfg.config?.max_active_projects || 5; } catch(e){}
-  const activeCount = (state.allProjects || state.projects).filter(p => p.status !== 'archived' && p.status !== 'deleted').length;
-  const limitWarning = activeCount >= maxProjects
-    ? `<p style="color:var(--danger);font-size:12px;margin-bottom:8px">Limit reached: ${activeCount}/${maxProjects} active projects. Archive or delete a project, or contact admin to increase limit.</p>`
-    : `<p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Active projects: ${activeCount}/${maxProjects}</p>`;
-  return `<div class="card"><h2>Create New Project</h2>
-    ${limitWarning}
-    <div class="form-row"><label>Project Name</label><input id="newName" placeholder="Project name"></div>
-    <div class="form-row"><label>Description</label><input id="newDesc" placeholder="Description"></div>
-    <button class="btn" onclick="createProject()" ${activeCount >= maxProjects ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>Create</button>
-    <div id="createProjectError"></div></div>
-    ${projectActions}
-    ${state.projects.length ? `<div class="card"><h2>All Projects</h2><ul class="items">${state.allProjects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')" style="color:var(--accent)">${p.name}</a> <span class="tag">${p.phase}</span> (${p.file_count} files) ${p.status==='archived'?'<span class="tag" style="border:1px solid var(--warn);color:var(--warn)">archived</span>':''}</li>`).join('')}</ul></div>` : ''}
-    <div class="card"><h2>AI Backends Status</h2><div class="backend-grid">${backendHtml}</div>
-      <p class="mt" style="font-size:11px;color:var(--text-dim)">Configure via environment variables:<br>
-        GROQ_API_KEY (free) | OPENROUTER_API_KEY (free) | GEMINI_API_KEY | AWS credentials for Bedrock</p></div>`;
+    <div id="phaseHResult" class="mt"></div>
+  </div>`;
+
+  return`<div class="card">
+    <div class="card-title mb"><span class="icon">🗂️</span>Project Lifecycle</div>
+    <p class="card-subtitle">Each phase contains versions and reviews. Click a phase to view its content.</p>
+    <div class="phase-bar">${bar}</div>
+  </div>`+cards+trans;
 }
 
-async function archiveProject() {
-  if (!state.current) return;
-  const pin = prompt('Enter PIN to archive this project:');
-  if (!pin) return;
-  const r = await api('POST', `/api/projects/${state.current.id}/archive`, {pin});
-  if (r.error) { alert('Error: ' + r.error); return; }
-  alert(r.message || 'Project archived');
-  await loadProjects();
-  state.current = state.projects[0] || null;
-  state.tab = 'dashboard';
-  render();
+async function viewPhaseDetail(phaseId){
+  const pid=state.current.id;
+  let versions=[];
+  try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions`);versions=(r.versions||[]).filter(v=>v.phase_id===phaseId);}catch(e){}
+  let html=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">🗂️</span>Phase: ${escHtml(phaseId)}</div>
+      <button class="btn btn-sm btn-ghost" onclick="render()">← Back</button>
+    </div>
+    <p class="card-subtitle">${versions.length} versions in this phase</p>`;
+  if(versions.length){
+    for(const v of versions){
+      html+=`<div class="card" style="background:var(--surface2)">
+        <div class="flex-between">
+          <strong>${escHtml(v.version_id)}</strong>
+          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(v.created_at)}</span>
+        </div>
+        <p style="font-size:11px;color:var(--text-dim)">${escHtml(v.label||'')} · ${v.artifact_count||0} files · ${v.review_count||0} reviews</p>
+      </div>`;
+    }
+  }else{html+=`<p style="color:var(--text-muted);font-size:12px;padding:10px 0">No versions in this phase yet.</p>`;}
+  html+=`</div>`;
+  document.getElementById('main').innerHTML=html;
 }
 
-async function deleteProject() {
-  if (!state.current) return;
-  if (!confirm(`Permanently delete "${state.current.name}"? This cannot be undone.`)) return;
-  const pin = prompt('Enter PIN to permanently delete:');
-  if (!pin) return;
-  const r = await api('POST', `/api/projects/${state.current.id}/delete`, {pin});
-  if (r.error) { alert('Error: ' + r.error); return; }
-  alert(r.message || 'Project deleted');
-  await loadProjects();
-  state.current = state.projects[0] || null;
-  state.tab = 'dashboard';
-  render();
+async function doHierarchyTransition(phaseIdOverride){
+  const phase=phaseIdOverride||document.getElementById('nextPhaseH').value;
+  const reason=document.getElementById('phaseReasonH')?.value||'';
+  const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/phase`,{phase_id:phase,reason});
+  if(r.error){toast(r.error,'err');return;}
+  toast(`Transitioned to ${phase}`);
+  await api('POST',`/api/projects/${state.current.id}/phase`,{new_phase:phase,reason});
+  state.current.phase=phase;
+  setTimeout(()=>render(),600);
 }
-
-// ─── Actions ───
-async function createProject() {
-  const name = document.getElementById('newName').value;
-  const desc = document.getElementById('newDesc')?.value || '';
-  if (!name) return;
-  const r = await api('POST','/api/projects',{name, description:desc});
-  if (r.project) { await loadProjects(); state.current = state.projects.find(p=>p.id===r.project.id)||r.project; state.tab='dashboard'; render(); }
-  else if (r.error) {
-    // Show inline error near the create button
-    const errEl = document.getElementById('createProjectError');
-    if (errEl) { errEl.innerHTML = `<p style="color:var(--danger);font-size:12px;margin-top:8px">${r.error}</p>`; }
-    else { alert(r.error); }
-  }
-}
-
-async function selectProject(id) {
-  state.current = state.projects.find(x=>x.id===id) || state.current;
-  state.tab = 'dashboard'; render();
-}
-
-async function buildContext() {
-  if (!state.current) return;
-  // Load version count to generate next version number
-  let nextNum = 1;
-  try { const r = await api('GET',`/api/projects/${state.current.id}/hierarchy/versions`); nextNum = (r.versions||[]).length + 1; } catch(e){}
-  const example = nextNum === 1 ? 'Initial discovery' : 'Post-review update';
-  const label = prompt(`Name this version (max 20 chars).\nThis will create: v${nextNum} - [your label]\n\nExample: "${example}"`, '');
-  if (label === null) return; // User cancelled
-  const trimmed = (label || '').trim().slice(0, 20);
-  const r = await api('POST',`/api/projects/${state.current.id}/build-context`, trimmed ? {label: trimmed} : {});
-  if (r._build_metadata) { alert(`Built v${nextNum}${trimmed ? ' - ' + trimmed : ''}: ${r._build_metadata.total_risks||0} risks, ${r._build_metadata.total_constraints||0} constraints, ${r._build_metadata.total_dependencies||0} dependencies`); render(); }
-  else if (r.error) alert(r.error);
-}
-
-async function loadProjects() {
-  const r = await api('GET','/api/projects');
-  state.projects = r.projects || [];
-  if (!state.current && state.projects.length) state.current = state.projects[0];
-}
-
-async function loadBackends() {
-  const r = await api('GET','/api/backends');
-  state.backends = r.backends || [];
-}
-
-// ─── Init ───
-(async () => { await Promise.all([loadProjects(), loadBackends()]); render(); })();
 </script>
 
+
 <script>
-// ─── Admin View (V3) ───
-async function viewAdmin() {
-  let config = {}, health = {}, lifecycle = {}, suggestions = [];
-  try { const r = await api('GET','/api/admin/config'); config = r.config || {}; } catch(e){}
-  try { const r = await api('GET','/api/admin/health'); health = r.health || {}; } catch(e){}
-  try { const r = await api('GET','/api/admin/lifecycle'); lifecycle = r.lifecycle || {}; } catch(e){}
-  try { const r = await api('GET','/api/admin/auto-archive-suggestions'); suggestions = r.suggestions || []; } catch(e){}
+// ═══════════════════════════════════════════════════════════════
+// ADMIN VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewAdmin(){
+  let config={},health={},lifecycle={},suggestions=[];
+  try{const r=await api('GET','/api/admin/config');config=r.config||{};}catch(e){}
+  try{const r=await api('GET','/api/admin/health');health=r.health||{};}catch(e){}
+  try{const r=await api('GET','/api/admin/lifecycle');lifecycle=r.lifecycle||{};}catch(e){}
+  try{const r=await api('GET','/api/admin/auto-archive-suggestions');suggestions=r.suggestions||[];}catch(e){}
 
-  const lastRun = health.last_intelligence_run || {};
-  const apiStatus = health.api_status || {};
+  const lastRun=health.last_intelligence_run||{};
+  const apiStatus=health.api_status||{};
 
-  // System Health section
-  let healthHtml = `<div class="card"><h2>System Health</h2>
-    <h3>Last Intelligence Run</h3>
-    <div style="font-size:12px;padding:6px 0">`;
-  if (lastRun.status === 'never_run') {
-    healthHtml += `<span style="color:var(--text-dim)">No intelligence runs recorded yet</span>`;
-  } else {
-    const statusColor = lastRun.success ? 'var(--accent2)' : 'var(--danger)';
-    healthHtml += `<span style="color:${statusColor}">${lastRun.success?'Success':'Failed'}</span>
-      – ${lastRun.project_name||''} (${lastRun.version_id||''})
-      <span style="color:var(--text-dim);margin-left:8px">${lastRun.timestamp?.slice(0,16)||''}</span>
-      ${lastRun.duration_ms ? `<span class="tag">${Math.round(lastRun.duration_ms)}ms</span>` : ''}`;
-    if (lastRun.error) healthHtml += `<div style="color:var(--danger);margin-top:4px">${lastRun.error}</div>`;
-  }
-  healthHtml += `</div><h3>API Connectivity</h3><div class="backend-grid">`;
-  for (const [name, info] of Object.entries(apiStatus)) {
-    const configured = info.configured;
-    healthHtml += `<div class="backend-chip ${configured?'available':''}">${configured?'●':'○'} <strong>${name}</strong><br><span style="font-size:10px">${configured?'Configured':'Not configured'}</span></div>`;
-  }
-  healthHtml += `</div></div>`;
+  const healthCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">💚</span>System Health</div>
+    <p class="card-section">Last Intelligence Run</p>
+    ${lastRun.status==='never_run'
+      ?`<p style="color:var(--text-muted);font-size:12px">No runs recorded yet</p>`
+      :`<div class="flex gap-sm flex-wrap">
+          <span class="tag ${lastRun.success?'tag-green':'tag-red'}">${lastRun.success?'Success':'Failed'}</span>
+          <strong style="font-size:12px">${escHtml(lastRun.project_name||'')} (${lastRun.version_id||'–'})</strong>
+          <span style="color:var(--text-muted);font-size:11px">${fmtDate(lastRun.timestamp)}</span>
+          ${lastRun.duration_ms?`<span class="tag">${Math.round(lastRun.duration_ms)}ms</span>`:''}
+        </div>
+        ${lastRun.error?`<p style="color:var(--red);font-size:11px;margin-top:4px">${escHtml(lastRun.error)}</p>`:''}`}
+    <p class="card-section">API Connectivity</p>
+    <div class="backend-grid">${Object.entries(apiStatus).map(([n,i])=>`<div class="backend-chip ${i.configured?'ok':''}">
+      ${i.configured?'●':'○'} <strong>${n}</strong><br><span>${i.configured?'Configured':'Not set'}</span>
+    </div>`).join('')}</div>
+  </div>`;
 
-  // Config section
-  let configHtml = `<div class="card"><h2>Configuration</h2>
-    <div class="form-row"><label>Max Active Projects</label><input id="cfgMaxProjects" type="number" value="${config.max_active_projects||5}" style="width:80px"></div>
-    <div class="form-row"><label>Default Persona</label>
-      <select id="cfgPersona" style="width:200px">
-        <option value="solution_architect" ${config.default_persona==='solution_architect'?'selected':''}>Solution Architect</option>
-        <option value="delivery_manager" ${config.default_persona==='delivery_manager'?'selected':''}>Delivery Manager</option>
-        <option value="product_owner" ${config.default_persona==='product_owner'?'selected':''}>Product Owner</option>
-        <option value="resource_manager" ${config.default_persona==='resource_manager'?'selected':''}>Resource Manager</option>
-      </select></div>
-    <div class="form-row"><label>Default Phase</label>
-      <select id="cfgPhase" style="width:200px">
-        <option value="discovery" ${config.default_phase==='discovery'?'selected':''}>Discovery</option>
-        <option value="proposal" ${config.default_phase==='proposal'?'selected':''}>Proposal</option>
-        <option value="planning" ${config.default_phase==='planning'?'selected':''}>Planning</option>
-        <option value="execution" ${config.default_phase==='execution'?'selected':''}>Execution</option>
-        <option value="review" ${config.default_phase==='review'?'selected':''}>Review</option>
-      </select></div>
-    <div class="form-row"><label>Admin PIN</label><input id="cfgPin" type="password" value="${config.admin_pin||'1234'}" style="width:120px"></div>
-    <h3>API Keys</h3>
-    <div class="form-row"><label>Groq API Key</label><input id="cfgGroq" placeholder="${config.api_keys?.groq||'Not set'}" type="password"></div>
-    <div class="form-row"><label>OpenRouter API Key</label><input id="cfgOpenRouter" placeholder="${config.api_keys?.openrouter||'Not set'}" type="password"></div>
-    <div class="form-row"><label>Gemini API Key</label><input id="cfgGemini" placeholder="${config.api_keys?.gemini||'Not set'}" type="password"></div>
+  const configCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">⚙️</span>Configuration</div>
+    <div class="form-group">
+      <div class="form-row" style="flex:0 0 120px"><label>Max Active Projects</label>
+        <input id="cfgMaxP" type="number" value="${config.max_active_projects||5}" style="width:80px"></div>
+      <div class="form-row" style="flex:1"><label>Default Persona</label>
+        <select id="cfgPersona" style="width:100%">
+          ${['solution_architect','delivery_manager','product_owner','resource_manager'].map(p=>`<option value="${p}" ${config.default_persona===p?'selected':''}>${p.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</option>`).join('')}
+        </select></div>
+      <div class="form-row" style="flex:0 0 120px"><label>Admin PIN</label>
+        <input id="cfgPin" type="password" value="${config.admin_pin||'1234'}" style="width:100px"></div>
+    </div>
+    <p class="card-section">API Keys</p>
+    <div class="form-group">
+      <div class="form-row" style="flex:1"><label>Groq</label><input id="cfgGroq" type="password" placeholder="${config.api_keys?.groq?'Configured':'Not set'}"></div>
+      <div class="form-row" style="flex:1"><label>OpenRouter</label><input id="cfgOR" type="password" placeholder="${config.api_keys?.openrouter?'Configured':'Not set'}"></div>
+      <div class="form-row" style="flex:1"><label>Gemini</label><input id="cfgGemini" type="password" placeholder="${config.api_keys?.gemini?'Configured':'Not set'}"></div>
+    </div>
     <button class="btn mt" onclick="saveAdminConfig()">Save Configuration</button>
-    <div id="configResult" class="mt"></div></div>`;
+    <div id="configResult" class="mt"></div>
+  </div>`;
 
-  // Lifecycle logs section
-  let lifecycleHtml = `<div class="card"><h2>Project Lifecycle Logs</h2>`;
-  const archived = lifecycle.archived || [];
-  const deleted = lifecycle.deleted || [];
-  if (archived.length) {
-    lifecycleHtml += `<h3>Archived Projects (${archived.length}/${lifecycle.max_entries||5})</h3><ul class="items">`;
-    for (const a of archived) {
-      const canRestore = a.restore_allowed !== false;
-      lifecycleHtml += `<li><strong>${a.name}</strong> (${a.project_id}) – ${a.archived_at?.slice(0,16)||''}
-        ${canRestore ? `<button class="btn btn-sm btn-outline" onclick="restoreProject('${a.project_id}')" style="margin-left:8px">Restore</button>` : '<span class="tag">Restored</span>'}
-      </li>`;
-    }
-    lifecycleHtml += `</ul>`;
-  } else {
-    lifecycleHtml += `<p style="color:var(--text-dim);font-size:12px">No archived projects</p>`;
-  }
-  if (deleted.length) {
-    lifecycleHtml += `<h3>Deleted Projects (${deleted.length}/${lifecycle.max_entries||5})</h3><ul class="items">`;
-    for (const d of deleted) {
-      lifecycleHtml += `<li><strong>${d.name}</strong> (${d.project_id}) – Deleted ${d.deleted_at?.slice(0,16)||''} <span style="font-size:10px;color:var(--text-dim)">${(d.file_metadata||[]).length} files</span></li>`;
-    }
-    lifecycleHtml += `</ul>`;
-  }
-  lifecycleHtml += `</div>`;
+  const archived=lifecycle.archived||[];
+  const deleted=lifecycle.deleted||[];
+  const lifecycleCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">📁</span>Project Lifecycle Logs</div>
+    ${archived.length?`<p class="card-section">Archived (${archived.length})</p>
+      <ul class="items">${archived.map(a=>`<li><strong>${escHtml(a.name)}</strong> — ${fmtDateShort(a.archived_at)}
+        ${a.restore_allowed!==false?`<button class="btn btn-xs btn-outline" style="margin-left:8px" onclick="restoreProject('${a.project_id}')">Restore</button>`:'<span class="tag" style="margin-left:6px">Restored</span>'}
+      </li>`).join('')}</ul>`:`<p style="color:var(--text-muted);font-size:12px">No archived projects.</p>`}
+    ${deleted.length?`<p class="card-section">Deleted (${deleted.length})</p>
+      <ul class="items">${deleted.map(d=>`<li><strong>${escHtml(d.name)}</strong> — Deleted ${fmtDateShort(d.deleted_at)}</li>`).join('')}</ul>`:''}
+  </div>`;
 
-  // Auto-archive suggestions
-  let suggestHtml = '';
-  if (suggestions.length) {
-    suggestHtml = `<div class="card"><h2>Auto-Archive Suggestions</h2><ul class="items">`;
-    for (const s of suggestions) {
-      suggestHtml += `<li><strong>${s.name}</strong> – Inactive ${s.inactive_days} days (threshold: ${s.threshold_days})
-        <button class="btn btn-sm btn-warn" onclick="archiveProject('${s.project_id}')" style="margin-left:8px">Archive</button></li>`;
-    }
-    suggestHtml += `</ul></div>`;
-  }
+  const suggestCard=suggestions.length?`<div class="card">
+    <div class="card-title mb"><span class="icon">💡</span>Auto-Archive Suggestions</div>
+    <ul class="items">${suggestions.map(s=>`<li><strong>${escHtml(s.name)}</strong> – inactive ${s.inactive_days} days
+      <button class="btn btn-xs btn-yellow" style="margin-left:8px" onclick="archiveProject('${s.project_id}')">Archive</button></li>`).join('')}</ul>
+  </div>`:'';
 
-  return healthHtml + configHtml + lifecycleHtml + suggestHtml;
+  return healthCard+configCard+lifecycleCard+suggestCard;
 }
 
-async function saveAdminConfig() {
-  const updates = {
-    max_active_projects: parseInt(document.getElementById('cfgMaxProjects').value) || 5,
-    default_persona: document.getElementById('cfgPersona').value,
-    default_phase: document.getElementById('cfgPhase').value,
-    admin_pin: document.getElementById('cfgPin').value,
-    api_keys: {}
+async function saveAdminConfig(){
+  const up={
+    max_active_projects:parseInt(document.getElementById('cfgMaxP').value)||5,
+    default_persona:document.getElementById('cfgPersona').value,
+    admin_pin:document.getElementById('cfgPin').value,
+    api_keys:{}
   };
-  const groq = document.getElementById('cfgGroq').value;
-  const openrouter = document.getElementById('cfgOpenRouter').value;
-  const gemini = document.getElementById('cfgGemini').value;
-  if (groq) updates.api_keys.groq = groq;
-  if (openrouter) updates.api_keys.openrouter = openrouter;
-  if (gemini) updates.api_keys.gemini = gemini;
-
-  const r = await api('POST', '/api/admin/config', updates);
-  if (r.config) {
-    document.getElementById('configResult').innerHTML = '<p style="color:var(--accent2)">Configuration saved</p>';
-  } else {
-    document.getElementById('configResult').innerHTML = `<p style="color:var(--danger)">${r.error||'Save failed'}</p>`;
-  }
+  const g=document.getElementById('cfgGroq').value;
+  const o=document.getElementById('cfgOR').value;
+  const gm=document.getElementById('cfgGemini').value;
+  if(g)up.api_keys.groq=g;
+  if(o)up.api_keys.openrouter=o;
+  if(gm)up.api_keys.gemini=gm;
+  const r=await api('POST','/api/admin/config',up);
+  if(r.config){toast('Configuration saved');document.getElementById('configResult').innerHTML=`<p style="color:var(--green)">✓ Saved</p>`;}
+  else{toast(r.error||'Save failed','err');}
 }
 
-async function restoreProject(projectId) {
-  const pin = prompt('Enter PIN to restore:');
-  if (!pin) return;
-  const r = await api('POST', `/api/projects/${projectId}/restore`, {pin});
-  if (r.error) { alert('Error: ' + r.error); return; }
-  alert(r.message || 'Project restored');
-  await loadProjects();
-  render();
+async function restoreProject(pid){
+  const pin=prompt('Enter PIN to restore:');
+  if(!pin)return;
+  const r=await api('POST',`/api/projects/${pid}/restore`,{pin});
+  if(r.error){toast(r.error,'err');return;}
+  toast(r.message||'Project restored');
+  await loadProjects();render();
 }
 </script>
 
+
 <script>
-// ─── Enhanced Reviews View (V3: File Visibility + Deep Dive) ───
-// The viewReviews function above already includes version-scoped reviews.
-// This section adds Deep Dive and file visibility as supplemental features.
+// ═══════════════════════════════════════════════════════════════
+// SETTINGS VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewSettings(){
+  const r=await api('GET','/api/projects/all');
+  state.allProjects=r.projects||state.projects;
+  let maxProjects=5;
+  try{const c=await api('GET','/api/admin/config');maxProjects=c.config?.max_active_projects||5;}catch(e){}
+  const activeCnt=(state.allProjects||state.projects).filter(p=>p.status!=='archived'&&p.status!=='deleted').length;
+  const atLimit=activeCnt>=maxProjects;
 
-async function runDeepDive() {
-  if (!state.current) return;
-  const el = document.getElementById('deepDiveResult');
-  el.innerHTML = '<p style="color:var(--text-dim)">Running Deep Dive analysis...</p>';
-  const persona = document.getElementById('personaSelect')?.value || '';
-  const custom = document.getElementById('customPrompt')?.value || '';
-  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive`, {persona, custom_prompt: custom});
-  if (r.error) { el.innerHTML = `<p style="color:var(--danger)">${r.error}</p>`; return; }
+  const createCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">➕</span>Create New Project</div>
+    ${atLimit?`<p style="color:var(--red);font-size:12px;margin-bottom:8px">Limit reached: ${activeCnt}/${maxProjects}. Archive or delete a project first.</p>`
+      :`<p class="card-subtitle">Active: ${activeCnt}/${maxProjects}</p>`}
+    <div class="form-row"><label>Project Name</label><input id="newName" placeholder="e.g. Cloud Migration"></div>
+    <div class="form-row"><label>Description</label><input id="newDesc" placeholder="Optional"></div>
+    <button class="btn" onclick="createProject()" ${atLimit?'disabled':''}>Create Project</button>
+    <div id="createProjectError" class="mt"></div>
+  </div>`;
 
-  // Store deep dive result in state for feedback actions
-  state.lastDeepDive = r;
+  const actCard=state.current?`<div class="card">
+    <div class="card-title mb"><span class="icon">🗑️</span>Project Actions</div>
+    <p class="card-subtitle">Current: <strong>${escHtml(state.current.name)}</strong> (${state.current.id})</p>
+    <div class="flex gap-sm">
+      <button class="btn btn-sm btn-yellow" onclick="archiveProject()">Archive Project</button>
+      <button class="btn btn-sm btn-red" onclick="deleteProject()">Delete Project</button>
+    </div>
+    <p style="font-size:10px;color:var(--text-muted);margin-top:6px">Requires PIN (default: 1234)</p>
+  </div>`:'';
 
-  const dd = r.deep_dive || {};
-  const sv = r.scope_validation || {};
-  let html = `<div class="card"><h3>Deep Dive Results</h3>
-    <p style="font-size:11px;color:var(--text-dim)">Scope completeness: ${Math.round((sv.completeness_score||0)*100)}% | Toggle items to include in prompt</p>`;
+  const allCard=(state.allProjects||[]).length?`<div class="card">
+    <div class="card-title mb"><span class="icon">📂</span>All Projects</div>
+    <ul class="items">${(state.allProjects||[]).map(p=>`<li>
+      <a href="#" onclick="selectProject('${p.id}')">${escHtml(p.name)}</a>
+      <span class="tag" style="margin-left:4px">${p.phase||'–'}</span>
+      <span style="font-size:10px;color:var(--text-muted)">${p.file_count} files</span>
+      ${p.status==='archived'?'<span class="tag tag-yellow" style="margin-left:4px">archived</span>':''}
+    </li>`).join('')}</ul>
+  </div>`:'';
 
-  let itemIdx = 0;
+  const bkCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">🤖</span>AI Backends</div>
+    <div class="backend-grid">${state.backends.map(b=>`<div class="backend-chip ${b.available?'ok':''}">
+      ${b.available?'●':'○'} <strong>${b.name}</strong><br><span style="font-size:10px">${escHtml(b.display_name||b.name)}</span>
+    </div>`).join('')}</div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:8px">
+      Set via env vars: GROQ_API_KEY · OPENROUTER_API_KEY · GEMINI_API_KEY · AWS credentials
+    </p>
+  </div>`;
 
-  if (dd.missing_areas?.length) {
-    html += `<div class="findings-section"><div class="title">Missing Areas</div><ul class="items" style="list-style:none">`;
-    for (const m of dd.missing_areas) {
-      html += `<li style="display:flex;align-items:center;gap:6px">
-        <input type="checkbox" class="dd-item" data-section="missing" data-idx="${itemIdx}" checked>
-        <span class="tag tag-${m.severity==='high'?'off':'ok'}">${m.severity}</span> ${escHtml(m.area)}: ${escHtml(m.suggestion)}</li>`;
-      itemIdx++;
-    }
-    html += `</ul></div>`;
+  return createCard+actCard+allCard+bkCard;
+}
+
+async function archiveProject(pid){
+  const id=pid||state.current?.id;if(!id)return;
+  const pin=prompt('Enter PIN to archive:');if(!pin)return;
+  const r=await api('POST',`/api/projects/${id}/archive`,{pin});
+  if(r.error){toast(r.error,'err');return;}
+  toast(r.message||'Archived');
+  await loadProjects();state.current=state.projects[0]||null;state.tab='dashboard';render();
+}
+async function deleteProject(){
+  if(!state.current)return;
+  if(!confirm(`Permanently delete "${state.current.name}"?`))return;
+  const pin=prompt('Enter PIN to delete:');if(!pin)return;
+  const r=await api('POST',`/api/projects/${state.current.id}/delete`,{pin});
+  if(r.error){toast(r.error,'err');return;}
+  toast(r.message||'Deleted');
+  await loadProjects();state.current=state.projects[0]||null;state.tab='dashboard';render();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SHARED ACTIONS
+// ═══════════════════════════════════════════════════════════════
+async function createProject(){
+  const name=document.getElementById('newName').value.trim();
+  const desc=document.getElementById('newDesc')?.value||'';
+  if(!name)return;
+  const r=await api('POST','/api/projects',{name,description:desc});
+  if(r.project){
+    await loadProjects();state.current=state.projects.find(p=>p.id===r.project.id)||r.project;
+    state.tab='dashboard';toast(`Project "${name}" created`);render();
+  }else if(r.error){
+    const el=document.getElementById('createProjectError');
+    if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px;margin-top:6px">${escHtml(r.error)}</p>`;
+    else toast(r.error,'err');
   }
-  if (dd.risk_flags?.length) {
-    html += `<div class="findings-section"><div class="title">Risk Flags</div><ul class="items" style="list-style:none">`;
-    for (const f of dd.risk_flags.slice(0,10)) {
-      html += `<li style="display:flex;align-items:center;gap:6px">
-        <input type="checkbox" class="dd-item" data-section="risk" data-idx="${itemIdx}" checked>
-        <span class="tag">${f.severity}</span> ${escHtml(f.flag)}</li>`;
-      itemIdx++;
-    }
-    html += `</ul></div>`;
-  }
-  if (dd.clarification_questions?.length) {
-    html += `<div class="findings-section"><div class="title">Clarification Questions</div><ul class="items" style="list-style:none">`;
-    for (const q of dd.clarification_questions) {
-      html += `<li style="display:flex;align-items:center;gap:6px">
-        <input type="checkbox" class="dd-item" data-section="question" data-idx="${itemIdx}" checked>
-        ? ${escHtml(q)}</li>`;
-      itemIdx++;
-    }
-    html += `</ul></div>`;
-  }
-  if (dd.suggested_additions?.length) {
-    html += `<div class="findings-section"><div class="title">Suggested Additions to Scope</div><ul class="items" style="list-style:none">`;
-    for (const s of dd.suggested_additions) {
-      html += `<li style="display:flex;align-items:center;gap:6px">
-        <input type="checkbox" class="dd-item" data-section="suggestion" data-idx="${itemIdx}" checked>
-        <span class="tag">${s.priority}</span> [${s.category}] ${escHtml(s.suggestion)}</li>`;
-      itemIdx++;
-    }
-    html += `</ul></div>`;
-  }
-  html += `<div class="flex mt">
-    <button class="btn btn-sm" onclick="acceptAllSuggestions()">Accept All</button>
-    <button class="btn btn-sm btn-outline" onclick="addSelectedToPrompt()">Add Selected to Prompt</button>
-    <button class="btn btn-sm btn-outline" onclick="toggleAllDDItems(true)">Select All</button>
-    <button class="btn btn-sm btn-outline" onclick="toggleAllDDItems(false)">Deselect All</button>
-  </div><div id="ddFeedbackResult" class="mt"></div>`;
-  html += `</div>`;
-  el.innerHTML = html;
 }
 
-function toggleAllDDItems(checked) {
-  document.querySelectorAll('.dd-item').forEach(cb => cb.checked = checked);
+async function selectProject(id){
+  state.current=state.projects.find(x=>x.id===id)||state.current;
+  state.tab='dashboard';render();
 }
 
-function _getSelectedDDItems() {
-  const dd = state.lastDeepDive?.deep_dive || {};
-  const allItems = [
-    ...(dd.missing_areas||[]).map(m => `[Missing] ${m.area}: ${m.suggestion}`),
-    ...(dd.risk_flags||[]).slice(0,10).map(f => `[Risk] ${f.flag}`),
-    ...(dd.clarification_questions||[]).map(q => `[Question] ${q}`),
-    ...(dd.suggested_additions||[]).map(s => `[Suggestion] ${s.suggestion}`),
-  ];
-  const selected = [];
-  document.querySelectorAll('.dd-item').forEach((cb, i) => {
-    if (cb.checked && allItems[i]) selected.push(allItems[i]);
-  });
-  return selected;
+async function buildContext(){
+  if(!state.current)return;
+  let nextNum=1;
+  try{const r=await api('GET',`/api/projects/${state.current.id}/hierarchy/versions`);nextNum=(r.versions||[]).length+1;}catch(e){}
+  const label=prompt(`Label this version (optional, max 20 chars).\nWill create: v${nextNum} – [label]`,'');
+  if(label===null)return;
+  const trimmed=(label||'').trim().slice(0,20);
+  const r=await api('POST',`/api/projects/${state.current.id}/build-context`,trimmed?{label:trimmed}:{});
+  if(r._build_metadata){
+    toast(`Built v${nextNum}: ${r._build_metadata.total_risks||0} risks, ${r._build_metadata.total_constraints||0} constraints`);
+    render();
+  }else if(r.error){toast(r.error,'err');}
 }
 
-async function acceptAllSuggestions() {
-  if (!state.current) return;
-  const items = _getSelectedDDItems();
-  if (!items.length) { alert('No items selected'); return; }
-  const el = document.getElementById('ddFeedbackResult');
-  el.innerHTML = '<p style="color:var(--text-dim)">Applying feedback...</p>';
-  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {accepted: items});
-  if (r.error) { el.innerHTML = `<p style="color:var(--danger)">${r.error}</p>`; return; }
-  el.innerHTML = `<p style="color:var(--accent2)">Accepted ${r.accepted_count} items</p>`;
+async function loadProjects(){
+  const r=await api('GET','/api/projects');
+  state.projects=r.projects||[];
+  if(!state.current&&state.projects.length)state.current=state.projects[0];
+}
+async function loadBackends(){
+  const r=await api('GET','/api/backends');
+  state.backends=r.backends||[];
 }
 
-async function addSelectedToPrompt() {
-  if (!state.current) return;
-  const items = _getSelectedDDItems();
-  if (!items.length) { alert('No items selected'); return; }
-  const el = document.getElementById('ddFeedbackResult');
-  el.innerHTML = '<p style="color:var(--text-dim)">Adding to prompt...</p>';
-  const r = await api('POST', `/api/projects/${state.current.id}/deep-dive/feedback`, {added_to_prompt: items});
-  if (r.error) { el.innerHTML = `<p style="color:var(--danger)">${r.error}</p>`; return; }
-  el.innerHTML = `<p style="color:var(--accent2)">Added ${r.added_to_prompt_count} items to prompt</p>`;
-  // Also append to custom prompt textarea if visible
-  const ta = document.getElementById('customPrompt');
-  if (ta) { ta.value = (ta.value ? ta.value + '\n' : '') + items.join('\n'); }
-}
-
-// Old feedback functions removed – replaced by toggle-based versions above
+// ─── Bootstrap ───────────────────────────────────────────────
+(async()=>{await Promise.all([loadProjects(),loadBackends()]);render();})();
 </script>
 </body>
 </html>
