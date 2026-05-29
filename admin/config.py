@@ -42,7 +42,7 @@ class AdminConfig:
     default_ai_backend: str = "files_only"
 
     # Admin PIN
-    admin_pin: str = "1234"
+    admin_pin: str = field(default_factory=lambda: os.environ.get("ADMIN_PIN", ""))
 
     # Auto-archive settings
     auto_archive_enabled: bool = False
@@ -91,7 +91,7 @@ def load_config() -> AdminConfig:
             default_persona=data.get("default_persona", "solution_architect"),
             default_phase=data.get("default_phase", "discovery"),
             default_ai_backend=data.get("default_ai_backend", "files_only"),
-            admin_pin=data.get("admin_pin", "1234"),
+            admin_pin=data.get("admin_pin") or os.environ.get("ADMIN_PIN", ""),
             auto_archive_enabled=data.get("auto_archive_enabled", False),
             auto_archive_inactivity_days=data.get("auto_archive_inactivity_days", 30),
         )
