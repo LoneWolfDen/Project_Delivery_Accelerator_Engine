@@ -669,12 +669,30 @@ class HierarchyStore:
             v_summary = target_version.to_summary()
             v_summary["review_count"] = len(scoped_reviews)
             metrics["selected_version"] = v_summary
-            metrics["risks_identified"] = target_version.stats.get("risks", 0)
-            metrics["dependencies"] = target_version.stats.get("dependencies", 0)
-            metrics["constraints"] = target_version.stats.get("constraints", 0)
-            metrics["assumptions"] = target_version.stats.get("assumptions", 0)
-            metrics["action_items"] = target_version.stats.get("action_items", 0)
             metrics["artifact_count"] = len(target_version.included_artifacts)
+            
+            # If a review is selected, use its findings counts; otherwise use version stats
+            if target_review:
+                # Count items from review findings
+                findings = target_review.findings
+                metrics["risks_identified"] = len(findings.get("risks", []))
+                metrics["dependencies"] = len(findings.get("dependencies", []))
+                metrics["constraints"] = len(findings.get("constraints", []))
+                metrics["assumptions"] = len(findings.get("assumptions", []))
+                metrics["action_items"] = len(findings.get("action_items", []))
+                
+                # Include ALL finding categories dynamically
+                metrics["finding_categories"] = {}
+                for key, val in findings.items():
+                    if isinstance(val, list) and val:
+                        metrics["finding_categories"][key] = len(val)
+            else:
+                # Use version stats (snapshot from intelligence build)
+                metrics["risks_identified"] = target_version.stats.get("risks", 0)
+                metrics["dependencies"] = target_version.stats.get("dependencies", 0)
+                metrics["constraints"] = target_version.stats.get("constraints", 0)
+                metrics["assumptions"] = target_version.stats.get("assumptions", 0)
+                metrics["action_items"] = target_version.stats.get("action_items", 0)
 
         # Review context (scoped to version)
         if target_review:
