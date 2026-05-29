@@ -444,28 +444,33 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, status=500)
 
     def _handle_review(self) -> None:
-        """Handle persona review request."""
+        """Handle persona review request.
+
+        Accepts either a single role string (``persona`` field) or a list
+        of role names (``roles`` field, max 3).  Both map to the v2 engine.
+        """
         body = self._read_body()
         if not body:
             self._json_response({"error": "Request body required"}, status=400)
             return
 
         project_id = body.get("project_id")
-        persona_name = body.get("persona")
+        # v2: accept "roles" list; fall back to legacy "persona" string
+        roles = body.get("roles") or body.get("persona")
         ai_backend = body.get("ai_backend", "files_only")
         custom_prompt = body.get("custom_prompt")
 
         if not project_id:
             self._json_response({"error": "project_id required"}, status=400)
             return
-        if not persona_name:
-            self._json_response({"error": "persona required"}, status=400)
+        if not roles:
+            self._json_response({"error": "roles (or persona) required"}, status=400)
             return
 
         try:
             result = project_manager.run_persona_review(
                 project_id=project_id,
-                persona_name=persona_name,
+                persona_name=roles,
                 ai_backend=ai_backend,
                 custom_prompt=custom_prompt,
             )
@@ -476,9 +481,11 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, status=500)
 
     def _handle_list_personas(self) -> None:
-        """Handle listing available personas."""
-        from personas.engine import list_personas
-        self._json_response({"personas": list_personas()})
+        """Return all visible roles with group metadata (v2)."""
+        from personas.engine import list_roles
+        roles = list_roles()
+        # Keep 'personas' key for backward-compat with any stored UI state
+        self._json_response({"personas": roles, "roles": roles})
 
     def _handle_build_context(self, project_id: str) -> None:
         """Build/rebuild project intelligence from ingested documents."""
