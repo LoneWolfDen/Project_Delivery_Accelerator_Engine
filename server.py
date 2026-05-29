@@ -449,10 +449,13 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def _handle_build_context(self, project_id: str) -> None:
         """Build/rebuild project intelligence from ingested documents."""
-        body = self._read_body()
-        version_label = body.get("label") if body else None
+        body = self._read_body() or {}
+        version_label = body.get("label")
+        ai_backend = body.get("ai_backend")  # optional override; falls back to project default
         try:
-            result = project_manager.build_project_intelligence(project_id, version_label)
+            result = project_manager.build_project_intelligence(
+                project_id, version_label, ai_backend=ai_backend
+            )
             self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=404)

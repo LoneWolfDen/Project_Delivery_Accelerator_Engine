@@ -777,7 +777,42 @@ async function viewIngest(){
   }
   // Update counter after rendering
   setTimeout(()=>_updateIngestCounter(),50);
-  return addCard+regHtml;
+
+  // Build Intelligence action card – shown only when artefacts are present
+  let intelActionCard='';
+  if(total){
+    const backendOpts=(state.backends||[]).map(b=>{
+      const selected=(b.name===(state.current.ai_backend||'files_only'))?'selected':'';
+      const avail=b.available?'':' (unavailable)';
+      return`<option value="${b.name}" ${selected}>${b.display_name||b.name}${avail}</option>`;
+    }).join('');
+    intelActionCard=`<div class="card" style="border-top:2px solid var(--accent)">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">🔨</span>Build Intelligence</div>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
+        Run the extraction pipeline on all <strong>included</strong> artefacts above.
+        Choose <em>files_only</em> for instant offline extraction or an AI backend for
+        deeper analysis.
+      </p>
+      <div class="flex gap-sm" style="align-items:center;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:180px">
+          <label style="font-size:11px;color:var(--text-dim)">Extraction backend</label>
+          <select id="intelBackendSelect" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px"
+            onchange="state._intelBackend=this.value">
+            ${backendOpts}
+          </select>
+        </div>
+        <button class="btn" style="margin-top:16px" onclick="buildContext()">🔨 Run Intelligence</button>
+      </div>
+      <p style="font-size:10px;color:var(--text-muted);margin-top:8px">
+        ✨ When an AI backend is selected, pattern-based extraction runs first, then the
+        LLM enriches the results in a second pass.
+      </p>
+    </div>`;
+  }
+
+  return addCard+regHtml+intelActionCard;
 }
 
 function expandAllFiles(){document.querySelectorAll('.file-item').forEach(el=>el.classList.add('expanded'));}
@@ -2221,9 +2256,21 @@ async function buildContext(){
   const label=prompt(`Label this version (optional, max 20 chars).\nWill create: v${nextNum} – [label]`,'');
   if(label===null)return;
   const trimmed=(label||'').trim().slice(0,20);
-  const r=await api('POST',`/api/projects/${state.current.id}/build-context`,trimmed?{label:trimmed}:{});
+
+  // Pick the AI backend: use project setting if configured, otherwise files_only
+  const selectedBackend=(state.current.ai_backend&&state.current.ai_backend!=='files_only')
+    ?state.current.ai_backend
+    :(state._intelBackend||'files_only');
+
+  const payload={};
+  if(trimmed)payload.label=trimmed;
+  if(selectedBackend&&selectedBackend!=='files_only')payload.ai_backend=selectedBackend;
+
+  const r=await api('POST',`/api/projects/${state.current.id}/build-context`,payload);
   if(r._build_metadata){
-    toast(`Built v${nextNum}: ${r._build_metadata.total_risks||0} risks, ${r._build_metadata.total_constraints||0} constraints`);
+    const meta=r._build_metadata;
+    const aiTag=meta.ai_enriched?` ✨ AI (${meta.ai_backend})`:'';
+    toast(`Built v${nextNum}${aiTag}: ${meta.total_risks||0} risks, ${meta.total_constraints||0} constraints`);
     render();
   }else if(r.error){toast(r.error,'err');}
 }
