@@ -1,13 +1,12 @@
-"""Pre-sales Feedback Loop Processor (P9).
+"""Pre-sales Feedback Loop Processor — DS-06.
 
-Responsibilities:
-1. get_presales_summary()     – aggregated view for the Pre-Sales tab
-2. attach_feedback_to_context() – writes accepted/rejected/concerns into a
-   per-project JSON cache so they are injected into the next review prompt
-3. get_feedback_prompt_injection() – returns the formatted prompt block
-   that personas/engine.py prepends when running a pre-sales review
-4. build_feedback_delta()     – compares two proposal versions' feedback
-   to surface "what changed" across client iterations
+DS-06 changes from P9:
+- attach_feedback_to_context(): only caches items with status='new'
+- get_feedback_prompt_injection(): formats structured FeedbackItems
+  (grouped by mapped_to, flags critical items, excludes addressed/deferred)
+- clear_feedback_cache_for_version(): scoped reset per proposal version
+- get_presales_summary(): adds structured feedback counts + stop condition hint
+- build_feedback_delta(): now reads structured feedback_items field
 """
 
 from __future__ import annotations
@@ -18,84 +17,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 PROJECTS_DIR = Path("projects_data")
-
-
-# ──────────────────────────────────────────────────────────────
-# 1. Pre-sales summary
-# ──────────────────────────────────────────────────────────────
-
-def get_presales_summary(project_id: str) -> Dict[str, Any]:
-    """Return a consolidated pre-sales view for the UI tab.
-
-    Aggregates:
-    - Current proposal (latest version, status, client)
-    - All feedback items (counts + latest)
-    - Open action items
-    - Intelligence snapshot stats
-    - Active review for the pre-sales phase
-    """
-    from db.project_store_sql import load_proposal_sql, load_presales_feedback
-    from models.hierarchy import _make_hierarchy_store
-    import project_manager
-
-    proposal   = load_proposal_sql(project_id)
-    feedback   = load_presales_feedback(project_id)
-    store      = _make_hierarchy_store(project_id)
-    intel      = project_manager.get_project_intelligence(project_id)
-
-    # Proposal summary
-    current_ver = None
-    if proposal:
-        versions = proposal.get("versions", [])
-        current_vid = proposal.get("current_version", "")
-        current_ver = next(
-            (v for v in versions if v["version_id"] == current_vid), versions[-1] if versions else None
-        )
-
-    # Reviews scoped to pre-sales phase
-    presales_reviews = store.list_reviews(phase_id="pre-sales")
-    active_review = None
-    if presales_reviews:
-        active_review = presales_reviews[0]  # newest first
-
-    # Feedback aggregation
-    open_fb    = [f for f in feedback if f["status"] == "open"]
-    actioned   = [f for f in feedback if f["status"] == "actioned"]
-    all_accepted  = [i for f in feedback for i in f.get("accepted", [])]
-    all_rejected  = [i for f in feedback for i in f.get("rejected", [])]
-    all_concerns  = [i for f in feedback for i in f.get("concerns", [])]
-
-    # Next actions across all open feedback
-    next_actions = [f["next_action"] for f in open_fb if f.get("next_action")]
-
-    return {
-        "project_id":    project_id,
-        "proposal":      proposal,
-        "current_version": current_ver,
-        "active_review": active_review,
-        "presales_reviews": presales_reviews,
-        "feedback_summary": {
-            "total":    len(feedback),
-            "open":     len(open_fb),
-            "actioned": len(actioned),
-            "accepted_count": len(all_accepted),
-            "rejected_count": len(all_rejected),
-            "concerns_count": len(all_concerns),
-            "top_accepted":  all_accepted[:5],
-            "top_rejected":  all_rejected[:5],
-            "top_concerns":  all_concerns[:5],
-            "next_actions":  next_actions,
-        },
-        "intelligence_stats": intel.get("_build_metadata", {}) if intel else {},
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-# ──────────────────────────────────────────────────────────────
-# 2. Attach feedback to context cache (prompt injection source)
-# ──────────────────────────────────────────────────────────────
-
 _CACHE_FILENAME = "presales_feedback_cache.json"
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _cache_path(project_id: str) -> Path:
@@ -104,12 +30,110 @@ def _cache_path(project_id: str) -> Path:
     return p / _CACHE_FILENAME
 
 
-def attach_feedback_to_context(project_id: str, feedback_item: Dict[str, Any]) -> None:
-    """Append a feedback item to the project's feedback prompt cache.
+# ──────────────────────────────────────────────────────────────
+# 1. Pre-sales summary (DS-06: adds structured counts + stop hint)
+# ──────────────────────────────────────────────────────────────
 
-    The cache is a list of feedback records.  The next time a pre-sales
-    review runs, get_feedback_prompt_injection() reads this cache and
-    prepends the context block to the custom_prompt.
+def get_presales_summary(project_id: str) -> Dict[str, Any]:
+    """Return a consolidated pre-sales view for the UI tab."""
+    from db.project_store_sql import load_proposal_sql, load_presales_feedback
+    from models.hierarchy import _make_hierarchy_store
+    import project_manager
+
+    proposal = load_proposal_sql(project_id)
+    feedback = load_presales_feedback(project_id)
+    store    = _make_hierarchy_store(project_id)
+    intel    = project_manager.get_project_intelligence(project_id)
+
+    current_ver = None
+    if proposal:
+        versions    = proposal.get("versions", [])
+        current_vid = proposal.get("current_version", "")
+        current_ver = next(
+            (v for v in versions if v["version_id"] == current_vid),
+            versions[-1] if versions else None,
+        )
+
+    # Reviews scoped to pre-sales phase, with quality fields
+    presales_reviews = store.list_reviews(phase_id="pre-sales")
+    active_review = presales_reviews[0] if presales_reviews else None
+
+    # Aggregate across ALL feedback records for this project
+    all_items: List[Dict[str, Any]] = []
+    for fb in feedback:
+        all_items.extend(fb.get("feedback_items", []))
+
+    open_fb     = [f for f in feedback if f["status"] == "open"]
+    actioned_fb = [f for f in feedback if f["status"] == "actioned"]
+
+    new_items      = [i for i in all_items if i.get("status") == "new"]
+    addressed      = [i for i in all_items if i.get("status") == "addressed"]
+    critical_open  = [i for i in new_items if i.get("is_critical")]
+    change_req     = [i for i in new_items if i.get("category") == "change_requested"]
+
+    # backward-compat flat views (still used by legacy UI paths)
+    all_accepted = [i["text"] for i in all_items if i.get("category") == "accepted"]
+    all_rejected = [i["text"] for i in all_items if i.get("category") == "rejected"]
+    all_concerns = [i["text"] for i in all_items if i.get("category") == "concerns"]
+
+    next_actions = [f["next_action"] for f in open_fb if f.get("next_action")]
+
+    # Stop condition hint
+    ready_to_finalise = (
+        len(critical_open) == 0
+        and current_ver is not None
+        and current_ver.get("status") == "accepted"
+    )
+
+    return {
+        "project_id":     project_id,
+        "proposal":       proposal,
+        "current_version": current_ver,
+        "active_review":  active_review,
+        "presales_reviews": presales_reviews,
+        "feedback_summary": {
+            "total":            len(feedback),
+            "open":             len(open_fb),
+            "actioned":         len(actioned_fb),
+            # DS-06 structured counts
+            "total_items":      len(all_items),
+            "new_items":        len(new_items),
+            "addressed_items":  len(addressed),
+            "critical_open":    len(critical_open),
+            "change_requested": len(change_req),
+            # backward-compat
+            "accepted_count":   len(all_accepted),
+            "rejected_count":   len(all_rejected),
+            "concerns_count":   len(all_concerns),
+            "top_accepted":     all_accepted[:5],
+            "top_rejected":     all_rejected[:5],
+            "top_concerns":     all_concerns[:5],
+            "next_actions":     next_actions,
+        },
+        "stop_condition": {
+            "ready":           ready_to_finalise,
+            "critical_open":   len(critical_open),
+            "blockers": (
+                [] if ready_to_finalise else
+                ([f"{len(critical_open)} critical feedback item(s) unresolved"] if critical_open else [])
+                + (["Proposal version not yet accepted"] if current_ver and current_ver.get("status") != "accepted" else [])
+                + (["No proposal exists"] if not current_ver else [])
+            ),
+        },
+        "intelligence_stats": intel.get("_build_metadata", {}) if intel else {},
+        "generated_at": _now(),
+    }
+
+
+# ──────────────────────────────────────────────────────────────
+# 2. Attach feedback to context cache (DS-06: new-only items)
+# ──────────────────────────────────────────────────────────────
+
+def attach_feedback_to_context(project_id: str, feedback_record: Dict[str, Any]) -> None:
+    """Cache new (unaddressed) FeedbackItems for prompt injection.
+
+    DS-06: only items with status='new' are injected — addressed/deferred
+    items are excluded to prevent noise in repeated reviews.
     """
     path = _cache_path(project_id)
     cache: List[Dict[str, Any]] = []
@@ -120,22 +144,67 @@ def attach_feedback_to_context(project_id: str, feedback_item: Dict[str, Any]) -
         except (json.JSONDecodeError, OSError):
             cache = []
 
-    # Avoid duplicates
     existing_ids = {e.get("feedback_id") for e in cache}
-    if feedback_item.get("feedback_id") not in existing_ids:
-        cache.append(feedback_item)
+    if feedback_record.get("feedback_id") not in existing_ids:
+        # Only include the record if it has new items
+        new_items = [
+            i for i in feedback_record.get("feedback_items", [])
+            if i.get("status") == "new"
+        ]
+        if new_items or feedback_record.get("notes"):
+            cache.append({
+                **feedback_record,
+                "feedback_items": new_items,  # strip non-new items from cache
+            })
 
     with open(path, "w") as f:
         json.dump(cache, f, indent=2)
 
 
-def get_feedback_prompt_injection(project_id: str, max_items: int = 10) -> str:
-    """Build a formatted prompt block from cached pre-sales feedback.
+def clear_feedback_cache(project_id: str) -> None:
+    """Clear the entire feedback prompt cache for a project."""
+    path = _cache_path(project_id)
+    if path.exists():
+        path.unlink()
 
-    Called by personas/engine.py before running a pre-sales review so the
-    LLM is aware of prior client responses.
 
-    Returns an empty string if no feedback exists.
+def clear_feedback_cache_for_version(
+    project_id: str, proposal_ver_id: str
+) -> None:
+    """Remove feedback items linked to a specific proposal version from the cache.
+
+    Called when a new proposal version is created — prior version's
+    feedback becomes historical, not active injection context.
+    """
+    path = _cache_path(project_id)
+    if not path.exists():
+        return
+    try:
+        with open(path) as f:
+            cache = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    updated = [
+        e for e in cache
+        if e.get("proposal_ver_id") != proposal_ver_id
+    ]
+    with open(path, "w") as f:
+        json.dump(updated, f, indent=2)
+
+
+# ──────────────────────────────────────────────────────────────
+# 3. Prompt injection (DS-06: structured format, new-only)
+# ──────────────────────────────────────────────────────────────
+
+def get_feedback_prompt_injection(
+    project_id: str,
+    max_records: int = 5,
+) -> str:
+    """Build a structured prompt block from cached new feedback items.
+
+    DS-06: formats items by mapped_to category, flags critical items,
+    excludes addressed/deferred. Returns empty string if no new items.
     """
     path = _cache_path(project_id)
     if not path.exists():
@@ -147,114 +216,107 @@ def get_feedback_prompt_injection(project_id: str, max_items: int = 10) -> str:
     except (json.JSONDecodeError, OSError):
         return ""
 
-    if not cache:
+    # Collect all new items across recent feedback records
+    recent = sorted(cache, key=lambda x: x.get("created_at", ""), reverse=True)[:max_records]
+    all_new_items: List[Dict[str, Any]] = []
+    for rec in recent:
+        for item in rec.get("feedback_items", []):
+            if item.get("status") == "new":
+                all_new_items.append({**item, "_source": rec.get("responder_name", "Unknown")})
+
+    if not all_new_items:
         return ""
 
-    # Use the most recent N items
-    recent = sorted(cache, key=lambda x: x.get("created_at", ""), reverse=True)[:max_items]
+    # Group by mapped_to
+    grouped: Dict[str, List] = {}
+    for item in all_new_items:
+        key = item.get("mapped_to") or item.get("category", "general")
+        grouped.setdefault(key, []).append(item)
+
+    critical = [i for i in all_new_items if i.get("is_critical")]
 
     lines: List[str] = [
-        "─── Prior Client Feedback (Pre-sales Loop) ───",
-        f"The following feedback has been captured from {len(recent)} interaction(s).",
-        "Use this to refine your analysis and flag unresolved concerns.\n",
+        "─── Prior Client Feedback — Active Items ───",
+        f"{len(all_new_items)} unresolved feedback item(s) from {len(recent)} interaction(s).",
+        "Address these in your analysis.\n",
     ]
 
-    for i, fb in enumerate(recent, 1):
-        src   = fb.get("source", "internal").upper()
-        name  = fb.get("responder_name") or "Unknown"
-        date  = (fb.get("created_at") or "")[:10]
-        lines.append(f"[Feedback {i} — {src} from {name} on {date}]")
-
-        accepted = fb.get("accepted", [])
-        rejected = fb.get("rejected", [])
-        concerns = fb.get("concerns", [])
-        notes    = fb.get("notes", "")
-
-        if accepted:
-            lines.append(f"  Accepted: {'; '.join(accepted)}")
-        if rejected:
-            lines.append(f"  Rejected: {'; '.join(rejected)}")
-        if concerns:
-            lines.append(f"  Concerns: {'; '.join(concerns)}")
-        if notes:
-            lines.append(f"  Notes: {notes}")
+    if critical:
+        lines.append(f"⚠ CRITICAL ({len(critical)} item(s)) — must be resolved before finalisation:")
+        for item in critical:
+            lines.append(
+                f"  [{item.get('category','?').upper()}→{item.get('mapped_to','?')}] "
+                f"{item['text']} (confidence: {item.get('confidence','?')})"
+            )
         lines.append("")
 
-    lines.append("─── End of Prior Feedback ───\n")
+    for group_key, items in sorted(grouped.items()):
+        non_critical = [i for i in items if not i.get("is_critical")]
+        if non_critical:
+            lines.append(f"[{group_key.upper()}]")
+            for item in non_critical:
+                cat_label = {
+                    "accepted": "✓",
+                    "rejected": "✗",
+                    "change_requested": "↻",
+                    "concerns": "?",
+                }.get(item.get("category", ""), "·")
+                lines.append(f"  {cat_label} {item['text']}")
+            lines.append("")
+
+    lines.append("─── End of Active Feedback ───\n")
     return "\n".join(lines)
 
 
-def clear_feedback_cache(project_id: str) -> None:
-    """Clear the prompt injection cache (e.g. after a new proposal version is created)."""
-    path = _cache_path(project_id)
-    if path.exists():
-        path.unlink()
-
-
 # ──────────────────────────────────────────────────────────────
-# 3. Feedback delta (compare two proposal versions)
+# 4. Feedback delta (DS-06: reads structured feedback_items)
 # ──────────────────────────────────────────────────────────────
 
 def build_feedback_delta(
-    project_id: str, version_a_id: str, version_b_id: str
+    project_id: str,
+    version_a_id: str,
+    version_b_id: str,
 ) -> Dict[str, Any]:
-    """Compare feedback between two proposal versions.
-
-    Returns sets of: newly accepted, newly rejected, resolved concerns,
-    new concerns, and persistence counts.
-    """
-    from db.project_store_sql import get_db
-    from db.database import Database
+    """Compare structured feedback between two proposal versions."""
+    from db.database import get_db, Database
 
     db = get_db()
 
-    def _get_feedback_for_version(ver_id: str) -> List[Dict[str, Any]]:
+    def _get_items(ver_id: str) -> List[Dict[str, Any]]:
         rows = db.fetchall(
             "SELECT * FROM presales_feedback WHERE project_id=? AND proposal_ver_id=?",
             (project_id, ver_id),
         )
-        return [
-            {
-                "accepted": Database.jload(r.get("accepted"), []),
-                "rejected": Database.jload(r.get("rejected"), []),
-                "concerns": Database.jload(r.get("concerns"), []),
-            }
-            for r in rows
-        ]
+        items: List[Dict[str, Any]] = []
+        for r in rows:
+            items.extend(Database.jload(r.get("feedback_items"), []))
+        return items
 
-    def _flatten(items: List[Dict], key: str) -> set:
-        return {i.lower().strip() for fb in items for i in fb.get(key, [])}
+    def _texts_by_cat(items: List[Dict], cat: str) -> set:
+        return {i["text"].lower().strip() for i in items if i.get("category") == cat}
 
-    fb_a = _get_feedback_for_version(version_a_id)
-    fb_b = _get_feedback_for_version(version_b_id)
+    items_a = _get_items(version_a_id)
+    items_b = _get_items(version_b_id)
 
-    acc_a, acc_b = _flatten(fb_a, "accepted"),  _flatten(fb_b, "accepted")
-    rej_a, rej_b = _flatten(fb_a, "rejected"),  _flatten(fb_b, "rejected")
-    con_a, con_b = _flatten(fb_a, "concerns"),  _flatten(fb_b, "concerns")
+    result: Dict[str, Any] = {"version_a": version_a_id, "version_b": version_b_id}
+    for cat in ("accepted", "rejected", "change_requested", "concerns"):
+        set_a = _texts_by_cat(items_a, cat)
+        set_b = _texts_by_cat(items_b, cat)
+        result[cat] = {
+            "new":       sorted(set_b - set_a),
+            "resolved":  sorted(set_a - set_b),
+            "persisted": len(set_a & set_b),
+        }
 
-    return {
-        "version_a": version_a_id,
-        "version_b": version_b_id,
-        "accepted": {
-            "new":       sorted(acc_b - acc_a),
-            "lost":      sorted(acc_a - acc_b),
-            "persisted": len(acc_a & acc_b),
-        },
-        "rejected": {
-            "new":       sorted(rej_b - rej_a),
-            "resolved":  sorted(rej_a - rej_b),
-            "persisted": len(rej_a & rej_b),
-        },
-        "concerns": {
-            "new":       sorted(con_b - con_a),
-            "resolved":  sorted(con_a - con_b),
-            "persisted": len(con_a & con_b),
-        },
-        "summary": {
-            "direction": (
-                "improving"   if len(acc_b) > len(acc_a) and len(con_b) < len(con_a)
-                else "mixed"  if len(acc_b) > len(acc_a)
-                else "needs_attention"
-            ),
-        },
+    critical_a = sum(1 for i in items_a if i.get("is_critical") and i.get("status") == "new")
+    critical_b = sum(1 for i in items_b if i.get("is_critical") and i.get("status") == "new")
+    result["summary"] = {
+        "critical_open_a": critical_a,
+        "critical_open_b": critical_b,
+        "direction": (
+            "improving"       if critical_b < critical_a else
+            "stable"          if critical_b == critical_a else
+            "needs_attention"
+        ),
     }
+    return result

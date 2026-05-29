@@ -161,10 +161,24 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(proposal)
             else:
                 self._json_response({"error": "No proposal exists"}, status=404)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal/document"):
+            # GET /api/projects/{id}/proposal/document?proposal_ver_id=prop-v1
+            project_id = clean_path.split("/")[3]
+            proposal_ver_id = query.get("proposal_ver_id", "")
+            doc = project_manager.get_proposal_doc(project_id, proposal_ver_id)
+            if doc:
+                self._json_response({"document": doc})
+            else:
+                self._json_response({"error": "No document generated yet"}, status=404)
         # ── P9: Pre-sales feedback GET routes ──
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/summary"):
             project_id = clean_path.split("/")[3]
             self._handle_get_presales_summary(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/stop-condition"):
+            # GET /api/projects/{id}/presales/stop-condition — DS-08
+            project_id = clean_path.split("/")[3]
+            result = project_manager.get_presales_stop_condition(project_id)
+            self._json_response(result)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback"):
             project_id = clean_path.split("/")[3]
             self._handle_list_presales_feedback(project_id)
@@ -225,6 +239,21 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             review_filter = query.get("review_id")
             metrics = project_manager.get_hierarchy_metrics(project_id, version_filter, review_filter)
             self._json_response(metrics)
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path and clean_path.endswith("/quality"):
+            # GET /api/projects/{id}/hierarchy/reviews/{review_id}/quality
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            result = project_manager.get_review_quality(project_id, review_id)
+            self._json_response(result)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/decision-log"):
+            # GET /api/projects/{id}/decision-log
+            project_id = clean_path.split("/")[3]
+            entity_type = query.get("entity_type")
+            entity_id = query.get("entity_id")
+            from db.decision_log import get_decision_log
+            logs = get_decision_log(project_id, entity_type=entity_type, entity_id=entity_id)
+            self._json_response({"project_id": project_id, "logs": logs, "count": len(logs)})
         # ── Diagram API ──
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/diagrams"):
             # GET /api/projects/{id}/diagrams  →  list saved diagrams
@@ -322,6 +351,28 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal/version"):
             project_id = clean_path.split("/")[3]
             self._handle_add_proposal_version(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal/generate"):
+            # POST /api/projects/{id}/proposal/generate
+            project_id = clean_path.split("/")[3]
+            body = self._read_body() or {}
+            result = project_manager.generate_proposal_doc(
+                project_id=project_id,
+                proposal_ver_id=body.get("proposal_ver_id", ""),
+                hierarchy_version_id=body.get("hierarchy_version_id", ""),
+                review_id=body.get("review_id", ""),
+                ai_backend=body.get("ai_backend", "files_only"),
+                force=bool(body.get("force", False)),
+            )
+            if result.get("error"):
+                self._json_response(result, status=422)
+            else:
+                self._json_response({"document": result}, status=201)
+        elif clean_path.startswith("/api/projects/") and "/proposal/version/" in clean_path and clean_path.endswith("/status"):
+            # POST /api/projects/{id}/proposal/version/{version_id}/status
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            version_id = parts[6]
+            self._handle_update_proposal_version_status(project_id, version_id)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/phase"):
             project_id = clean_path.split("/")[3]
             self._handle_phase_transition(project_id)
@@ -340,6 +391,37 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = parts[3]
             version_id = parts[6]
             self._handle_set_active_review(project_id, version_id)
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/complete"):
+            # POST /api/projects/{id}/hierarchy/reviews/{review_id}/complete
+            parts = self.path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            body = self._read_body() or {}
+            try:
+                result = project_manager.complete_review_gate(
+                    project_id, review_id,
+                    body.get("completed_by", ""),
+                    body.get("quality_status", "complete"),
+                )
+                self._json_response(result)
+            except ValueError as e:
+                self._json_response({"error": str(e)}, status=400)
+        elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path and self.path.endswith("/set-active-review-gated"):
+            # POST /api/projects/{id}/hierarchy/versions/{version_id}/set-active-review-gated
+            parts = self.path.split("/")
+            project_id = parts[3]
+            version_id = parts[6]
+            body = self._read_body() or {}
+            result = project_manager.set_active_review_gated(
+                project_id, version_id,
+                body.get("review_id", ""),
+                body.get("decided_by", ""),
+                force=bool(body.get("force", False)),
+            )
+            if result.get("error"):
+                self._json_response(result, status=422)
+            else:
+                self._json_response(result)
         elif self.path.startswith("/api/projects/") and self.path.endswith("/toggle-file"):
             project_id = self.path.split("/")[3]
             self._handle_toggle_file(project_id)
@@ -391,6 +473,10 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback"):
             project_id = clean_path.split("/")[3]
             self._handle_create_presales_feedback(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback/classify"):
+            # POST /api/projects/{id}/presales/feedback/classify — DS-06 hybrid tagger
+            project_id = clean_path.split("/")[3]
+            self._handle_classify_feedback(project_id)
         elif clean_path.startswith("/api/projects/") and "/presales/feedback/" in clean_path and clean_path.endswith("/action"):
             parts = clean_path.split("/")
             project_id = parts[3]
@@ -399,6 +485,24 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/share"):
             project_id = clean_path.split("/")[3]
             self._handle_create_feedback_token(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/finalise"):
+            # POST /api/projects/{id}/presales/finalise — DS-08 atomic finalisation
+            project_id = clean_path.split("/")[3]
+            body = self._read_body() or {}
+            decided_by = body.get("decided_by", "")
+            if not decided_by:
+                self._json_response({"error": "decided_by is required to finalise"}, status=400)
+            else:
+                result = project_manager.finalise_presales(
+                    project_id,
+                    decided_by=decided_by,
+                    reason=body.get("reason", ""),
+                    force=bool(body.get("force", False)),
+                )
+                if result.get("error"):
+                    self._json_response(result, status=422)
+                else:
+                    self._json_response(result, status=200)
         elif clean_path == "/api/feedback/submit":
             self._handle_external_feedback_submit()
         else:
@@ -452,12 +556,35 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         else:
             self._json_response({"error": "Feedback not found"}, status=404)
 
+    def _handle_classify_feedback(self, project_id: str) -> None:
+        """POST /api/projects/{id}/presales/feedback/classify — DS-06 hybrid tagger.
+
+        Splits raw text into paragraphs and classifies each one.
+        files_only → heuristic pre-fill; AI backend → LLM classification.
+        """
+        from processors.feedback_classifier import classify_feedback
+        body = self._read_body() or {}
+        raw_text   = body.get("raw_text", "")
+        ai_backend = body.get("ai_backend", "files_only")
+        if not raw_text.strip():
+            self._json_response({"error": "raw_text is required"}, status=400)
+            return
+        result = classify_feedback(raw_text, project_id, ai_backend)
+        self._json_response(result)
+
     def _handle_create_presales_feedback(self, project_id: str) -> None:
-        """POST /api/projects/{id}/presales/feedback — internal feedback capture."""
+        """POST /api/projects/{id}/presales/feedback — internal feedback capture.
+
+        DS-06: accepts structured feedback_items[] (from hybrid tagger) OR
+        legacy flat accepted/rejected/concerns lists.
+        """
         import uuid as _uuid
         from db.project_store_sql import save_presales_feedback
         body = self._read_body() or {}
         feedback_id = f"fb_{_uuid.uuid4().hex[:8]}"
+        # DS-06: prefer structured feedback_items if present
+        feedback_items = body.get("feedback_items") or None
+        raw_text       = body.get("raw_text", "")
         item = save_presales_feedback(
             project_id=project_id,
             feedback_id=feedback_id,
@@ -466,6 +593,9 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             source=body.get("source", "internal"),
             responder_name=body.get("responder_name", ""),
             responder_email=body.get("responder_email", ""),
+            feedback_items=feedback_items,
+            raw_text=raw_text,
+            # legacy flat lists (ignored when feedback_items present)
             accepted=body.get("accepted", []),
             rejected=body.get("rejected", []),
             concerns=body.get("concerns", []),
@@ -473,7 +603,6 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             next_action=body.get("next_action", ""),
             status="open",
         )
-        # Optionally inject into next review prompt context
         try:
             from processors.presales_feedback import attach_feedback_to_context
             attach_feedback_to_context(project_id, item)
@@ -752,26 +881,83 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, status=404)
 
     def _handle_create_proposal(self, project_id: str) -> None:
-        """Create a proposal for a project."""
-        body = self._read_body()
-        name = body.get("name", "Untitled Proposal") if body else "Untitled Proposal"
+        """Create a proposal for a project. DS-07: requires hierarchy_version_id + review_id."""
+        body = self._read_body() or {}
+        name = body.get("proposal_name") or body.get("name") or "Untitled Proposal"
+        hierarchy_version_id = body.get("hierarchy_version_id", "")
+        active_review_id     = body.get("review_id", "") or body.get("active_review_id", "")
         try:
             result = project_manager.create_proposal(
-                project_id, name, body.get("client", ""), notes=body.get("notes", "")
+                project_id, name,
+                client=body.get("client", ""),
+                notes=body.get("notes", ""),
+                hierarchy_version_id=hierarchy_version_id,
+                active_review_id=active_review_id,
             )
             self._json_response(result, status=201)
         except ValueError as e:
-            self._json_response({"error": str(e)}, status=400)
+            self._json_response({"error": str(e)}, status=422)
 
     def _handle_add_proposal_version(self, project_id: str) -> None:
-        """Add a version to existing proposal."""
+        """Add a version to existing proposal. DS-07: requires hierarchy_version_id + review_id."""
         body = self._read_body() or {}
         try:
             result = project_manager.add_proposal_version(
-                project_id, body.get("label", ""), notes=body.get("notes", ""),
+                project_id,
+                label=body.get("label", ""),
+                notes=body.get("notes", ""),
                 changes=body.get("changes", ""),
+                hierarchy_version_id=body.get("hierarchy_version_id", ""),
+                active_review_id=body.get("review_id", "") or body.get("active_review_id", ""),
+                feedback_applied=body.get("feedback_applied", []),
+                changes_summary=body.get("changes_summary", ""),
             )
             self._json_response(result, status=201)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=422)
+
+    def _handle_update_proposal_version_status(self, project_id: str, version_id: str) -> None:
+        """POST /api/projects/{id}/proposal/version/{version_id}/status"""
+        body = self._read_body() or {}
+        new_status = body.get("status", "")
+        if not new_status:
+            self._json_response({"error": "status required"}, status=400)
+            return
+        # DS-08: enforce soft lock — reject writes unless override_reason provided
+        try:
+            from db.project_store_sql import get_db, Database
+            db = get_db()
+            row = db.fetchone(
+                "SELECT lock_status, lock_reason FROM proposal_versions "
+                "WHERE project_id=? AND version_id=?",
+                (project_id, version_id),
+            )
+            if row and row.get("lock_status") == "soft_locked":
+                override_reason = body.get("override_reason", "")
+                if not override_reason:
+                    self._json_response({
+                        "error": "This proposal version is soft-locked (finalised). "
+                                 "Provide 'override_reason' to proceed.",
+                        "lock_reason": row.get("lock_reason", ""),
+                        "lock_status": "soft_locked",
+                    }, status=409)
+                    return
+                # Log the override
+                from db.decision_log import log_decision
+                log_decision(
+                    project_id=project_id,
+                    entity_type="proposal_version",
+                    entity_id=version_id,
+                    action="lock_overridden",
+                    actor=body.get("decided_by", ""),
+                    reason=override_reason,
+                    metadata={"new_status": new_status},
+                )
+        except Exception:
+            pass
+        try:
+            result = project_manager.update_proposal_status(project_id, version_id, new_status)
+            self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=400)
 

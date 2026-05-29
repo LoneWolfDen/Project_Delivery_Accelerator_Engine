@@ -161,9 +161,16 @@ class Review:
     # Deep dive results (if AI mode was on)
     deep_dive: Optional[Dict[str, Any]] = None
 
-    # P9: Pre-sales feedback captured against this review
+    # P9/DS-02: Pre-sales feedback captured against this review
     # Schema: {accepted:[str], rejected:[str], concerns:[str], notes:str, captured_at:str}
     feedback: Optional[Dict[str, Any]] = None
+
+    # DS-02 quality gate fields
+    completeness_score: int = 0
+    quality_status: str = "pending"   # pending | interim | complete
+    completed_by: str = ""
+    completed_at: str = ""
+    decided_by: str = ""              # who set this as active review
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -188,6 +195,9 @@ class Review:
             "summary": self.summary[:120] if self.summary else "",
             "included_files": self.included_files,
             "categories": self.categories,
+            "completeness_score": self.completeness_score,
+            "quality_status":     self.quality_status,
+            "completed_by":       self.completed_by,
         }
 
 

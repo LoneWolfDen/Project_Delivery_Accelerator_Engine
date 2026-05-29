@@ -22,6 +22,8 @@ def create_proposal(
     files: Optional[List[str]] = None,
     notes: str = "",
     context_version: str = "",
+    hierarchy_version_id: str = "",   # DS-07: required — FK to versions.version_id
+    active_review_id: str = "",       # DS-07: required — FK to reviews.review_id
 ) -> Dict[str, Any]:
     """Create a new proposal with its first version.
 
@@ -32,12 +34,26 @@ def create_proposal(
         files: Files associated with this version.
         notes: Notes about this version.
         context_version: Current intelligence version when created.
+        hierarchy_version_id: DS-07 required — FK to versions.version_id.
+        active_review_id: DS-07 required — FK to reviews.review_id.
 
     Returns:
         Proposal tracker dict.
     """
     proposals_dir = project_dir / "proposals"
     proposals_dir.mkdir(exist_ok=True)
+
+    # DS-07: gate — both traceability links required
+    if not hierarchy_version_id:
+        raise ValueError(
+            "hierarchy_version_id is required to create a proposal. "
+            "Build intelligence first to create a version."
+        )
+    if not active_review_id:
+        raise ValueError(
+            "active_review_id is required to create a proposal. "
+            "Run a review and set it as active before generating a proposal."
+        )
 
     # Load existing tracker or create new
     tracker_path = proposals_dir / "tracker.json"
@@ -61,6 +77,10 @@ def create_proposal(
         context_version=context_version, label="Initial submission",
     )
 
+    version["hierarchy_version_id"] = hierarchy_version_id
+    version["active_review_id"] = active_review_id
+    version["context_version"] = hierarchy_version_id  # keep backward compat
+
     tracker["versions"].append(version)
     tracker["current_version"] = version["version_id"]
     tracker["total_versions"] = len(tracker["versions"])
@@ -77,6 +97,10 @@ def add_proposal_version(
     notes: str = "",
     changes: str = "",
     context_version: str = "",
+    hierarchy_version_id: str = "",   # DS-07: required
+    active_review_id: str = "",       # DS-07: required
+    feedback_applied: Optional[List[str]] = None,   # DS-07: feedback_ids resolved
+    changes_summary: str = "",        # DS-07: human summary of changes
 ) -> Dict[str, Any]:
     """Add a new version to an existing proposal.
 
@@ -87,6 +111,10 @@ def add_proposal_version(
         notes: Author notes.
         changes: Description of what changed from previous version.
         context_version: Current intelligence version.
+        hierarchy_version_id: DS-07 required — FK to versions.version_id.
+        active_review_id: DS-07 required — FK to reviews.review_id.
+        feedback_applied: DS-07 feedback_ids resolved in this version.
+        changes_summary: DS-07 human summary of changes.
 
     Returns:
         The new version dict.
@@ -101,6 +129,15 @@ def add_proposal_version(
     if not tracker:
         raise ValueError("No proposal exists. Create one first.")
 
+    if not hierarchy_version_id:
+        raise ValueError(
+            "hierarchy_version_id is required to add a proposal version."
+        )
+    if not active_review_id:
+        raise ValueError(
+            "active_review_id is required to add a proposal version."
+        )
+
     # Mark previous version as superseded
     if tracker["versions"]:
         tracker["versions"][-1]["status"] = "superseded"
@@ -113,12 +150,31 @@ def add_proposal_version(
         changes=changes,
     )
 
+    version["hierarchy_version_id"] = hierarchy_version_id
+    version["active_review_id"] = active_review_id
+    version["context_version"] = hierarchy_version_id
+    version["previous_version_id"] = tracker["versions"][-1]["version_id"] if tracker["versions"] else ""
+    version["feedback_applied"] = feedback_applied or []
+    version["changes_summary"] = changes_summary
+
     tracker["versions"].append(version)
     tracker["current_version"] = version["version_id"]
     tracker["total_versions"] = len(tracker["versions"])
     tracker["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     _save_tracker(tracker_path, tracker)
+
+    # DS-07: clear feedback cache for the PREVIOUS version (it's now historical)
+    try:
+        from processors.presales_feedback import clear_feedback_cache_for_version
+        prev_ver = tracker["versions"][-2] if len(tracker["versions"]) >= 2 else None
+        if prev_ver:
+            clear_feedback_cache_for_version(
+                project_dir.name, prev_ver["version_id"]
+            )
+    except Exception:
+        pass
+
     return version
 
 
