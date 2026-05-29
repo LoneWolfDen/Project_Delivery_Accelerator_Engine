@@ -10,6 +10,16 @@ Design:
 - Dual-write mode is controlled by AdminConfig:
     sqlite_write_enabled  (default: True)
     file_write_enabled    (default: True)
+
+DS-01 additions:
+- reviews: completeness_score, quality_status, completed_by, completed_at, decided_by
+- proposal_versions: hierarchy_version_id, active_review_id, previous_version_id,
+                     feedback_applied, quality_status, quality_score,
+                     completed_by, completed_at, lock_status, lock_reason
+- presales_feedback: feedback_items (structured), raw_text, change_requested
+  (accepted/rejected/concerns kept for backward-compat queries)
+- NEW: proposal_documents
+- NEW: decision_log
 """
 
 import json
@@ -40,7 +50,9 @@ def get_db() -> "Database":
 
 
 # ──────────────────────────────────────────────────────────────
-# DDL – Schema
+# DDL – Schema  (CREATE TABLE IF NOT EXISTS = safe to re-run)
+# New columns are added via ALTER TABLE in the migration script;
+# they appear here so fresh installs get the full schema immediately.
 # ──────────────────────────────────────────────────────────────
 
 _SCHEMA_SQL = """
@@ -49,32 +61,32 @@ PRAGMA foreign_keys=ON;
 
 -- ── Projects ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS projects (
-    id          TEXT PRIMARY KEY,
-    name        TEXT NOT NULL,
-    description TEXT DEFAULT '',
-    phase       TEXT DEFAULT 'pre-sales',
-    ai_backend  TEXT DEFAULT 'files_only',
-    status      TEXT DEFAULT 'active',
-    settings    TEXT DEFAULT '{}',      -- JSON
-    files       TEXT DEFAULT '[]',      -- JSON list
-    file_toggles TEXT DEFAULT '{}',     -- JSON
-    iteration   TEXT DEFAULT '{}',      -- JSON
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL,
-    archived_at TEXT DEFAULT '',
-    restored_at TEXT DEFAULT ''
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    description  TEXT DEFAULT '',
+    phase        TEXT DEFAULT 'pre-sales',
+    ai_backend   TEXT DEFAULT 'files_only',
+    status       TEXT DEFAULT 'active',
+    settings     TEXT DEFAULT '{}',
+    files        TEXT DEFAULT '[]',
+    file_toggles TEXT DEFAULT '{}',
+    iteration    TEXT DEFAULT '{}',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    archived_at  TEXT DEFAULT '',
+    restored_at  TEXT DEFAULT ''
 );
 
 -- ── Phases ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS phases (
-    project_id  TEXT NOT NULL,
-    phase_id    TEXT NOT NULL,
-    label       TEXT NOT NULL,
-    phase_order INTEGER DEFAULT 0,
-    description TEXT DEFAULT '',
-    entered_at  TEXT DEFAULT '',
-    exited_at   TEXT DEFAULT '',
-    is_current  INTEGER DEFAULT 0,      -- 0/1 boolean
+    project_id    TEXT NOT NULL,
+    phase_id      TEXT NOT NULL,
+    label         TEXT NOT NULL,
+    phase_order   INTEGER DEFAULT 0,
+    description   TEXT DEFAULT '',
+    entered_at    TEXT DEFAULT '',
+    exited_at     TEXT DEFAULT '',
+    is_current    INTEGER DEFAULT 0,
     version_count INTEGER DEFAULT 0,
     review_count  INTEGER DEFAULT 0,
     PRIMARY KEY (project_id, phase_id)
@@ -82,62 +94,70 @@ CREATE TABLE IF NOT EXISTS phases (
 
 -- ── Hierarchy Versions ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS versions (
-    version_id          TEXT NOT NULL,
-    project_id          TEXT NOT NULL,
-    phase_id            TEXT DEFAULT 'pre-sales',
-    label               TEXT DEFAULT '',
-    persona             TEXT DEFAULT '',
-    scope               TEXT DEFAULT '',
-    ai_backend          TEXT DEFAULT 'files_only',
-    included_artifacts  TEXT DEFAULT '[]',   -- JSON
-    excluded_artifacts  TEXT DEFAULT '[]',   -- JSON
-    stats               TEXT DEFAULT '{}',   -- JSON
-    review_ids          TEXT DEFAULT '[]',   -- JSON list
-    active_review_id    TEXT DEFAULT '',
-    created_at          TEXT NOT NULL,
+    version_id         TEXT NOT NULL,
+    project_id         TEXT NOT NULL,
+    phase_id           TEXT DEFAULT 'pre-sales',
+    label              TEXT DEFAULT '',
+    persona            TEXT DEFAULT '',
+    scope              TEXT DEFAULT '',
+    ai_backend         TEXT DEFAULT 'files_only',
+    included_artifacts TEXT DEFAULT '[]',
+    excluded_artifacts TEXT DEFAULT '[]',
+    stats              TEXT DEFAULT '{}',
+    review_ids         TEXT DEFAULT '[]',
+    active_review_id   TEXT DEFAULT '',
+    created_at         TEXT NOT NULL,
     PRIMARY KEY (project_id, version_id)
 );
 CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id);
 
 -- ── Hierarchy Reviews ─────────────────────────────────────────
+-- DS-01: added completeness_score, quality_status, completed_by,
+--        completed_at, decided_by
 CREATE TABLE IF NOT EXISTS reviews (
-    review_id       TEXT NOT NULL,
-    project_id      TEXT NOT NULL,
-    version_id      TEXT NOT NULL,
-    phase_id        TEXT DEFAULT 'pre-sales',
-    persona         TEXT DEFAULT '',
-    ai_backend      TEXT DEFAULT 'files_only',
-    prompt_used     TEXT DEFAULT '',
-    custom_prompt   TEXT DEFAULT '',
-    output          TEXT DEFAULT '{}',   -- JSON
-    findings        TEXT DEFAULT '{}',   -- JSON
-    questions       TEXT DEFAULT '[]',   -- JSON
-    summary         TEXT DEFAULT '',
-    included_files  TEXT DEFAULT '[]',   -- JSON
-    categories      TEXT DEFAULT '[]',   -- JSON
-    ai_metadata     TEXT DEFAULT '{}',   -- JSON
-    deep_dive       TEXT DEFAULT NULL,   -- JSON or NULL
-    feedback        TEXT DEFAULT NULL,   -- JSON or NULL  (P9)
-    created_at      TEXT NOT NULL,
+    review_id          TEXT NOT NULL,
+    project_id         TEXT NOT NULL,
+    version_id         TEXT NOT NULL,
+    phase_id           TEXT DEFAULT 'pre-sales',
+    persona            TEXT DEFAULT '',
+    ai_backend         TEXT DEFAULT 'files_only',
+    prompt_used        TEXT DEFAULT '',
+    custom_prompt      TEXT DEFAULT '',
+    output             TEXT DEFAULT '{}',
+    findings           TEXT DEFAULT '{}',
+    questions          TEXT DEFAULT '[]',
+    summary            TEXT DEFAULT '',
+    included_files     TEXT DEFAULT '[]',
+    categories         TEXT DEFAULT '[]',
+    ai_metadata        TEXT DEFAULT '{}',
+    deep_dive          TEXT DEFAULT NULL,
+    feedback           TEXT DEFAULT NULL,
+    -- DS-01 quality gate fields
+    completeness_score INTEGER DEFAULT 0,
+    quality_status     TEXT DEFAULT 'pending',  -- pending | interim | complete
+    completed_by       TEXT DEFAULT '',
+    completed_at       TEXT DEFAULT '',
+    decided_by         TEXT DEFAULT '',         -- who set this as active review
+    created_at         TEXT NOT NULL,
     PRIMARY KEY (project_id, review_id)
 );
-CREATE INDEX IF NOT EXISTS idx_reviews_project  ON reviews(project_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_project ON reviews(project_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_version  ON reviews(version_id);
 
 -- ── Artifacts ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS artifacts (
-    artifact_id TEXT NOT NULL,
-    project_id  TEXT NOT NULL,
-    type        TEXT DEFAULT 'file',
-    file_name   TEXT DEFAULT '',
-    title       TEXT DEFAULT '',
-    category    TEXT DEFAULT 'project_artefact',
-    metadata    TEXT DEFAULT '{}',  -- JSON
-    include     INTEGER DEFAULT 1,
-    status      TEXT DEFAULT 'ingested',
-    raw_path    TEXT DEFAULT '',
+    artifact_id  TEXT NOT NULL,
+    project_id   TEXT NOT NULL,
+    type         TEXT DEFAULT 'file',
+    file_name    TEXT DEFAULT '',
+    title        TEXT DEFAULT '',
+    category     TEXT DEFAULT 'project_artefact',
+    metadata     TEXT DEFAULT '{}',
+    include      INTEGER DEFAULT 1,
+    status       TEXT DEFAULT 'ingested',
+    raw_path     TEXT DEFAULT '',
     text_content TEXT DEFAULT '',
-    created_at  TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
     PRIMARY KEY (project_id, artifact_id)
 );
 CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(project_id);
@@ -153,18 +173,34 @@ CREATE TABLE IF NOT EXISTS proposals (
     updated_at      TEXT NOT NULL
 );
 
+-- DS-01: added hierarchy_version_id, active_review_id, previous_version_id,
+--        feedback_applied, quality_status, quality_score, completed_by,
+--        completed_at, lock_status, lock_reason
 CREATE TABLE IF NOT EXISTS proposal_versions (
-    version_id              TEXT NOT NULL,
-    project_id              TEXT NOT NULL,
-    version_number          INTEGER DEFAULT 1,
-    label                   TEXT DEFAULT '',
-    status                  TEXT DEFAULT 'draft',
-    files                   TEXT DEFAULT '[]',   -- JSON
-    notes                   TEXT DEFAULT '',
-    changes_from_previous   TEXT DEFAULT '',
-    context_version         TEXT DEFAULT '',
-    feedback                TEXT DEFAULT NULL,   -- JSON  (P9)
-    created_at              TEXT NOT NULL,
+    version_id           TEXT NOT NULL,
+    project_id           TEXT NOT NULL,
+    version_number       INTEGER DEFAULT 1,
+    label                TEXT DEFAULT '',
+    status               TEXT DEFAULT 'draft',
+    files                TEXT DEFAULT '[]',
+    notes                TEXT DEFAULT '',
+    changes_from_previous TEXT DEFAULT '',
+    context_version      TEXT DEFAULT '',
+    feedback             TEXT DEFAULT NULL,
+    -- DS-01 traceability
+    hierarchy_version_id TEXT DEFAULT '',    -- FK → versions.version_id
+    active_review_id     TEXT DEFAULT '',    -- FK → reviews.review_id
+    previous_version_id  TEXT DEFAULT '',    -- FK → proposal_versions.version_id
+    feedback_applied     TEXT DEFAULT '[]',  -- JSON list of feedback_ids resolved
+    changes_summary      TEXT DEFAULT '',    -- human summary of what changed
+    -- DS-01 quality + lock
+    quality_status       TEXT DEFAULT 'draft',  -- draft | interim | complete
+    quality_score        INTEGER DEFAULT 0,
+    completed_by         TEXT DEFAULT '',
+    completed_at         TEXT DEFAULT '',
+    lock_status          TEXT DEFAULT 'unlocked',  -- unlocked | soft_locked
+    lock_reason          TEXT DEFAULT '',
+    created_at           TEXT NOT NULL,
     PRIMARY KEY (project_id, version_id)
 );
 
@@ -180,27 +216,35 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at  TEXT NOT NULL
 );
 
--- ── Pre-sales Feedback (P9) ───────────────────────────────────
+-- ── Pre-sales Feedback ────────────────────────────────────────
+-- DS-01: added feedback_items (structured), raw_text, change_requested.
+--        accepted/rejected/concerns kept as backward-compat computed columns.
 CREATE TABLE IF NOT EXISTS presales_feedback (
-    feedback_id     TEXT PRIMARY KEY,
-    project_id      TEXT NOT NULL,
-    proposal_ver_id TEXT DEFAULT '',   -- links to proposal_versions
-    review_id       TEXT DEFAULT '',   -- links to reviews
-    source          TEXT DEFAULT 'internal',  -- 'internal' | 'external'
-    responder_name  TEXT DEFAULT '',
-    responder_email TEXT DEFAULT '',
-    accepted        TEXT DEFAULT '[]', -- JSON list of accepted items
-    rejected        TEXT DEFAULT '[]', -- JSON list of rejected items
-    concerns        TEXT DEFAULT '[]', -- JSON list of concerns
-    notes           TEXT DEFAULT '',
-    next_action     TEXT DEFAULT '',
-    status          TEXT DEFAULT 'open', -- open | actioned | closed
-    created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
+    feedback_id      TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL,
+    proposal_ver_id  TEXT DEFAULT '',
+    review_id        TEXT DEFAULT '',
+    source           TEXT DEFAULT 'internal',  -- internal | external
+    responder_name   TEXT DEFAULT '',
+    responder_email  TEXT DEFAULT '',
+    -- DS-01 structured items (replaces flat lists as primary store)
+    feedback_items   TEXT DEFAULT '[]',  -- JSON: List[FeedbackItem]
+    raw_text         TEXT DEFAULT '',    -- original pasted text (hybrid tagger)
+    change_requested TEXT DEFAULT '[]',  -- JSON: extracted for fast queries
+    -- backward-compat flat lists (kept, populated from feedback_items on write)
+    accepted         TEXT DEFAULT '[]',
+    rejected         TEXT DEFAULT '[]',
+    concerns         TEXT DEFAULT '[]',
+    -- housekeeping
+    notes            TEXT DEFAULT '',
+    next_action      TEXT DEFAULT '',
+    status           TEXT DEFAULT 'open',  -- open | actioned | closed
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_project ON presales_feedback(project_id);
 
--- ── External Feedback Tokens (P9) ────────────────────────────
+-- ── External Feedback Tokens ──────────────────────────────────
 CREATE TABLE IF NOT EXISTS feedback_tokens (
     token           TEXT PRIMARY KEY,
     project_id      TEXT NOT NULL,
@@ -210,6 +254,51 @@ CREATE TABLE IF NOT EXISTS feedback_tokens (
     used            INTEGER DEFAULT 0,
     created_at      TEXT NOT NULL
 );
+
+-- ── Proposal Documents (DS-01) ────────────────────────────────
+-- Each row is a generated document for one proposal_version.
+CREATE TABLE IF NOT EXISTS proposal_documents (
+    doc_id              TEXT PRIMARY KEY,
+    project_id          TEXT NOT NULL,
+    proposal_ver_id     TEXT NOT NULL,
+    generated_at        TEXT NOT NULL,
+    ai_backend          TEXT DEFAULT 'files_only',
+    -- document sections (all JSON or plain text)
+    exec_summary        TEXT DEFAULT '',
+    scope               TEXT DEFAULT '',
+    delivery_phases     TEXT DEFAULT '[]',  -- [{phase, description, duration_weeks}]
+    gantt_data          TEXT DEFAULT '[]',  -- [{milestone, start_week, end_week, owner}]
+    risks               TEXT DEFAULT '[]',  -- [{risk, category, impact, probability, mitigation}]
+    assumptions         TEXT DEFAULT '[]',  -- [{category, assumption}]
+    exclusions          TEXT DEFAULT '[]',  -- [str]
+    responsibilities    TEXT DEFAULT '{}',  -- RACI matrix JSON
+    acceptance_criteria TEXT DEFAULT '[]',  -- [str]
+    -- metadata
+    version_label       TEXT DEFAULT '',
+    review_persona      TEXT DEFAULT '',
+    hierarchy_version_id TEXT DEFAULT '',
+    active_review_id    TEXT DEFAULT '',
+    word_count          INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_propdocs_project ON proposal_documents(project_id);
+CREATE INDEX IF NOT EXISTS idx_propdocs_ver     ON proposal_documents(proposal_ver_id);
+
+-- ── Decision Log (DS-01) ──────────────────────────────────────
+-- Immutable audit trail: one row per gate pass, lock, or finalisation.
+CREATE TABLE IF NOT EXISTS decision_log (
+    log_id      TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL,
+    entity_type TEXT NOT NULL,  -- review | proposal_version | feedback_item | finalisation
+    entity_id   TEXT NOT NULL,
+    action      TEXT NOT NULL,  -- completed | set_active | generated | feedback_structured |
+                                --  finalised | lock_overridden | gate_passed | gate_failed
+    actor       TEXT DEFAULT '',
+    reason      TEXT DEFAULT '',
+    metadata    TEXT DEFAULT '{}',  -- JSON snapshot at time of decision
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_declog_project ON decision_log(project_id);
+CREATE INDEX IF NOT EXISTS idx_declog_entity  ON decision_log(entity_id);
 """
 
 
