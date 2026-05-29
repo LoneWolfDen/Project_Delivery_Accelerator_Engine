@@ -47,8 +47,15 @@ def _ensure_dirs() -> None:
 
 
 def load_projects() -> List[Dict[str, Any]]:
-    """Load all projects from disk."""
+    """Load all projects — SQLite when enabled, else flat-file fallback."""
     _ensure_dirs()
+    try:
+        from db.project_store_sql import load_projects_sql, _flags
+        sql_on, _ = _flags()
+        if sql_on:
+            return load_projects_sql()
+    except Exception:
+        pass
     if not PROJECTS_FILE.exists():
         return []
     with open(PROJECTS_FILE) as f:
@@ -56,8 +63,20 @@ def load_projects() -> List[Dict[str, Any]]:
 
 
 def save_projects(projects: List[Dict[str, Any]]) -> None:
-    """Persist projects to disk."""
+    """Persist projects — writes to SQLite and/or flat-file per dual-write flags."""
     _ensure_dirs()
+    try:
+        from db.project_store_sql import save_all_projects_sql, _flags
+        sql_on, file_on = _flags()
+        if sql_on:
+            save_all_projects_sql(projects)
+        if file_on:
+            with open(PROJECTS_FILE, "w") as f:
+                json.dump(projects, f, indent=2)
+        return
+    except Exception:
+        pass
+    # Pure file fallback
     with open(PROJECTS_FILE, "w") as f:
         json.dump(projects, f, indent=2)
 
@@ -648,8 +667,8 @@ def build_project_intelligence(
 
     # Create Version in hierarchy (Phase→Version→Review model)
     try:
-        from models.hierarchy import HierarchyStore
-        store = HierarchyStore(project_id)
+        from models.hierarchy import HierarchyStore, _make_hierarchy_store
+        store = _make_hierarchy_store(project_id)
         included = [
             {"filename": d.get("filename", ""), "category": d.get("metadata", {}).get("source_type", "")}
             for d in active_docs
@@ -776,6 +795,8 @@ def run_persona_review(
         pass
 
     # Run the review (v2 engine accepts str or list)
+    # Inject _project_id so engine.py can pull feedback context (P9)
+    intelligence["_project_id"] = project_id
     review = run_review(
         roles=persona_name,
         context=intelligence,
@@ -842,8 +863,8 @@ def run_persona_review(
 
     # Create Review in hierarchy (linked to latest version)
     try:
-        from models.hierarchy import HierarchyStore
-        store = HierarchyStore(project_id)
+        from models.hierarchy import HierarchyStore, _make_hierarchy_store
+        store = _make_hierarchy_store(project_id)
         versions = store.list_versions()
         latest_version_id = versions[0]["version_id"] if versions else "v0"
 
@@ -1113,19 +1134,9 @@ def create_proposal(
     files: Optional[List[Path]] = None,
     notes: str = "",
 ) -> Dict[str, Any]:
-    """Create a proposal for a project.
-
-    Args:
-        project_id: Project ID.
-        proposal_name: Name of the proposal.
-        client: Client name.
-        files: Files associated with this version.
-        notes: Notes about this version.
-
-    Returns:
-        Proposal tracker dict.
-    """
+    """Create a proposal for a project."""
     from processors.proposals import create_proposal as _create
+    from db.project_store_sql import save_proposal_sql, _flags
 
     project = get_project(project_id)
     if project is None:
@@ -1136,7 +1147,12 @@ def create_proposal(
     ctx_version = intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
 
     file_strs = [str(f) for f in (files or [])]
-    return _create(project_dir, proposal_name, client, file_strs, notes, ctx_version)
+    tracker = _create(project_dir, proposal_name, client, file_strs, notes, ctx_version)
+
+    sql_on, _ = _flags()
+    if sql_on:
+        save_proposal_sql(project_id, tracker)
+    return tracker
 
 
 def add_proposal_version(
@@ -1146,40 +1162,40 @@ def add_proposal_version(
     notes: str = "",
     changes: str = "",
 ) -> Dict[str, Any]:
-    """Add a new version to the project's proposal.
-
-    Args:
-        project_id: Project ID.
-        label: Version label.
-        files: Files for this version.
-        notes: Author notes.
-        changes: What changed from previous.
-
-    Returns:
-        New version dict.
-    """
+    """Add a new version to the project's proposal."""
     from processors.proposals import add_proposal_version as _add
+    from db.project_store_sql import load_proposal_sql, save_proposal_sql, _flags
 
     project_dir = PROJECTS_DIR / project_id
     intel = get_project_intelligence(project_id)
     ctx_version = intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
 
     file_strs = [str(f) for f in (files or [])]
-    return _add(project_dir, file_strs, label, notes, changes, ctx_version)
+    version = _add(project_dir, file_strs, label, notes, changes, ctx_version)
+
+    # Re-sync the full tracker to SQLite
+    sql_on, _ = _flags()
+    if sql_on:
+        from processors.proposals import get_proposal
+        tracker = get_proposal(project_dir)
+        if tracker:
+            save_proposal_sql(project_id, tracker)
+    return version
 
 
 def get_proposal_info(project_id: str) -> Optional[Dict[str, Any]]:
-    """Get the proposal tracker for a project."""
+    """Get the proposal tracker for a project — SQLite-first."""
+    from db.project_store_sql import load_proposal_sql, _flags
+    sql_on, _ = _flags()
+    if sql_on:
+        return load_proposal_sql(project_id)
     from processors.proposals import get_proposal
-
-    project_dir = PROJECTS_DIR / project_id
-    return get_proposal(project_dir)
+    return get_proposal(PROJECTS_DIR / project_id)
 
 
 def list_proposal_versions_for_project(project_id: str) -> List[Dict[str, Any]]:
     """List all proposal versions for a project."""
     from processors.proposals import list_proposal_versions
-
     project_dir = PROJECTS_DIR / project_id
     return list_proposal_versions(project_dir)
 
@@ -1189,7 +1205,6 @@ def compare_proposals(
 ) -> Dict[str, Any]:
     """Compare two proposal versions."""
     from processors.proposals import compare_proposal_versions
-
     project_dir = PROJECTS_DIR / project_id
     return compare_proposal_versions(project_dir, version_a, version_b)
 
@@ -1197,11 +1212,20 @@ def compare_proposals(
 def update_proposal_status(
     project_id: str, version_id: str, new_status: str
 ) -> Dict[str, Any]:
-    """Update proposal version status."""
+    """Update proposal version status — writes to file + SQLite."""
     from processors.proposals import update_proposal_status as _update
+    from db.project_store_sql import load_proposal_sql, save_proposal_sql, _flags
 
     project_dir = PROJECTS_DIR / project_id
-    return _update(project_dir, version_id, new_status)
+    result = _update(project_dir, version_id, new_status)
+
+    sql_on, _ = _flags()
+    if sql_on:
+        from processors.proposals import get_proposal
+        tracker = get_proposal(project_dir)
+        if tracker:
+            save_proposal_sql(project_id, tracker)
+    return result
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1432,22 +1456,22 @@ def get_hierarchy(project_id: str) -> Dict[str, Any]:
 
     Returns collapsible hierarchy for the UI.
     """
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.get_hierarchy()
 
 
 def get_hierarchy_phases(project_id: str) -> List[Dict[str, Any]]:
     """Get all phases with activity counts."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.get_phases()
 
 
 def set_hierarchy_phase(project_id: str, phase_id: str, reason: str = "") -> Dict[str, Any]:
     """Transition to a new phase in the hierarchy."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.set_current_phase(phase_id, reason)
 
 
@@ -1455,15 +1479,15 @@ def get_hierarchy_versions(
     project_id: str, phase_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """List versions, optionally filtered by phase. Newest first."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.list_versions(phase_id)
 
 
 def get_hierarchy_version_detail(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
     """Get full version detail including linked reviews."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     version = store.get_version(version_id)
     if version is None:
         return None
@@ -1479,15 +1503,15 @@ def get_hierarchy_reviews(
     phase_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """List reviews, optionally filtered. Newest first."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.list_reviews(version_id=version_id, phase_id=phase_id)
 
 
 def get_hierarchy_review_detail(project_id: str, review_id: str) -> Optional[Dict[str, Any]]:
     """Get full review detail (prompt, output, version context)."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     review = store.get_review(review_id)
     if review is None:
         return None
@@ -1508,29 +1532,29 @@ def get_hierarchy_metrics(
 
     Default: latest version + latest review.
     """
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.get_metrics(version_id=version_id, review_id=review_id)
 
 
 def set_active_review(project_id: str, version_id: str, review_id: str) -> Dict[str, Any]:
     """Set the active review for a version."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.set_active_review(version_id, review_id)
 
 
 def delete_hierarchy_review(project_id: str, review_id: str) -> Dict[str, Any]:
     """Delete a review from the hierarchy."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     return store.delete_review(review_id)
 
 
 def get_active_review_for_version(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
     """Get the active review for a specific version."""
-    from models.hierarchy import HierarchyStore
-    store = HierarchyStore(project_id)
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
     review = store.get_active_review_for_version(version_id)
     if review:
         return review.to_dict()

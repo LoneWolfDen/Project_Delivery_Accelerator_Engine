@@ -161,6 +161,10 @@ class Review:
     # Deep dive results (if AI mode was on)
     deep_dive: Optional[Dict[str, Any]] = None
 
+    # P9: Pre-sales feedback captured against this review
+    # Schema: {accepted:[str], rejected:[str], concerns:[str], notes:str, captured_at:str}
+    feedback: Optional[Dict[str, Any]] = None
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -192,6 +196,23 @@ class Review:
 # ──────────────────────────────────────────────────────────────
 
 PROJECTS_DIR = Path("projects_data")
+
+
+def _sqlite_enabled() -> bool:
+    """Return True if SQLite write is enabled in admin config."""
+    try:
+        from admin.config import load_config  # noqa: PLC0415
+        return getattr(load_config(), "sqlite_write_enabled", True)
+    except Exception:
+        return True
+
+
+def _make_hierarchy_store(project_id: str) -> "HierarchyStore":
+    """Factory: returns SQLite-backed store when enabled, else file-based."""
+    if _sqlite_enabled():
+        from db.hierarchy_store_sql import HierarchyStoreSQLite  # noqa: PLC0415
+        return HierarchyStoreSQLite(project_id)  # type: ignore[return-value]
+    return HierarchyStore(project_id)
 
 
 class HierarchyStore:

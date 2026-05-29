@@ -136,6 +136,20 @@ def run_review(
     if not role_list:
         raise ValueError("At least one role must be specified.")
 
+    # P9: prepend any captured pre-sales feedback to the custom_prompt
+    # when the project is in the pre-sales phase.
+    project_id = context.get("_project_id", "")
+    if project_id:
+        try:
+            from processors.presales_feedback import get_feedback_prompt_injection
+            feedback_block = get_feedback_prompt_injection(project_id)
+            if feedback_block:
+                custom_prompt = (
+                    feedback_block + "\n" + (custom_prompt or "")
+                ).strip()
+        except Exception:
+            pass
+
     # Map roles → distinct groups (preserve order, deduplicate groups)
     groups_needed: Dict[str, List[str]] = {}  # group_id → [role names]
     for role in role_list:
