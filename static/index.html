@@ -800,6 +800,11 @@ async function viewIntelligence() {
   let metrics = {};
   try { metrics = await api('GET', metricsUrl); } catch(e){}
 
+  // Load versions for inline context selector
+  let versions = [];
+  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = r.versions || []; } catch(e){}
+  const availableReviews = metrics.available_reviews || [];
+
   // Load intelligence data (raw)
   const data = await api('GET',`/api/projects/${pid}/intelligence`);
   const i = data.intelligence || data;
@@ -816,10 +821,24 @@ async function viewIntelligence() {
     } catch(e){}
   }
 
+  // Inline context selector (same as dashboard, so users don't need to switch tabs)
+  const vOpts = versions.map(v => `<option value="${v.version_id}" ${v.version_id===selVersion?'selected':''}>${v.version_id} ${v.label||''}</option>`).join('');
+  const rOpts = availableReviews.map(r => `<option value="${r.review_id}" ${r.review_id===selReview?'selected':''}>${r.review_id} – ${r.persona}</option>`).join('');
+
   // Context header showing what data is being displayed
   const contextHtml = `<div class="card"><h2>Project Intelligence</h2>
-    <p style="font-size:11px;color:var(--accent);margin-bottom:8px">
-      Scope: ${ds.version||'latest'} > ${ds.review||'latest'} | Phase: ${ds.phase||'-'}
+    <div class="flex" style="margin-bottom:8px">
+      <label style="font-size:11px;color:var(--text-dim)">Version:</label>
+      <select onchange="state._dashVersion=this.value;state._dashReview='';render()" style="min-width:150px;font-size:11px">
+        <option value="">Latest</option>${vOpts}
+      </select>
+      <label style="font-size:11px;color:var(--text-dim)">Review:</label>
+      <select onchange="state._dashReview=this.value;render()" style="min-width:150px;font-size:11px">
+        <option value="">Active</option>${rOpts}
+      </select>
+    </div>
+    <p style="font-size:11px;color:var(--accent);margin-bottom:8px;font-weight:600">
+      Showing: ${ds.version_label||ds.version||'latest'} &gt; ${ds.review_persona||ds.review||'latest'} | Phase: ${ds.phase||'-'}
     </p>
     <div class="flex">
       <button class="btn btn-sm btn-outline" onclick="buildContext()">Rebuild</button>
@@ -863,6 +882,7 @@ async function viewIntelligence() {
 async function viewVersions() {
   if (!state.current) return viewNoProject();
   const pid = state.current.id;
+  const selVersion = state._dashVersion || '';
 
   // Load full hierarchy tree (no limit on versions)
   let hierarchy = {};
@@ -873,6 +893,14 @@ async function viewVersions() {
 
   if (!totalV) return `<div class="card empty"><p>No versions yet. Build intelligence to create the first version.</p>
     <button class="btn mt" onclick="buildContext()">Run Intelligence</button></div>`;
+
+  // Context banner showing current selection
+  const contextBanner = selVersion ? `<div class="card" style="border-color:var(--accent2);padding:10px 18px">
+    <div class="flex" style="justify-content:space-between">
+      <span style="font-size:11px;color:var(--accent2);font-weight:600">Current context: ${selVersion} ${state._dashReview ? '&gt; ' + state._dashReview : ''}</span>
+      <button class="btn btn-sm btn-outline" onclick="state._dashVersion='';state._dashReview='';render()" style="font-size:10px">Clear Selection</button>
+    </div>
+  </div>` : '';
 
   // Build collapsible tree: Phase → Version → Review (M4 T4.2, T4.3)
   let treeHtml = '';
@@ -896,25 +924,33 @@ async function viewVersions() {
       for (const ver of phaseVersions) {
         const verReviews = ver.reviews || [];
         const activeReviewId = ver.active_review_id || '';
-        treeHtml += `<details open style="margin:6px 0;padding-left:12px;border-left:2px solid var(--border)">
+        const isSelectedVersion = ver.version_id === selVersion;
+        const verBorderStyle = isSelectedVersion ? 'border-left:3px solid var(--accent2)' : 'border-left:2px solid var(--border)';
+        treeHtml += `<details ${isSelectedVersion ? 'open' : 'open'} style="margin:6px 0;padding-left:12px;${verBorderStyle}">
           <summary style="cursor:pointer;font-size:12px">
             <strong>${ver.version_id}</strong> – ${ver.label||''}
             <span style="color:var(--text-dim);font-size:10px">${ver.created_at?.slice(0,10)||''}</span>
             <span class="tag">${ver.artifact_count||0} files</span>
             <span class="tag">${verReviews.length} reviews</span>
             ${ver.stats?.risks ? `<span style="font-size:10px;color:var(--warn)">${ver.stats.risks} risks</span>` : ''}
+            ${isSelectedVersion ? '<span class="tag tag-ok">selected</span>' : ''}
           </summary>
           <div style="padding:8px 0 4px 16px">
             <p style="font-size:11px;color:var(--text-dim)">Persona: ${ver.persona||'–'} | Backend: files_only</p>
-            <div class="flex mt"><button class="btn btn-sm btn-outline" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button></div>`;
+            <div class="flex mt">
+              <button class="btn btn-sm btn-outline" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button>
+              <button class="btn btn-sm btn-outline" onclick="state._dashVersion='${ver.version_id}';state._dashReview='';switchTab('intelligence')">View Intelligence</button>
+            </div>`;
 
         if (verReviews.length) {
           treeHtml += `<div style="margin-top:6px">`;
           for (const rev of verReviews) {
             const isActive = rev.review_id === activeReviewId;
-            treeHtml += `<div style="padding:6px 10px;margin:4px 0;background:var(--bg);border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:var(--radius);cursor:pointer" onclick="viewReviewDetail('${rev.review_id}')">
+            const isSelectedReview = rev.review_id === state._dashReview;
+            const revBorderColor = isSelectedReview ? 'var(--warn)' : isActive ? 'var(--accent)' : 'var(--border)';
+            treeHtml += `<div style="padding:6px 10px;margin:4px 0;background:var(--bg);border:1px solid ${revBorderColor};border-radius:var(--radius);cursor:pointer" onclick="viewReviewDetail('${rev.review_id}')">
               <div class="flex" style="justify-content:space-between">
-                <span style="font-size:11px;font-weight:600">${rev.review_id} ${isActive?'<span class="tag tag-ok">active</span>':''}</span>
+                <span style="font-size:11px;font-weight:600">${rev.review_id} ${isActive?'<span class="tag tag-ok">active</span>':''} ${isSelectedReview?'<span class="tag" style="border-color:var(--warn);color:var(--warn)">viewing</span>':''}</span>
                 <span style="font-size:10px;color:var(--text-dim)">${rev.created_at?.slice(0,16)||''}</span>
               </div>
               <div style="font-size:11px;color:var(--text-dim);margin-top:3px">
@@ -924,6 +960,7 @@ async function viewVersions() {
               ${rev.summary ? `<p style="font-size:11px;margin-top:3px">${escHtml(rev.summary.slice(0,100))}</p>` : ''}
               <div class="flex mt">
                 <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();viewReviewDetail('${rev.review_id}')">Details</button>
+                <button class="btn btn-sm btn-outline" onclick="event.stopPropagation();state._dashVersion='${ver.version_id}';state._dashReview='${rev.review_id}';switchTab('intelligence')">View Findings</button>
                 ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="event.stopPropagation();setActiveReview('${ver.version_id}','${rev.review_id}')">Set Active</button>` : ''}
                 <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteReview('${rev.review_id}')">Delete</button>
               </div>
@@ -952,8 +989,8 @@ async function viewVersions() {
     </div><div id="cmpResult" class="mt"></div></div>` : '';
 
   return `<div class="card"><h2>Project History</h2>
-    <p style="font-size:12px;color:var(--text-dim)">Navigate: Phase > Version > Review. ${totalV} versions, ${totalR} reviews total.</p></div>`
-    + treeHtml + compareHtml;
+    <p style="font-size:12px;color:var(--text-dim)">Navigate: Phase &gt; Version &gt; Review. ${totalV} versions, ${totalR} reviews total.</p></div>`
+    + contextBanner + treeHtml + compareHtml;
 }
 
 // Select a version context from the tree and navigate to dashboard
@@ -1056,32 +1093,67 @@ async function compareVersions() {
 async function viewReviews() {
   if (!state.current) return viewNoProject();
   const pid = state.current.id;
+  const selVersion = state._dashVersion || '';
   const personas = await api('POST','/api/personas');
   const backendOpts = state.backends.map(b=>`<option value="${b.name}">${b.display_name||b.name} ${b.available?'':'(not configured)'}</option>`).join('');
 
-  // Load hierarchy reviews (all reviews, grouped by version)
-  let versions = [];
-  try { const r = await api('GET',`/api/projects/${pid}/hierarchy/versions`); versions = r.versions || []; } catch(e){}
+  // Load full hierarchy (already includes reviews nested under versions)
+  let hierarchy = {};
+  try { hierarchy = await api('GET',`/api/projects/${pid}/hierarchy`); } catch(e){}
+  const tree = hierarchy.tree || [];
+
+  // Flatten versions with their reviews from the hierarchy tree (avoids N+1 calls)
+  let allVersionsWithReviews = [];
+  for (const phase of tree) {
+    for (const ver of (phase.versions || [])) {
+      if ((ver.reviews||[]).length > 0) {
+        allVersionsWithReviews.push(ver);
+      }
+    }
+  }
+
+  // If a version is selected, show it first / highlighted
+  if (selVersion) {
+    allVersionsWithReviews.sort((a, b) => {
+      if (a.version_id === selVersion) return -1;
+      if (b.version_id === selVersion) return 1;
+      return 0;
+    });
+  }
+
+  // Context banner
+  const contextBanner = selVersion ? `<div class="card" style="border-color:var(--accent2);padding:10px 18px">
+    <div class="flex" style="justify-content:space-between">
+      <span style="font-size:11px;color:var(--accent2);font-weight:600">Showing reviews for: ${selVersion} ${state._dashReview ? '&gt; ' + state._dashReview : '(all reviews)'}</span>
+      <button class="btn btn-sm btn-outline" onclick="state._dashVersion='';state._dashReview='';render()" style="font-size:10px">Show All</button>
+    </div>
+  </div>` : '';
 
   // Build version-scoped review list (M7 T7.1: clickable, expandable)
   let reviewListHtml = '';
-  if (versions.length) {
+  if (allVersionsWithReviews.length) {
     reviewListHtml = `<div class="card"><h2>Reviews by Version</h2>
       <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">Click a review to expand details (prompt, files, output)</p>`;
 
-    for (const ver of versions) {
-      let verReviews = [];
-      try { const r = await api('GET',`/api/projects/${pid}/hierarchy/reviews?version_id=${ver.version_id}`); verReviews = r.reviews || []; } catch(e){}
-      if (!verReviews.length) continue;
+    for (const ver of allVersionsWithReviews) {
+      const verReviews = ver.reviews || [];
+      const isSelectedVersion = ver.version_id === selVersion;
+      const verBorder = isSelectedVersion ? 'border-left:3px solid var(--accent2)' : 'border-left:2px solid var(--border)';
 
-      reviewListHtml += `<details open style="margin:8px 0;border-left:2px solid var(--border);padding-left:12px">
-        <summary style="cursor:pointer;font-size:12px;font-weight:600">${ver.version_id} – ${ver.label||''} <span class="tag">${verReviews.length} reviews</span></summary>`;
+      reviewListHtml += `<details ${isSelectedVersion || !selVersion ? 'open' : ''} style="margin:8px 0;${verBorder};padding-left:12px">
+        <summary style="cursor:pointer;font-size:12px;font-weight:600">
+          ${ver.version_id} – ${ver.label||''} <span class="tag">${verReviews.length} reviews</span>
+          ${isSelectedVersion ? '<span class="tag tag-ok">selected</span>' : ''}
+        </summary>`;
 
       for (const rev of verReviews) {
         const isActive = rev.review_id === ver.active_review_id;
-        reviewListHtml += `<details style="margin:4px 0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:8px">
+        const isSelectedReview = rev.review_id === state._dashReview;
+        const revBorderColor = isSelectedReview ? 'var(--warn)' : isActive ? 'var(--accent)' : 'var(--border)';
+        reviewListHtml += `<details ${isSelectedReview ? 'open' : ''} style="margin:4px 0;background:var(--bg);border:1px solid ${revBorderColor};border-radius:var(--radius);padding:8px">
           <summary style="cursor:pointer;font-size:11px">
             <strong>${rev.review_id}</strong> ${isActive?'<span class="tag tag-ok">active</span>':''}
+            ${isSelectedReview?'<span class="tag" style="border-color:var(--warn);color:var(--warn)">viewing</span>':''}
             – ${rev.persona} (${rev.ai_backend}) | ${rev.total_findings||0} findings
             <span style="float:right;font-size:10px;color:var(--text-dim)">${rev.created_at?.slice(0,16)||''}</span>
           </summary>
@@ -1091,6 +1163,7 @@ async function viewReviews() {
             ${rev.categories?.length ? `<div style="margin:4px 0">Categories: ${rev.categories.map(c=>`<span class="tag">${c}</span>`).join(' ')}</div>` : ''}
             <div class="flex mt">
               <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rev.review_id}')">Full Details</button>
+              <button class="btn btn-sm btn-outline" onclick="state._dashVersion='${ver.version_id}';state._dashReview='${rev.review_id}';switchTab('intelligence')">View Findings</button>
               ${!isActive ? `<button class="btn btn-sm btn-outline" onclick="setActiveReview('${ver.version_id}','${rev.review_id}')">Set Active</button>` : ''}
               <button class="btn btn-sm btn-danger" onclick="deleteReview('${rev.review_id}')">Delete</button>
             </div>
@@ -1111,7 +1184,7 @@ async function viewReviews() {
     <div class="form-row mt"><label>Custom Prompt (optional – additional context for AI)</label>
       <textarea id="customPrompt" rows="3" placeholder="e.g. Budget is capped at 500K. Must use only AWS services. Team has 3 senior engineers."></textarea>
     </div>
-    <div id="reviewResult" class="mt"></div></div>` + reviewListHtml;
+    <div id="reviewResult" class="mt"></div></div>` + contextBanner + reviewListHtml;
 }
 
 async function runReview() {
