@@ -322,6 +322,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal/version"):
             project_id = clean_path.split("/")[3]
             self._handle_add_proposal_version(project_id)
+        elif clean_path.startswith("/api/projects/") and "/proposal/version/" in clean_path and clean_path.endswith("/status"):
+            # POST /api/projects/{id}/proposal/version/{version_id}/status
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            version_id = parts[6]
+            self._handle_update_proposal_version_status(project_id, version_id)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/phase"):
             project_id = clean_path.split("/")[3]
             self._handle_phase_transition(project_id)
@@ -753,8 +759,9 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def _handle_create_proposal(self, project_id: str) -> None:
         """Create a proposal for a project."""
-        body = self._read_body()
-        name = body.get("name", "Untitled Proposal") if body else "Untitled Proposal"
+        body = self._read_body() or {}
+        # UI sends proposal_name; legacy fallback accepts name
+        name = body.get("proposal_name") or body.get("name") or "Untitled Proposal"
         try:
             result = project_manager.create_proposal(
                 project_id, name, body.get("client", ""), notes=body.get("notes", "")
@@ -772,6 +779,19 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 changes=body.get("changes", ""),
             )
             self._json_response(result, status=201)
+        except ValueError as e:
+            self._json_response({"error": str(e)}, status=400)
+
+    def _handle_update_proposal_version_status(self, project_id: str, version_id: str) -> None:
+        """POST /api/projects/{id}/proposal/version/{version_id}/status"""
+        body = self._read_body() or {}
+        new_status = body.get("status", "")
+        if not new_status:
+            self._json_response({"error": "status required"}, status=400)
+            return
+        try:
+            result = project_manager.update_proposal_status(project_id, version_id, new_status)
+            self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=400)
 

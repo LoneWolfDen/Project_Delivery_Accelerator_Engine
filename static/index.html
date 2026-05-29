@@ -2269,10 +2269,7 @@ async function viewPresales(){
     <div class="flex-between mb">
       <div class="card-title"><span class="icon">🤝</span>Pre-Sales Overview
         <span class="tag tag-blue" style="margin-left:6px">P9</span></div>
-      <div class="flex gap-sm">
-        <button class="btn btn-sm btn-outline" onclick="switchTab('phases')">← Phases</button>
-        <button class="btn btn-sm" onclick="switchTab('reviews')">▶ Run Review</button>
-      </div>
+      <button class="btn btn-sm btn-outline" onclick="switchTab('phases')">← Phases</button>
     </div>
     ${!proposal?`<div class="empty" style="padding:20px 0">
         <div class="empty-icon">📋</div>
@@ -2488,7 +2485,49 @@ async function viewPresales(){
     </div>
   </div>`;
 
-  return summaryCard+createProposalForm+versionsCard+addVersionForm+captureFeedbackForm+shareForm+actionsCard+reviewCard+fbCard;
+  // ── Run Review card (pre-sales context-aware) ─────────────
+  // Loaded backends for selector
+  const backendOpts=(state.backends||[]).map(b=>`<option value="${b.name}">${escHtml(b.display_name||b.name)}${b.available?'':' (unavailable)'}</option>`).join('');
+  const presalesRoles=['Solution Architect','Delivery Manager','Product Owner'];
+  const roleOpts=presalesRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
+  const runReviewCard=`<div class="card" style="border-top:2px solid var(--accent)">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">▶</span>Run Pre-Sales Review</div>
+      ${activeReview?`<span style="font-size:11px;color:var(--text-muted)">Last: ${escHtml(activeReview.persona||'')} · ${fmtDateShort(activeReview.created_at)}</span>`:''}
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
+      Runs a review scoped to the pre-sales phase. Any captured client feedback will be
+      automatically injected into the prompt so the analysis is aware of prior client responses.
+    </p>
+    ${activeReview?`<details style="margin-bottom:10px">
+      <summary class="collapse-header" style="list-style:none;margin:0 0 0 0;border-radius:var(--radius)">
+        <span class="chevron">▶</span>
+        <span style="font-size:12px">Last review snapshot</span>
+        <span class="tag tag-blue" style="margin-left:6px">${escHtml(activeReview.persona||'')}</span>
+        <span class="tag" style="margin-left:4px">${activeReview.total_findings||0} findings</span>
+      </summary>
+      <div class="collapse-body">
+        ${activeReview.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml((activeReview.summary||'').slice(0,300))}${(activeReview.summary||'').length>300?'…':''}</p>`:''}
+        <button class="btn btn-xs btn-ghost" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on this Review</button>
+      </div>
+    </details>`:''}
+    <div class="flex gap-sm" style="align-items:flex-end;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:11px;color:var(--text-dim)">Persona</label>
+        <select id="presalesRoleSelect" style="min-width:160px">${roleOpts}</select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:11px;color:var(--text-dim)">Backend</label>
+        <select id="presalesBackendSelect" style="min-width:130px">${backendOpts}</select>
+      </div>
+      <button class="btn" onclick="runPresalesReview()">▶ Run Review</button>
+      <button class="btn btn-ghost btn-sm" onclick="switchTab('reviews')">View all reviews →</button>
+    </div>
+    <div id="presalesReviewResult" class="mt"></div>
+  </div>`;
+
+  // ── HTML order: hidden forms FIRST so they exist in DOM before any button calls them
+  return createProposalForm+summaryCard+versionsCard+addVersionForm+runReviewCard+actionsCard+reviewCard+captureFeedbackForm+shareForm+fbCard;
 }
 
 // ── Pre-sales action helpers ─────────────────────────────────
@@ -2528,10 +2567,41 @@ async function submitAddVersion(){
 
 async function updateProposalStatus(versionId,newStatus){
   const pid=state.current.id;
-  const r=await api('POST',`/api/projects/${pid}/proposal/version`,{status_update:{version_id:versionId,new_status:newStatus}});
-  if(!r.error)toast(`Status updated to ${newStatus}`);
+  // Uses dedicated status route — POST /api/projects/{id}/proposal/version/{versionId}/status
+  const r=await api('POST',`/api/projects/${pid}/proposal/version/${versionId}/status`,{status:newStatus});
+  if(!r.error)toast(`Status → ${newStatus.replace(/_/g,' ')}`);
   else toast(r.error,'err');
   setTimeout(()=>render(),400);
+}
+
+async function runPresalesReview(){
+  if(!state.current)return;
+  const pid=state.current.id;
+  const persona=document.getElementById('presalesRoleSelect')?.value||'Solution Architect';
+  const backend=document.getElementById('presalesBackendSelect')?.value||'files_only';
+  const el=document.getElementById('presalesReviewResult');
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running pre-sales review…</span>';
+
+  // Ensure we are in pre-sales phase before running
+  await api('POST',`/api/projects/${pid}/hierarchy/phase`,{phase_id:'pre-sales',reason:'Pre-sales review from Pre-Sales tab'});
+
+  const r=await api('POST','/api/review',{project_id:pid,persona,ai_backend:backend});
+  if(r.error){
+    el.innerHTML=`<p style="color:var(--red);font-size:12px">${escHtml(r.error)}</p>`;
+    return;
+  }
+  const findings=r.findings||{};
+  const total=Object.values(findings).reduce((s,v)=>s+(Array.isArray(v)?v.length:0),0);
+  el.innerHTML=`<div style="margin-top:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--green-dim);border-radius:var(--radius)">
+    <p style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:4px">✓ Review complete — ${total} findings</p>
+    ${r.summary?`<p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${escHtml((r.summary||'').slice(0,200))}${(r.summary||'').length>200?'…':''}</p>`:''}
+    <div class="flex gap-sm">
+      <button class="btn btn-xs btn-outline" onclick="switchTab('reviews')">View Full Review</button>
+      <button class="btn btn-xs btn-ghost" onclick="openCaptureFeedback('')">+ Log Client Response</button>
+    </div>
+  </div>`;
+  // Refresh presales summary after short delay
+  setTimeout(()=>render(),1200);
 }
 
 function openCaptureFeedback(proposalVerId='',reviewId=''){
