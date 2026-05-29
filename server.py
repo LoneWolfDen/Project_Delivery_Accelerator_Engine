@@ -818,9 +818,10 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
         body = self._read_body() or {}
         only_included = body.get("onlyIncluded", True)
+        force = body.get("force", True)  # Default force=True so re-processing always works
 
         try:
-            queued_ids = process_all_artifacts(project_id, only_included)
+            queued_ids = process_all_artifacts(project_id, only_included, force=force)
             self._json_response({"queuedArtifactIds": queued_ids}, status=202)
         except Exception as e:
             self._json_response({"errorCode": "INTERNAL_ERROR", "message": str(e)}, status=500)
