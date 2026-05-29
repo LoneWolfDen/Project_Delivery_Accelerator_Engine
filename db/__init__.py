@@ -7,5 +7,10 @@ Provides:
 """
 
 from .database import Database, get_db, db_path
+from .decision_log import log_decision, get_decision_log, save_proposal_document, get_proposal_document, get_latest_proposal_document
 
-__all__ = ["Database", "get_db", "db_path"]
+__all__ = [
+    "Database", "get_db", "db_path",
+    "log_decision", "get_decision_log",
+    "save_proposal_document", "get_proposal_document", "get_latest_proposal_document",
+]

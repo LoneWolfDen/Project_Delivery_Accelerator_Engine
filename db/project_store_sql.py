@@ -188,16 +188,29 @@ def _load_proposal_file(project_id: str) -> Optional[Dict[str, Any]]:
 
 def _row_to_proposal_version(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "version_id": row["version_id"],
-        "version_number": row["version_number"],
-        "label": row["label"],
-        "status": row["status"],
-        "created_at": row["created_at"],
-        "files": Database.jload(row.get("files"), []),
-        "notes": row["notes"],
+        "version_id":            row["version_id"],
+        "version_number":        row["version_number"],
+        "label":                 row["label"],
+        "status":                row["status"],
+        "created_at":            row["created_at"],
+        "files":                 Database.jload(row.get("files"), []),
+        "notes":                 row["notes"],
         "changes_from_previous": row["changes_from_previous"],
-        "context_version": row["context_version"],
-        "feedback": Database.jload(row.get("feedback"), None),
+        "context_version":       row.get("context_version", ""),
+        "feedback":              Database.jload(row.get("feedback"), None),
+        # DS-02 traceability
+        "hierarchy_version_id":  row.get("hierarchy_version_id", ""),
+        "active_review_id":      row.get("active_review_id", ""),
+        "previous_version_id":   row.get("previous_version_id", ""),
+        "feedback_applied":      Database.jload(row.get("feedback_applied"), []),
+        "changes_summary":       row.get("changes_summary", ""),
+        # DS-02 quality + lock
+        "quality_status":        row.get("quality_status", "draft"),
+        "quality_score":         row.get("quality_score", 0),
+        "completed_by":          row.get("completed_by", ""),
+        "completed_at":          row.get("completed_at", ""),
+        "lock_status":           row.get("lock_status", "unlocked"),
+        "lock_reason":           row.get("lock_reason", ""),
     }
 
 
@@ -226,11 +239,14 @@ def save_proposal_sql(project_id: str, tracker: Dict[str, Any]) -> None:
         db.execute(
             """INSERT OR REPLACE INTO proposal_versions
                (version_id, project_id, version_number, label, status,
-                files, notes, changes_from_previous, context_version,
-                feedback, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                files, notes, changes_from_previous, context_version, feedback,
+                hierarchy_version_id, active_review_id, previous_version_id,
+                feedback_applied, changes_summary,
+                quality_status, quality_score, completed_by, completed_at,
+                lock_status, lock_reason, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                v["version_id"], project_id,
+                v.get("version_id", ""), project_id,
                 v.get("version_number", 1),
                 v.get("label", ""),
                 v.get("status", "draft"),
@@ -239,7 +255,18 @@ def save_proposal_sql(project_id: str, tracker: Dict[str, Any]) -> None:
                 v.get("changes_from_previous", ""),
                 v.get("context_version", ""),
                 Database.jdump(v.get("feedback")) if v.get("feedback") else None,
-                v.get("created_at", _now()),
+                v.get("hierarchy_version_id", ""),
+                v.get("active_review_id", ""),
+                v.get("previous_version_id", ""),
+                Database.jdump(v.get("feedback_applied", [])),
+                v.get("changes_summary", ""),
+                v.get("quality_status", "draft"),
+                v.get("quality_score", 0),
+                v.get("completed_by", ""),
+                v.get("completed_at", ""),
+                v.get("lock_status", "unlocked"),
+                v.get("lock_reason", ""),
+                v.get("created_at", ""),
             ),
         )
     db.commit()
@@ -256,28 +283,76 @@ def save_presales_feedback(
     source: str = "internal",
     responder_name: str = "",
     responder_email: str = "",
+    # DS-02: primary structured store
+    feedback_items: Optional[List[Dict[str, Any]]] = None,
+    raw_text: str = "",
+    # backward-compat flat lists (derived if not provided)
     accepted: Optional[List[str]] = None,
     rejected: Optional[List[str]] = None,
     concerns: Optional[List[str]] = None,
+    change_requested: Optional[List[str]] = None,
     notes: str = "",
     next_action: str = "",
     status: str = "open",
 ) -> Dict[str, Any]:
+    """Save structured presales feedback.
+
+    If feedback_items is provided, backward-compat flat lists are derived from it.
+    If only flat lists are provided (legacy callers), feedback_items is built from them.
+    """
     now = _now()
     db = get_db()
     existing = db.fetchone(
         "SELECT created_at FROM presales_feedback WHERE feedback_id=?", (feedback_id,)
     )
     created_at = existing["created_at"] if existing else now
+
+    # Normalise: if feedback_items provided, derive flat views from them
+    items = feedback_items or []
+    if items:
+        accepted        = [i["text"] for i in items if i.get("category") == "accepted"]
+        rejected        = [i["text"] for i in items if i.get("category") == "rejected"]
+        concerns        = [i["text"] for i in items if i.get("category") == "concerns"]
+        change_requested = [i["text"] for i in items if i.get("category") == "change_requested"]
+    else:
+        # Legacy path: build minimal FeedbackItem dicts from flat lists
+        import uuid as _uuid
+        def _make_items(lst, cat):
+            return [
+                {
+                    "item_id": f"fi_{_uuid.uuid4().hex[:8]}",
+                    "text": t,
+                    "category": cat,
+                    "mapped_to": None,
+                    "confidence": "medium",
+                    "status": "new",
+                    "is_critical": False,
+                    "addressed_in_version": None,
+                    "created_at": now,
+                }
+                for t in (lst or [])
+            ]
+        items = (
+            _make_items(accepted or [], "accepted")
+            + _make_items(rejected or [], "rejected")
+            + _make_items(concerns or [], "concerns")
+            + _make_items(change_requested or [], "change_requested")
+        )
+
     db.execute(
         """INSERT OR REPLACE INTO presales_feedback
            (feedback_id, project_id, proposal_ver_id, review_id, source,
-            responder_name, responder_email, accepted, rejected, concerns,
+            responder_name, responder_email,
+            feedback_items, raw_text, change_requested,
+            accepted, rejected, concerns,
             notes, next_action, status, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             feedback_id, project_id, proposal_ver_id, review_id, source,
             responder_name, responder_email,
+            Database.jdump(items),
+            raw_text,
+            Database.jdump(change_requested or []),
             Database.jdump(accepted or []),
             Database.jdump(rejected or []),
             Database.jdump(concerns or []),
@@ -305,22 +380,58 @@ def load_presales_feedback_item(feedback_id: str) -> Optional[Dict[str, Any]]:
 
 def _row_to_feedback(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "feedback_id": row["feedback_id"],
-        "project_id": row["project_id"],
-        "proposal_ver_id": row.get("proposal_ver_id", ""),
-        "review_id": row.get("review_id", ""),
-        "source": row.get("source", "internal"),
-        "responder_name": row.get("responder_name", ""),
-        "responder_email": row.get("responder_email", ""),
-        "accepted": Database.jload(row.get("accepted"), []),
-        "rejected": Database.jload(row.get("rejected"), []),
-        "concerns": Database.jload(row.get("concerns"), []),
-        "notes": row.get("notes", ""),
-        "next_action": row.get("next_action", ""),
-        "status": row.get("status", "open"),
-        "created_at": row.get("created_at", ""),
-        "updated_at": row.get("updated_at", ""),
+        "feedback_id":      row["feedback_id"],
+        "project_id":       row["project_id"],
+        "proposal_ver_id":  row.get("proposal_ver_id", ""),
+        "review_id":        row.get("review_id", ""),
+        "source":           row.get("source", "internal"),
+        "responder_name":   row.get("responder_name", ""),
+        "responder_email":  row.get("responder_email", ""),
+        "feedback_items":   Database.jload(row.get("feedback_items"), []),
+        "raw_text":         row.get("raw_text", ""),
+        "change_requested": Database.jload(row.get("change_requested"), []),
+        "accepted":         Database.jload(row.get("accepted"), []),
+        "rejected":         Database.jload(row.get("rejected"), []),
+        "concerns":         Database.jload(row.get("concerns"), []),
+        "notes":            row.get("notes", ""),
+        "next_action":      row.get("next_action", ""),
+        "status":           row.get("status", "open"),
+        "created_at":       row.get("created_at", ""),
+        "updated_at":       row.get("updated_at", ""),
     }
+
+
+def update_proposal_version_fields(
+    project_id: str,
+    version_id: str,
+    **kwargs: Any,
+) -> Optional[Dict[str, Any]]:
+    """Patch specific fields on a proposal_version row.
+
+    Allowed kwargs: quality_status, quality_score, completed_by, completed_at,
+    lock_status, lock_reason, status, hierarchy_version_id, active_review_id,
+    previous_version_id, feedback_applied, changes_summary.
+    """
+    ALLOWED = {
+        "quality_status", "quality_score", "completed_by", "completed_at",
+        "lock_status", "lock_reason", "status",
+        "hierarchy_version_id", "active_review_id",
+        "previous_version_id", "feedback_applied", "changes_summary",
+    }
+    updates = {k: v for k, v in kwargs.items() if k in ALLOWED}
+    if not updates:
+        return load_proposal_sql(project_id)
+
+    db = get_db()
+    for col, val in updates.items():
+        serialised = Database.jdump(val) if isinstance(val, (list, dict)) else val
+        db.execute(
+            f"UPDATE proposal_versions SET {col}=? WHERE project_id=? AND version_id=?",
+            (serialised, project_id, version_id),
+        )
+    db.commit()
+    _rebuild_proposal_file(project_id)
+    return load_proposal_sql(project_id)
 
 
 # ── External feedback tokens (P9) ─────────────────────────────

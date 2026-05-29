@@ -19,7 +19,7 @@ import shutil
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 
 from models.document import IngestedDocument
 from models.project import Project
@@ -748,7 +748,7 @@ def get_project_summary(project_id: str) -> str:
 
 def run_persona_review(
     project_id: str,
-    persona_name: str | List[str],
+    persona_name: Union[str, List[str]],
     ai_backend: str = "files_only",
     custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -1560,6 +1560,67 @@ def get_active_review_for_version(project_id: str, version_id: str) -> Optional[
         return review.to_dict()
     return None
 
+
+
+# ──────────────────────────────────────────────────────────────
+# Review Quality Gate (DS-04)
+# ──────────────────────────────────────────────────────────────
+
+def get_review_quality(project_id: str, review_id: str) -> Dict[str, Any]:
+    """Check review quality gate status without changing anything."""
+    from processors.review_quality import check_review_gate
+    return check_review_gate(project_id, review_id)
+
+
+def complete_review_gate(
+    project_id: str,
+    review_id: str,
+    completed_by: str,
+    quality_status: str = "complete",
+) -> Dict[str, Any]:
+    """Mark a review complete/interim, write score, log decision."""
+    from processors.review_quality import complete_review
+    return complete_review(project_id, review_id, completed_by, quality_status)
+
+
+def set_active_review_gated(
+    project_id: str,
+    version_id: str,
+    review_id: str,
+    decided_by: str,
+    force: bool = False,
+) -> Dict[str, Any]:
+    """Set active review with quality gate enforcement."""
+    from processors.review_quality import set_active_review_with_gate
+    return set_active_review_with_gate(
+        project_id, version_id, review_id, decided_by, force
+    )
+
+
+# ──────────────────────────────────────────────────────────────
+# Proposal Document Generation (DS-05)
+# ──────────────────────────────────────────────────────────────
+
+def generate_proposal_doc(
+    project_id: str,
+    proposal_ver_id: str,
+    hierarchy_version_id: str,
+    review_id: str,
+    ai_backend: str = "files_only",
+    force: bool = False,
+) -> Dict[str, Any]:
+    """Generate proposal document from Version + Active Review."""
+    from processors.proposal_generator import generate_proposal_document
+    return generate_proposal_document(
+        project_id, proposal_ver_id, hierarchy_version_id,
+        review_id, ai_backend, force,
+    )
+
+
+def get_proposal_doc(project_id: str, proposal_ver_id: str) -> Optional[Dict[str, Any]]:
+    """Get the latest generated proposal document for a version."""
+    from db.decision_log import get_latest_proposal_document
+    return get_latest_proposal_document(project_id, proposal_ver_id)
 
 
 # ──────────────────────────────────────────────────────────────

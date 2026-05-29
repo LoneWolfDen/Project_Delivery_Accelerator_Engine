@@ -279,8 +279,10 @@ class HierarchyStoreSQLite:
             """INSERT OR REPLACE INTO reviews
                (review_id, project_id, version_id, phase_id, persona, ai_backend,
                 prompt_used, custom_prompt, output, findings, questions, summary,
-                included_files, categories, ai_metadata, deep_dive, feedback, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                included_files, categories, ai_metadata,
+                deep_dive, feedback, completeness_score, quality_status,
+                completed_by, completed_at, decided_by, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 review_id, self.project_id, version_id, phase_id, persona, ai_backend,
                 prompt_used, custom_prompt,
@@ -293,6 +295,7 @@ class HierarchyStoreSQLite:
                 Database.jdump(ai_metadata or {}),
                 Database.jdump(deep_dive) if deep_dive is not None else None,
                 None,  # feedback – empty initially
+                0, "pending", "", "", "",  # DS-02 quality gate defaults
                 now,
             ),
         )
@@ -531,6 +534,11 @@ class HierarchyStoreSQLite:
             ai_metadata=Database.jload(row.get("ai_metadata"), {}),
             deep_dive=Database.jload(row.get("deep_dive"), None),
             feedback=Database.jload(row.get("feedback"), None),
+            completeness_score=row.get("completeness_score", 0),
+            quality_status=row.get("quality_status", "pending"),
+            completed_by=row.get("completed_by", ""),
+            completed_at=row.get("completed_at", ""),
+            decided_by=row.get("decided_by", ""),
         )
 
     # ── File dual-write helpers ───────────────────────────────
