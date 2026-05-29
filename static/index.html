@@ -1082,8 +1082,7 @@ async function viewIntelligence(){
   </div>`;
 
   let html=header;
-  // Build category list: if using review, show ALL categories from findings; otherwise use standard cats
-  const allCats=useReview?Object.keys(revFindings).filter(k=>Array.isArray(revFindings[k])):cats;
+  const allCats=useReview?Object.keys(revFindings).filter(k=>cats.includes(k)||Array.isArray(revFindings[k])):cats;
   for(const c of allCats){
     const items=src[c]||[];
     if(!items.length)continue;
