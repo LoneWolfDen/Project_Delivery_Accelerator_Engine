@@ -543,8 +543,12 @@ async function viewDashboard(){
   const gaps=metrics.gaps_identified||0;
   const findings=metrics.total_findings||0;
   const artifacts=metrics.artifact_count||0;
+  
+  // Get all finding categories dynamically (when review is selected)
+  const findingCats=metrics.finding_categories||{};
 
-  const statsHtml=`
+  // Build standard stats tiles
+  let statsHTML=`
     <div class="stat-grid mb">
       <div class="stat red" onclick="navigateToIntelligence('risks')"><div class="num">${risks}</div><div class="lbl">Risks</div></div>
       <div class="stat yellow" onclick="navigateToIntelligence('constraints')"><div class="num">${constraints}</div><div class="lbl">Constraints</div></div>
@@ -553,10 +557,24 @@ async function viewDashboard(){
       <div class="stat" onclick="navigateToIntelligence('action_items')"><div class="num">${actions}</div><div class="lbl">Action Items</div></div>
       <div class="stat green" onclick="switchTab('versions')"><div class="num">${totalV}</div><div class="lbl">Versions</div></div>
       <div class="stat green" onclick="switchTab('reviews')"><div class="num">${totalR}</div><div class="lbl">Reviews</div></div>
-      ${artifacts?`<div class="stat" onclick="switchTab('ingest')"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}
-      ${findings?`<div class="stat yellow" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
-      ${gaps?`<div class="stat red"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
+      ${artifacts?`<div class="stat" onclick="switchTab('ingest')"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}`;
+  
+  // Add dynamic finding category tiles (excluding standard ones already shown)
+  const standardCats=['risks','constraints','dependencies','assumptions','action_items','gaps'];
+  for(const[cat,count]of Object.entries(findingCats)){
+    if(standardCats.includes(cat))continue;
+    if(count>0){
+      const label=cat.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
+      statsHTML+=`<div class="stat yellow" onclick="navigateToIntelligence('${cat}')"><div class="num">${count}</div><div class="lbl">${escHtml(label)}</div></div>`;
+    }
+  }
+  
+  // Add remaining standard tiles
+  statsHTML+=`${findings?`<div class="stat yellow" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
+      ${gaps?`<div class="stat red" onclick="navigateToIntelligence('gaps')"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
     </div>`;
+
+  const statsHtml=statsHTML;
 
   const trend=metrics.trend||[];
   let trendHtml='';
@@ -1035,7 +1053,19 @@ async function viewIntelligence(){
   }
 
   const cats=['risks','assumptions','dependencies','constraints','action_items'];
-  const catIcons={risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',action_items:'✅'};
+  const catIcons={
+    risks:'🔴',
+    assumptions:'💭',
+    dependencies:'🔗',
+    constraints:'⛔',
+    action_items:'✅',
+    design_gaps:'⚠️',
+    recommendations:'💡',
+    gaps:'🔍',
+    findings:'📋',
+    questions:'❓',
+    concerns:'⚡'
+  };
 
   const header=`<div class="card">
     <div class="flex-between mb">
