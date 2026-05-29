@@ -5,6 +5,7 @@ Tracks multiple proposal versions per project:
 - Which risks increased/decreased
 - Which assumptions evolved
 - Delta analysis across versions
+- P9: Pre-sales feedback loop (internal + external)
 """
 
 from dataclasses import dataclass, field
@@ -22,6 +23,9 @@ VALID_PROPOSAL_STATUSES = [
     "superseded",
 ]
 
+VALID_FEEDBACK_STATUSES = ["open", "actioned", "closed"]
+VALID_FEEDBACK_SOURCES  = ["internal", "external"]
+
 
 @dataclass
 class ProposalVersion:
@@ -36,6 +40,8 @@ class ProposalVersion:
     notes: str = ""  # Author notes about this version
     changes_from_previous: str = ""  # What changed from last version
     context_version: str = ""  # Which intelligence version was current when this was created
+    # P9: feedback captured against this version (summary; full records in presales_feedback table)
+    feedback: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -50,3 +56,50 @@ class ProposalTracker:
     versions: List[ProposalVersion] = field(default_factory=list)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+@dataclass
+class PresalesFeedback:
+    """P9 – Feedback captured against a proposal version or review.
+
+    Supports two sources:
+    - internal: captured by the delivery team (PM, SA, etc.)
+    - external: submitted by the client via a share link / form
+
+    Schema mirrors the presales_feedback SQLite table.
+    """
+
+    feedback_id: str = ""
+    project_id: str = ""
+    proposal_ver_id: str = ""   # links to ProposalVersion.version_id
+    review_id: str = ""         # links to Review.review_id (optional)
+    source: str = "internal"    # "internal" | "external"
+    responder_name: str = ""
+    responder_email: str = ""
+    accepted: List[str] = field(default_factory=list)   # items client accepted
+    rejected: List[str] = field(default_factory=list)   # items client rejected
+    concerns: List[str] = field(default_factory=list)   # concerns / questions raised
+    notes: str = ""
+    next_action: str = ""
+    status: str = "open"        # "open" | "actioned" | "closed"
+    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "feedback_id":    self.feedback_id,
+            "project_id":     self.project_id,
+            "proposal_ver_id": self.proposal_ver_id,
+            "review_id":      self.review_id,
+            "source":         self.source,
+            "responder_name": self.responder_name,
+            "responder_email": self.responder_email,
+            "accepted":       self.accepted,
+            "rejected":       self.rejected,
+            "concerns":       self.concerns,
+            "notes":          self.notes,
+            "next_action":    self.next_action,
+            "status":         self.status,
+            "created_at":     self.created_at,
+            "updated_at":     self.updated_at,
+        }

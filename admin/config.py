@@ -48,6 +48,13 @@ class AdminConfig:
     auto_archive_enabled: bool = False
     auto_archive_inactivity_days: int = 30
 
+    # P8 – Dual-write storage mode
+    # Both default True: app writes to SQLite AND keeps JSON files in sync.
+    # Uncheck sqlite_write_enabled to disable SQLite entirely (file-only mode).
+    # Uncheck file_write_enabled to stop writing JSON files (SQLite-only mode).
+    sqlite_write_enabled: bool = True
+    file_write_enabled: bool = True
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize config with masked API keys for display."""
         d = asdict(self)
@@ -94,6 +101,8 @@ def load_config() -> AdminConfig:
             admin_pin=data.get("admin_pin") or os.environ.get("ADMIN_PIN", ""),
             auto_archive_enabled=data.get("auto_archive_enabled", False),
             auto_archive_inactivity_days=data.get("auto_archive_inactivity_days", 30),
+            sqlite_write_enabled=data.get("sqlite_write_enabled", True),
+            file_write_enabled=data.get("file_write_enabled", True),
         )
     else:
         config = AdminConfig()
@@ -150,6 +159,10 @@ def update_config(updates: Dict[str, Any]) -> AdminConfig:
         config.auto_archive_enabled = bool(updates["auto_archive_enabled"])
     if "auto_archive_inactivity_days" in updates:
         config.auto_archive_inactivity_days = int(updates["auto_archive_inactivity_days"])
+    if "sqlite_write_enabled" in updates:
+        config.sqlite_write_enabled = bool(updates["sqlite_write_enabled"])
+    if "file_write_enabled" in updates:
+        config.file_write_enabled = bool(updates["file_write_enabled"])
 
     # API keys update (only non-empty values)
     if "api_keys" in updates:

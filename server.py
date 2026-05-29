@@ -57,6 +57,9 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         if self.path == "/" or self.path == "":
             self._serve_static("index.html")
             return
+        if self.path.startswith("/feedback"):
+            self._serve_static("feedback.html")
+            return
         if self.path.startswith("/static/") or self.path.endswith((".html", ".css", ".js")):
             filename = self.path.lstrip("/")
             if not filename.startswith("static/"):
@@ -158,6 +161,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(proposal)
             else:
                 self._json_response({"error": "No proposal exists"}, status=404)
+        # ── P9: Pre-sales feedback GET routes ──
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/summary"):
+            project_id = clean_path.split("/")[3]
+            self._handle_get_presales_summary(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback"):
+            project_id = clean_path.split("/")[3]
+            self._handle_list_presales_feedback(project_id)
+        elif clean_path.startswith("/api/projects/") and "/presales/feedback/" in clean_path:
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            feedback_id = parts[6]
+            self._handle_get_presales_feedback_item(project_id, feedback_id)
+        elif clean_path == "/api/feedback/form" and query.get("token"):
+            self._handle_feedback_form(query["token"])
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/phase-history"):
             project_id = clean_path.split("/")[3]
             history = project_manager.get_phase_history_for_project(project_id)
@@ -370,6 +387,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._handle_patch_artifact(project_id, artifact_id)
             else:
                 self._json_response({"errorCode": "INVALID_REQUEST", "message": "Invalid artifact path"}, status=400)
+        # ── P9: Pre-sales feedback API ──
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback"):
+            project_id = clean_path.split("/")[3]
+            self._handle_create_presales_feedback(project_id)
+        elif clean_path.startswith("/api/projects/") and "/presales/feedback/" in clean_path and clean_path.endswith("/action"):
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            feedback_id = parts[6]
+            self._handle_action_presales_feedback(project_id, feedback_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/share"):
+            project_id = clean_path.split("/")[3]
+            self._handle_create_feedback_token(project_id)
+        elif clean_path == "/api/feedback/submit":
+            self._handle_external_feedback_submit()
         else:
             self._json_response({"errorCode": "NOT_FOUND", "message": "Not found"}, status=404)
 
@@ -395,6 +426,165 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response({"errorCode": "INVALID_REQUEST", "message": "Invalid path"}, status=400)
         else:
             self._json_response({"errorCode": "NOT_FOUND", "message": "Not found"}, status=404)
+
+    # ══════════════════════════════════════════════════════════
+    # P9 – Pre-sales Feedback Handlers
+    # ══════════════════════════════════════════════════════════
+
+    def _handle_get_presales_summary(self, project_id: str) -> None:
+        """GET /api/projects/{id}/presales/summary"""
+        from processors.presales_feedback import get_presales_summary
+        result = get_presales_summary(project_id)
+        self._json_response(result)
+
+    def _handle_list_presales_feedback(self, project_id: str) -> None:
+        """GET /api/projects/{id}/presales/feedback"""
+        from db.project_store_sql import load_presales_feedback
+        items = load_presales_feedback(project_id)
+        self._json_response({"project_id": project_id, "feedback": items, "count": len(items)})
+
+    def _handle_get_presales_feedback_item(self, project_id: str, feedback_id: str) -> None:
+        """GET /api/projects/{id}/presales/feedback/{feedback_id}"""
+        from db.project_store_sql import load_presales_feedback_item
+        item = load_presales_feedback_item(feedback_id)
+        if item and item.get("project_id") == project_id:
+            self._json_response(item)
+        else:
+            self._json_response({"error": "Feedback not found"}, status=404)
+
+    def _handle_create_presales_feedback(self, project_id: str) -> None:
+        """POST /api/projects/{id}/presales/feedback — internal feedback capture."""
+        import uuid as _uuid
+        from db.project_store_sql import save_presales_feedback
+        body = self._read_body() or {}
+        feedback_id = f"fb_{_uuid.uuid4().hex[:8]}"
+        item = save_presales_feedback(
+            project_id=project_id,
+            feedback_id=feedback_id,
+            proposal_ver_id=body.get("proposal_ver_id", ""),
+            review_id=body.get("review_id", ""),
+            source=body.get("source", "internal"),
+            responder_name=body.get("responder_name", ""),
+            responder_email=body.get("responder_email", ""),
+            accepted=body.get("accepted", []),
+            rejected=body.get("rejected", []),
+            concerns=body.get("concerns", []),
+            notes=body.get("notes", ""),
+            next_action=body.get("next_action", ""),
+            status="open",
+        )
+        # Optionally inject into next review prompt context
+        try:
+            from processors.presales_feedback import attach_feedback_to_context
+            attach_feedback_to_context(project_id, item)
+        except Exception:
+            pass
+        self._json_response({"feedback": item}, status=201)
+
+    def _handle_action_presales_feedback(self, project_id: str, feedback_id: str) -> None:
+        """POST /api/projects/{id}/presales/feedback/{id}/action — update status/next_action."""
+        from db.project_store_sql import load_presales_feedback_item, save_presales_feedback
+        body = self._read_body() or {}
+        item = load_presales_feedback_item(feedback_id)
+        if not item or item.get("project_id") != project_id:
+            self._json_response({"error": "Feedback not found"}, status=404)
+            return
+        updated = save_presales_feedback(
+            project_id=project_id,
+            feedback_id=feedback_id,
+            proposal_ver_id=item["proposal_ver_id"],
+            review_id=item["review_id"],
+            source=item["source"],
+            responder_name=item["responder_name"],
+            responder_email=item["responder_email"],
+            accepted=item["accepted"],
+            rejected=item["rejected"],
+            concerns=item["concerns"],
+            notes=body.get("notes", item["notes"]),
+            next_action=body.get("next_action", item["next_action"]),
+            status=body.get("status", item["status"]),
+        )
+        self._json_response({"feedback": updated})
+
+    def _handle_create_feedback_token(self, project_id: str) -> None:
+        """POST /api/projects/{id}/presales/share — create external share token."""
+        from db.project_store_sql import create_feedback_token
+        body = self._read_body() or {}
+        token = create_feedback_token(
+            project_id=project_id,
+            proposal_ver_id=body.get("proposal_ver_id", ""),
+            review_id=body.get("review_id", ""),
+            expires_days=int(body.get("expires_days", 7)),
+        )
+        # Build share URL (relative — host resolved by client)
+        share_url = f"/feedback?token={token}"
+        self._json_response({
+            "token": token,
+            "share_url": share_url,
+            "expires_days": body.get("expires_days", 7),
+        }, status=201)
+
+    def _handle_feedback_form(self, token: str) -> None:
+        """GET /api/feedback/form?token=… — return form context for external page."""
+        from db.project_store_sql import validate_feedback_token
+        row = validate_feedback_token(token)
+        if not row:
+            self._json_response({"error": "Invalid or expired token"}, status=404)
+            return
+        project_id = row["project_id"]
+        # Load proposal summary for form display
+        proposal = None
+        try:
+            proposal = project_manager.get_proposal_info(project_id)
+        except Exception:
+            pass
+        project = project_manager.get_project(project_id)
+        self._json_response({
+            "valid": True,
+            "project_id": project_id,
+            "project_name": project.get("name", "") if project else "",
+            "proposal_ver_id": row.get("proposal_ver_id", ""),
+            "review_id": row.get("review_id", ""),
+            "proposal": proposal,
+        })
+
+    def _handle_external_feedback_submit(self) -> None:
+        """POST /api/feedback/submit — public endpoint, validated by token."""
+        import uuid as _uuid
+        from db.project_store_sql import validate_feedback_token, mark_token_used, save_presales_feedback
+        body = self._read_body() or {}
+        token = body.get("token", "")
+        if not token:
+            self._json_response({"error": "Token required"}, status=400)
+            return
+        row = validate_feedback_token(token)
+        if not row:
+            self._json_response({"error": "Invalid or expired token"}, status=403)
+            return
+        project_id = row["project_id"]
+        feedback_id = f"fb_{_uuid.uuid4().hex[:8]}"
+        item = save_presales_feedback(
+            project_id=project_id,
+            feedback_id=feedback_id,
+            proposal_ver_id=row.get("proposal_ver_id", ""),
+            review_id=row.get("review_id", ""),
+            source="external",
+            responder_name=body.get("responder_name", ""),
+            responder_email=body.get("responder_email", ""),
+            accepted=body.get("accepted", []),
+            rejected=body.get("rejected", []),
+            concerns=body.get("concerns", []),
+            notes=body.get("notes", ""),
+            next_action="",
+            status="open",
+        )
+        mark_token_used(token)
+        try:
+            from processors.presales_feedback import attach_feedback_to_context
+            attach_feedback_to_context(project_id, item)
+        except Exception:
+            pass
+        self._json_response({"status": "submitted", "feedback_id": feedback_id}, status=201)
 
     def _handle_create_project(self) -> None:
         """Handle project creation."""
@@ -733,7 +923,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def _handle_list_artifacts(self, project_id: str) -> None:
         """GET /api/v1/projects/{projectId}/artifacts"""
-        from processors.artifact_store import list_artifacts
+        from db.artifact_store_sql import list_artifacts
         artifacts = list_artifacts(project_id)
         self._json_response({"artifacts": artifacts})
 
@@ -743,7 +933,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         Handles multipart/form-data file upload.
         Falls back to JSON body with base64 content for simple clients.
         """
-        from processors.artifact_store import store_file_artifact
+        from db.artifact_store_sql import store_file_artifact
         import base64
 
         content_type = self.headers.get("Content-Type", "")
@@ -799,7 +989,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def _handle_artifact_text(self, project_id: str) -> None:
         """POST /api/v1/projects/{projectId}/artifacts/text"""
-        from processors.artifact_store import store_text_artifact
+        from db.artifact_store_sql import store_text_artifact
         from models.artifact import validate_metadata_for_category
 
         body = self._read_body() or {}
@@ -836,7 +1026,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def _handle_artifact_toggle(self, project_id: str, artifact_id: str) -> None:
         """POST /api/v1/projects/{projectId}/artifacts/{artifactId}/toggle"""
-        from processors.artifact_store import toggle_artifact_include
+        from db.artifact_store_sql import toggle_artifact_include
 
         body = self._read_body() or {}
         include = body.get("include", True)
@@ -848,7 +1038,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def _handle_artifact_delete(self, project_id: str, artifact_id: str) -> None:
         """POST /api/v1/projects/{projectId}/artifacts/{artifactId}/delete"""
-        from processors.artifact_store import delete_artifact
+        from db.artifact_store_sql import delete_artifact
 
         deleted = delete_artifact(project_id, artifact_id)
         if deleted:

@@ -1,37 +1,62 @@
-# Project Context – Delivery Accelerator Engine
+# Contexta – Project Delivery Accelerator Engine
 
-## Identity
-
-- **Product**: Project Delivery Accelerator Engine (Contexta)
-- **Purpose**: Context-aware delivery intelligence platform – converts documents into reusable project intelligence across SDLC phases.
+Context-aware delivery intelligence: documents → reusable project intelligence across SDLC phases.
 
 ## Constraints
 
-- Single-container Docker deployment
-- Offline-first operation
-- Non-technical users as primary audience
-- Open-source components only
-- Python 3.9+, pyyaml only external dep
-- Vanilla JS SPA (no build step, no framework)
+Single-container Docker, offline-first, non-technical users, open-source only.
+Python 3.9+ (pyyaml only dep). Vanilla JS SPA (no build/framework).
 
-## Architecture
+## Layout
 
-- `server.py` – HTTP API + static file serving
-- `project_manager.py` – Project CRUD + orchestration
-- `static/index.html` – SPA Web UI (dark theme, vanilla JS)
-- `processors/` – Ingestion, context building, extractors, parsers
-- `personas/` – Review orchestration (files_only/ollama/bedrock)
-- `models/` – Dataclass models (project, document, hierarchy, proposal)
+| Path | Role |
+|------|------|
+| `server.py` | HTTP API + static serving |
+| `project_manager.py` | Project CRUD + orchestration |
+| `static/index.html` | SPA UI (dark theme, vanilla JS) |
+| `static/feedback.html` | External client feedback form (P9) |
+| `processors/` | Ingestion, context, extractors, parsers |
+| `processors/presales_feedback.py` | P9 feedback loop processor + prompt injection |
+| `personas/` | Review orchestration (files_only/ollama/bedrock) |
+| `models/` | Dataclasses: project, document, hierarchy, proposal |
+| `db/` | SQLite layer (P8): database, hierarchy_store_sql, artifact_store_sql, project_store_sql |
+| `scripts/seed_sqlite.py` | Seed fresh SQLite test data |
 
-## Key Patterns
+## Storage (P8 — Dual-Write)
 
-- File paths resolve relative to `Path(__file__).parent`
+Two stores run in parallel by default (configurable in Admin → Storage Mode):
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `sqlite_write_enabled` | `True` | Write to `projects_data/accelerator.db` |
+| `file_write_enabled` | `True` | Mirror to JSON files (backward compat) |
+
+SQLite tables: `projects`, `phases`, `versions`, `reviews`, `artifacts`, `proposals`, `proposal_versions`, `jobs`, `presales_feedback`, `feedback_tokens`.
+
+## Pre-Sales Feedback Loop (P9)
+
+Hierarchy: Proposal → ProposalVersion → PresalesFeedback
+
+| API | Purpose |
+|-----|---------|
+| `GET /api/projects/{id}/presales/summary` | Aggregated pre-sales view |
+| `GET/POST /api/projects/{id}/presales/feedback` | List / capture feedback (internal) |
+| `POST /api/projects/{id}/presales/feedback/{fid}/action` | Update status / next action |
+| `POST /api/projects/{id}/presales/share` | Generate one-time client share token |
+| `GET /api/feedback/form?token=` | Return form context for external page |
+| `POST /api/feedback/submit` | External client submission (token-validated) |
+
+Feedback auto-injects into next review prompt via `processors/presales_feedback.get_feedback_prompt_injection()`.
+`personas/engine.run_review()` reads `context._project_id` and prepends feedback block to `custom_prompt`.
+
+## Patterns
+
+- Paths resolve via `Path(__file__).parent`
 - Intelligence = versioned snapshots (re-runnable, comparable)
-- Hierarchy model: Phase → Version → Review
-- Files-only mode = zero-cost, deterministic analysis
-- Dataclasses + type hints + docstrings on public functions
+- Hierarchy: Phase → Version → Review
+- Files-only mode = deterministic, zero-cost analysis
+- Dataclasses + type hints + docstrings on public API
 
 ## Ignore
 
-- `_archive/` – legacy demo code
-- `projects_data/` – runtime data (gitignored)
+`_archive/` (legacy), `projects_data/` (runtime, gitignored)

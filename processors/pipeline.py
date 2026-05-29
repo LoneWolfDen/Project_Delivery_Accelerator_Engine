@@ -35,8 +35,15 @@ from processors.artifact_store import (
     get_artifact,
     get_artifact_text_content,
     update_artifact_status,
-    _load_registry,
 )
+# Registry loader: prefer SQLite-backed store when enabled
+def _load_registry(project_id: str):
+    try:
+        from db.artifact_store_sql import _load_registry as _sql_reg
+        return _sql_reg(project_id)
+    except Exception:
+        from processors.artifact_store import _load_registry as _file_reg
+        return _file_reg(project_id)
 
 PROJECTS_DIR = Path("projects_data")
 

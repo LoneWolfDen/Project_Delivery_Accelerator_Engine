@@ -388,7 +388,7 @@ let state={
   _reviewSort:'newest',
   _debugMode:false,
 };
-const TABS=['dashboard','ingest','intelligence','versions','reviews','diagrams','phases','admin'];
+const TABS=['dashboard','ingest','intelligence','versions','reviews','diagrams','phases','presales','admin'];
 
 // Shared hierarchy loader
 async function loadHierarchy(pid){
@@ -451,7 +451,7 @@ async function render(){
   const views={
     dashboard:viewDashboard,ingest:viewIngest,intelligence:viewIntelligence,
     versions:viewVersions,reviews:viewReviews,diagrams:viewDiagrams,phases:viewPhases,
-    settings:viewSettings,admin:viewAdmin
+    presales:viewPresales,settings:viewSettings,admin:viewAdmin
   };
   main.innerHTML=await(views[state.tab]||viewDashboard)();
 }
@@ -2245,6 +2245,375 @@ async function doHierarchyTransition(phaseIdOverride){
 
 <script>
 // ═══════════════════════════════════════════════════════════════
+// PRE-SALES VIEW  (P9)
+// ═══════════════════════════════════════════════════════════════
+async function viewPresales(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+
+  // Load all data in parallel
+  let summary={},feedbackList=[];
+  try{summary=await api('GET',`/api/projects/${pid}/presales/summary`);}catch(e){}
+  try{const r=await api('GET',`/api/projects/${pid}/presales/feedback`);feedbackList=r.feedback||[];}catch(e){}
+
+  const proposal=summary.proposal||null;
+  const curVer=summary.current_version||null;
+  const fbSum=summary.feedback_summary||{};
+  const presalesReviews=summary.presales_reviews||[];
+  const activeReview=summary.active_review||null;
+
+  // ── Summary bar ───────────────────────────────────────────
+  const statusColor=curVer?{draft:'tag-yellow',submitted:'tag-blue',under_review:'tag-purple',
+    revised:'tag-yellow',accepted:'tag-green',rejected:'tag-red',superseded:''}[curVer.status]||'':'';
+  const summaryCard=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">🤝</span>Pre-Sales Overview
+        <span class="tag tag-blue" style="margin-left:6px">P9</span></div>
+      <div class="flex gap-sm">
+        <button class="btn btn-sm btn-outline" onclick="switchTab('phases')">← Phases</button>
+        <button class="btn btn-sm" onclick="switchTab('reviews')">▶ Run Review</button>
+      </div>
+    </div>
+    ${!proposal?`<div class="empty" style="padding:20px 0">
+        <div class="empty-icon">📋</div>
+        <p>No proposal yet. Create one to start the pre-sales feedback loop.</p>
+        <button class="btn mt" onclick="showCreateProposal()">+ Create Proposal</button>
+      </div>`:`
+    <div class="stat-grid">
+      <div class="stat purple"><div class="num">${proposal.total_versions||0}</div><div class="lbl">Versions</div></div>
+      <div class="stat ${fbSum.open>0?'red':'green'}"><div class="num">${fbSum.open||0}</div><div class="lbl">Open Feedback</div></div>
+      <div class="stat green"><div class="num">${fbSum.accepted_count||0}</div><div class="lbl">Accepted Items</div></div>
+      <div class="stat yellow"><div class="num">${fbSum.concerns_count||0}</div><div class="lbl">Concerns</div></div>
+      <div class="stat"><div class="num">${presalesReviews.length}</div><div class="lbl">Reviews</div></div>
+    </div>
+    <div class="flex gap-sm mt" style="align-items:center;flex-wrap:wrap">
+      <strong style="font-size:13px">${escHtml(proposal.proposal_name||'Proposal')}</strong>
+      ${proposal.client?`<span class="tag tag-blue">${escHtml(proposal.client)}</span>`:''}
+      ${curVer?`<span class="tag ${statusColor}">${curVer.status}</span>`:''}
+      ${curVer?`<span style="font-size:11px;color:var(--text-muted)">${escHtml(curVer.label||'')} · ${fmtDateShort(curVer.created_at)}</span>`:''}
+    </div>`}
+  </div>`;
+
+  // ── Proposal versions timeline ─────────────────────────────
+  let versionsCard='';
+  if(proposal&&(proposal.versions||[]).length){
+    const vHtml=(proposal.versions||[]).slice().reverse().map(v=>{
+      const sc={draft:'var(--border2)',submitted:'var(--accent)',under_review:'var(--purple)',
+        revised:'var(--yellow)',accepted:'var(--green)',rejected:'var(--red)',superseded:'var(--border2)'}[v.status]||'var(--border2)';
+      const fb=v.feedback;
+      const hasFb=fb&&(fb.accepted?.length||fb.rejected?.length||fb.concerns?.length);
+      return`<div class="card" style="border-left:3px solid ${sc};margin-bottom:6px">
+        <div class="flex-between mb">
+          <div>
+            <span style="font-size:12px;font-weight:600">${escHtml(v.label||v.version_id)}</span>
+            <span class="tag" style="margin-left:6px">${v.version_id}</span>
+            <span class="tag" style="margin-left:4px;border-color:${sc};color:${sc}">${v.status}</span>
+          </div>
+          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(v.created_at)}</span>
+        </div>
+        ${v.notes?`<p style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${escHtml(v.notes)}</p>`:''}
+        ${v.changes_from_previous?`<p style="font-size:11px;color:var(--accent);margin-bottom:6px">↳ ${escHtml(v.changes_from_previous)}</p>`:''}
+        ${hasFb?`<div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:6px">
+          ${fb.accepted?.length?`<span class="tag tag-green">✓ ${fb.accepted.length} accepted</span>`:''}
+          ${fb.rejected?.length?`<span class="tag tag-red">✗ ${fb.rejected.length} rejected</span>`:''}
+          ${fb.concerns?.length?`<span class="tag tag-yellow">⚠ ${fb.concerns.length} concerns</span>`:''}
+        </div>`:''}
+        <div class="flex gap-sm">
+          <button class="btn btn-xs btn-outline" onclick="openCaptureFeedback('${v.version_id}')">+ Capture Feedback</button>
+          <button class="btn btn-xs btn-ghost" onclick="openShareLink('${v.version_id}')">🔗 Share Link</button>
+          <select class="btn btn-xs btn-ghost" style="font-size:10px;padding:2px 6px;min-width:120px"
+            onchange="updateProposalStatus('${v.version_id}',this.value)">
+            ${['draft','submitted','under_review','revised','accepted','rejected'].map(s=>
+              `<option value="${s}" ${s===v.status?'selected':''}>${s.replace(/_/g,' ')}</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
+    }).join('');
+    versionsCard=`<div class="card">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">📄</span>Proposal Versions</div>
+        <button class="btn btn-sm btn-outline" onclick="openAddProposalVersion()">+ New Version</button>
+      </div>
+      ${vHtml}
+    </div>`;
+  }else if(proposal){
+    versionsCard=`<div class="card"><p style="color:var(--text-dim);font-size:12px">No versions yet.</p>
+      <button class="btn btn-sm mt" onclick="openAddProposalVersion()">+ Add Version</button></div>`;
+  }
+
+  // ── Next actions ───────────────────────────────────────────
+  const actions=(fbSum.next_actions||[]);
+  const actionsCard=actions.length?`<div class="card" style="border-left:3px solid var(--yellow)">
+    <div class="card-title mb"><span class="icon">⚡</span>Open Actions</div>
+    <ul class="items">${actions.map(a=>`<li style="color:var(--yellow)">${escHtml(a)}</li>`).join('')}</ul>
+  </div>`:'';
+
+  // ── Active review snapshot ─────────────────────────────────
+  let reviewCard='';
+  if(activeReview){
+    reviewCard=`<div class="card">
+      <div class="card-title mb"><span class="icon">🔍</span>Latest Pre-Sales Review</div>
+      <div class="flex gap-sm mb">
+        <span class="tag tag-blue">${escHtml(activeReview.persona||'')}</span>
+        <span class="tag">${fmtDateShort(activeReview.created_at)}</span>
+        <span class="tag">${activeReview.total_findings||0} findings</span>
+      </div>
+      ${activeReview.summary?`<p style="font-size:12px;color:var(--text-dim)">${escHtml((activeReview.summary||'').slice(0,300))}${(activeReview.summary||'').length>300?'…':''}</p>`:''}
+      <div class="flex gap-sm mt">
+        <button class="btn btn-sm btn-outline" onclick="switchTab('reviews')">View Reviews</button>
+        <button class="btn btn-sm btn-ghost" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on Review</button>
+      </div>
+    </div>`;
+  }
+
+  // ── Feedback log ───────────────────────────────────────────
+  let fbCard='';
+  if(feedbackList.length){
+    const rows=feedbackList.map(f=>{
+      const srcTag=f.source==='external'?'tag-purple':'tag-blue';
+      const stTag={open:'tag-yellow',actioned:'tag-green',closed:''}[f.status]||'';
+      return`<div class="card" style="background:var(--surface2);margin-bottom:6px">
+        <div class="flex-between mb" style="flex-wrap:wrap;gap:4px">
+          <div class="flex gap-sm">
+            <span class="tag ${srcTag}">${f.source}</span>
+            <span class="tag ${stTag}">${f.status}</span>
+            <strong style="font-size:11px">${escHtml(f.responder_name||'Anonymous')}</strong>
+            ${f.responder_email?`<span style="font-size:10px;color:var(--text-muted)">${escHtml(f.responder_email)}</span>`:''}
+          </div>
+          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(f.created_at)}</span>
+        </div>
+        ${f.accepted?.length?`<div class="flex gap-sm" style="margin-bottom:3px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--green);font-weight:600">Accepted:</span>
+          ${f.accepted.map(a=>`<span class="tag tag-green">${escHtml(a)}</span>`).join('')}
+        </div>`:''}
+        ${f.rejected?.length?`<div class="flex gap-sm" style="margin-bottom:3px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--red);font-weight:600">Rejected:</span>
+          ${f.rejected.map(r=>`<span class="tag tag-red">${escHtml(r)}</span>`).join('')}
+        </div>`:''}
+        ${f.concerns?.length?`<div class="flex gap-sm" style="margin-bottom:3px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--yellow);font-weight:600">Concerns:</span>
+          ${f.concerns.map(c=>`<span class="tag tag-yellow">${escHtml(c)}</span>`).join('')}
+        </div>`:''}
+        ${f.notes?`<p style="font-size:11px;color:var(--text-dim);margin:4px 0">${escHtml(f.notes)}</p>`:''}
+        ${f.next_action?`<p style="font-size:11px;color:var(--accent)">→ ${escHtml(f.next_action)}</p>`:''}
+        ${f.status==='open'?`<div class="flex gap-sm mt-sm">
+          <button class="btn btn-xs btn-green" onclick="actionFeedback('${f.feedback_id}','actioned')">Mark Actioned</button>
+          <button class="btn btn-xs btn-ghost" onclick="actionFeedback('${f.feedback_id}','closed')">Close</button>
+        </div>`:''}
+      </div>`;
+    }).join('');
+    fbCard=`<div class="card">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">💬</span>Feedback Log
+          <span class="tag" style="margin-left:6px">${feedbackList.length}</span></div>
+      </div>
+      ${rows}
+    </div>`;
+  }
+
+  // ── Inline forms (hidden by default) ──────────────────────
+  const captureFeedbackForm=`<div id="captureFbForm" style="display:none">
+    <div class="card" style="border:1px solid var(--accent)">
+      <div class="card-title mb"><span class="icon">✍️</span>Capture Client Feedback</div>
+      <input type="hidden" id="fbProposalVerId">
+      <input type="hidden" id="fbReviewId">
+      <div class="form-row"><label>Responder Name</label><input id="fbName" placeholder="e.g. Sarah Chen"></div>
+      <div class="form-row"><label>Email (optional)</label><input id="fbEmail" type="email" placeholder="s.chen@client.com"></div>
+      <div class="form-row"><label>Source</label>
+        <select id="fbSource"><option value="internal">Internal (delivery team)</option><option value="external">External (client)</option></select></div>
+      <div class="form-row"><label>✅ Accepted items <span style="color:var(--text-muted);font-weight:400">(one per line)</span></label>
+        <textarea id="fbAccepted" rows="3" placeholder="Migration phased approach&#10;AWS as primary cloud provider"></textarea></div>
+      <div class="form-row"><label>✗ Rejected items</label>
+        <textarea id="fbRejected" rows="2" placeholder="Full re-platform in Phase 1"></textarea></div>
+      <div class="form-row"><label>⚠ Concerns / questions</label>
+        <textarea id="fbConcerns" rows="2" placeholder="Timeline too aggressive&#10;Need security review before sign-off"></textarea></div>
+      <div class="form-row"><label>Notes</label>
+        <textarea id="fbNotes" rows="2" placeholder="Client requested revised timeline before board sign-off."></textarea></div>
+      <div class="form-row"><label>Next Action</label>
+        <input id="fbNextAction" placeholder="e.g. Revise proposal timeline, schedule security review"></div>
+      <div class="flex gap-sm mt">
+        <button class="btn" onclick="submitCaptureFeedback()">Save Feedback</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('captureFbForm').style.display='none'">Cancel</button>
+      </div>
+      <div id="captureFbResult" class="mt"></div>
+    </div>
+  </div>`;
+
+  const createProposalForm=`<div id="createProposalForm" style="display:none">
+    <div class="card" style="border:1px solid var(--green-dim)">
+      <div class="card-title mb"><span class="icon">📋</span>Create Proposal</div>
+      <div class="form-row"><label>Proposal Name <span style="color:var(--red)">*</span></label>
+        <input id="propName" placeholder="e.g. AWS Cloud Migration Proposal"></div>
+      <div class="form-row"><label>Client Name</label>
+        <input id="propClient" placeholder="e.g. Acme Financial Services"></div>
+      <div class="form-row"><label>Initial Notes</label>
+        <textarea id="propNotes" rows="2" placeholder="Initial submission after discovery call."></textarea></div>
+      <div class="flex gap-sm mt">
+        <button class="btn btn-green" onclick="submitCreateProposal()">Create</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('createProposalForm').style.display='none'">Cancel</button>
+      </div>
+      <div id="createProposalResult" class="mt"></div>
+    </div>
+  </div>`;
+
+  const addVersionForm=`<div id="addVersionForm" style="display:none">
+    <div class="card" style="border:1px solid var(--purple)">
+      <div class="card-title mb"><span class="icon">➕</span>Add Proposal Version</div>
+      <div class="form-row"><label>Label</label>
+        <input id="verLabel" placeholder="e.g. Post-feedback revision"></div>
+      <div class="form-row"><label>What changed from previous version?</label>
+        <textarea id="verChanges" rows="2" placeholder="Extended Phase 1 timeline, removed re-platform scope."></textarea></div>
+      <div class="form-row"><label>Notes</label>
+        <textarea id="verNotes" rows="2" placeholder="Revised proposal addressing client timeline concern."></textarea></div>
+      <div class="flex gap-sm mt">
+        <button class="btn" onclick="submitAddVersion()">Add Version</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('addVersionForm').style.display='none'">Cancel</button>
+      </div>
+      <div id="addVersionResult" class="mt"></div>
+    </div>
+  </div>`;
+
+  const shareForm=`<div id="shareForm" style="display:none">
+    <div class="card" style="border:1px solid var(--accent)">
+      <div class="card-title mb"><span class="icon">🔗</span>Generate Client Share Link</div>
+      <input type="hidden" id="shareVerIdHidden">
+      <div class="form-row"><label>Link expires after (days)</label>
+        <input id="shareExpiry" type="number" value="7" style="width:80px"></div>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:10px">
+        Sends the client a secure one-time link to a feedback form. Their response is logged automatically.
+      </p>
+      <button class="btn" onclick="submitGenerateShare()">Generate Link</button>
+      <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="document.getElementById('shareForm').style.display='none'">Cancel</button>
+      <div id="shareResult" class="mt"></div>
+    </div>
+  </div>`;
+
+  return summaryCard+createProposalForm+versionsCard+addVersionForm+captureFeedbackForm+shareForm+actionsCard+reviewCard+fbCard;
+}
+
+// ── Pre-sales action helpers ─────────────────────────────────
+
+function showCreateProposal(){
+  document.getElementById('createProposalForm').style.display='';
+  document.getElementById('createProposalForm').scrollIntoView({behavior:'smooth'});
+}
+
+async function submitCreateProposal(){
+  const pid=state.current.id;
+  const name=document.getElementById('propName').value.trim();
+  const client=document.getElementById('propClient').value.trim();
+  const notes=document.getElementById('propNotes').value.trim();
+  const el=document.getElementById('createProposalResult');
+  if(!name){el.innerHTML='<p style="color:var(--red)">Name required</p>';return;}
+  const r=await api('POST',`/api/projects/${pid}/proposal`,{proposal_name:name,client,notes});
+  if(r.project_id||r.proposal_name){toast('Proposal created');setTimeout(()=>render(),600);}
+  else el.innerHTML=`<p style="color:var(--red)">${r.error||'Failed'}</p>`;
+}
+
+function openAddProposalVersion(){
+  document.getElementById('addVersionForm').style.display='';
+  document.getElementById('addVersionForm').scrollIntoView({behavior:'smooth'});
+}
+
+async function submitAddVersion(){
+  const pid=state.current.id;
+  const label=document.getElementById('verLabel').value.trim();
+  const changes=document.getElementById('verChanges').value.trim();
+  const notes=document.getElementById('verNotes').value.trim();
+  const el=document.getElementById('addVersionResult');
+  const r=await api('POST',`/api/projects/${pid}/proposal/version`,{label,changes,notes});
+  if(r.version_id){toast(`Version ${r.version_id} added`);setTimeout(()=>render(),600);}
+  else el.innerHTML=`<p style="color:var(--red)">${r.error||'Failed'}</p>`;
+}
+
+async function updateProposalStatus(versionId,newStatus){
+  const pid=state.current.id;
+  const r=await api('POST',`/api/projects/${pid}/proposal/version`,{status_update:{version_id:versionId,new_status:newStatus}});
+  if(!r.error)toast(`Status updated to ${newStatus}`);
+  else toast(r.error,'err');
+  setTimeout(()=>render(),400);
+}
+
+function openCaptureFeedback(proposalVerId='',reviewId=''){
+  document.getElementById('fbProposalVerId').value=proposalVerId;
+  document.getElementById('fbReviewId').value=reviewId;
+  document.getElementById('captureFbForm').style.display='';
+  document.getElementById('captureFbForm').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+async function submitCaptureFeedback(){
+  const pid=state.current.id;
+  const el=document.getElementById('captureFbResult');
+  const splitLines=s=>s.split('\n').map(l=>l.trim()).filter(Boolean);
+  const body={
+    proposal_ver_id:document.getElementById('fbProposalVerId').value,
+    review_id:document.getElementById('fbReviewId').value,
+    source:document.getElementById('fbSource').value,
+    responder_name:document.getElementById('fbName').value,
+    responder_email:document.getElementById('fbEmail').value,
+    accepted:splitLines(document.getElementById('fbAccepted').value),
+    rejected:splitLines(document.getElementById('fbRejected').value),
+    concerns:splitLines(document.getElementById('fbConcerns').value),
+    notes:document.getElementById('fbNotes').value,
+    next_action:document.getElementById('fbNextAction').value,
+  };
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Saving…</span>';
+  const r=await api('POST',`/api/projects/${pid}/presales/feedback`,body);
+  if(r.feedback){
+    toast('Feedback saved — will be injected into next review');
+    document.getElementById('captureFbForm').style.display='none';
+    setTimeout(()=>render(),600);
+  }else el.innerHTML=`<p style="color:var(--red)">${r.error||'Failed'}</p>`;
+}
+
+async function actionFeedback(feedbackId,newStatus){
+  const pid=state.current.id;
+  const r=await api('POST',`/api/projects/${pid}/presales/feedback/${feedbackId}/action`,{status:newStatus});
+  if(r.feedback){toast(`Marked ${newStatus}`);setTimeout(()=>render(),400);}
+  else toast(r.error||'Failed','err');
+}
+
+function openShareLink(proposalVerId){
+  document.getElementById('shareVerIdHidden').value=proposalVerId;
+  document.getElementById('shareForm').style.display='';
+  document.getElementById('shareResult').innerHTML='';
+  document.getElementById('shareForm').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+async function submitGenerateShare(){
+  const pid=state.current.id;
+  const verId=document.getElementById('shareVerIdHidden').value;
+  const days=parseInt(document.getElementById('shareExpiry').value)||7;
+  const el=document.getElementById('shareResult');
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Generating…</span>';
+  const r=await api('POST',`/api/projects/${pid}/presales/share`,{proposal_ver_id:verId,expires_days:days});
+  if(r.token){
+    const url=window.location.origin+`/feedback?token=${r.token}`;
+    el.innerHTML=`
+      <div style="margin-top:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--green-dim);border-radius:var(--radius)">
+        <p style="font-size:11px;color:var(--green);font-weight:600;margin-bottom:6px">✓ Share link generated (expires in ${days} day${days!==1?'s':''})</p>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="shareLinkInput" value="${escHtml(url)}" style="flex:1;font-size:11px;font-family:monospace" readonly>
+          <button class="btn btn-xs btn-outline" onclick="copyShareLink()">Copy</button>
+        </div>
+        <p style="font-size:10px;color:var(--text-muted);margin-top:6px">
+          Send this link to the client. Their feedback will be logged automatically and injected into the next review.
+        </p>
+      </div>`;
+  }else{
+    el.innerHTML=`<p style="color:var(--red)">${r.error||'Failed'}</p>`;
+  }
+}
+
+function copyShareLink(){
+  const el=document.getElementById('shareLinkInput');
+  if(el){el.select();document.execCommand('copy');toast('Link copied');}
+}
+</script>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
 // ADMIN VIEW
 // ═══════════════════════════════════════════════════════════════
 async function viewAdmin(){
@@ -2273,6 +2642,62 @@ async function viewAdmin(){
     <div class="backend-grid">${Object.entries(apiStatus).map(([n,i])=>`<div class="backend-chip ${i.configured?'ok':''}">
       ${i.configured?'●':'○'} <strong>${n}</strong><br><span>${i.configured?'Configured':'Not set'}</span>
     </div>`).join('')}</div>
+  </div>`;
+
+  const sqlOn=config.sqlite_write_enabled!==false;
+  const fileOn=config.file_write_enabled!==false;
+
+  const storageCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">🗄️</span>Storage Mode <span class="tag tag-blue" style="margin-left:6px">P8</span></div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">
+      Controls where data is persisted. Both options are enabled by default (dual-write).
+      Disable one only if you need to operate in a single-store mode.
+    </p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px 12px;
+        border:1px solid ${sqlOn?'var(--green-dim)':'var(--border)'};border-radius:var(--radius);
+        background:${sqlOn?'rgba(63,185,80,.06)':'var(--surface2)'};transition:all .15s">
+        <input type="checkbox" id="cfgSqlite" ${sqlOn?'checked':''} style="width:15px;height:15px;margin-top:1px;flex-shrink:0;accent-color:var(--green)">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text)">✅ Write to SQLite
+            ${sqlOn?'<span class="tag tag-green" style="margin-left:4px">active</span>':'<span class="tag" style="margin-left:4px">disabled</span>'}
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
+            Structured data (projects, versions, reviews, artifacts, proposals, feedback) stored in
+            <code style="font-size:10px;background:var(--surface3);padding:1px 5px;border-radius:3px">projects_data/accelerator.db</code>
+          </div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:10px 12px;
+        border:1px solid ${fileOn?'var(--accent-dim)':'var(--border)'};border-radius:var(--radius);
+        background:${fileOn?'rgba(88,166,255,.06)':'var(--surface2)'};transition:all .15s">
+        <input type="checkbox" id="cfgFileWrite" ${fileOn?'checked':''} style="width:15px;height:15px;margin-top:1px;flex-shrink:0;accent-color:var(--accent)">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--text)">📄 Write to JSON files
+            ${fileOn?'<span class="tag tag-blue" style="margin-left:4px">active</span>':'<span class="tag" style="margin-left:4px">disabled</span>'}
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
+            Mirrors all data to <code style="font-size:10px;background:var(--surface3);padding:1px 5px;border-radius:3px">projects.json</code>,
+            <code style="font-size:10px;background:var(--surface3);padding:1px 5px;border-radius:3px">artifacts.json</code>,
+            hierarchy and proposal JSON files alongside the database.
+          </div>
+        </div>
+      </label>
+    </div>
+    <div style="margin-top:10px;padding:8px 12px;border-radius:var(--radius);
+      background:${sqlOn&&fileOn?'rgba(63,185,80,.06)':sqlOn?'rgba(88,166,255,.06)':'rgba(210,153,34,.08)'};
+      border:1px solid ${sqlOn&&fileOn?'var(--green-dim)':sqlOn?'var(--accent-dim)':'var(--yellow)'}">
+      <span style="font-size:11px;font-weight:600;color:${sqlOn&&fileOn?'var(--green)':sqlOn?'var(--accent)':'var(--yellow)'}">
+        ${sqlOn&&fileOn?'⚡ Dual-write mode — SQLite + JSON files (recommended)':
+          sqlOn?'🗄️ SQLite-only mode':
+          fileOn?'📄 File-only mode (legacy)':
+          '⚠️ Warning: both stores disabled — data will not be persisted'}
+      </span>
+    </div>
+    <p style="font-size:10px;color:var(--text-muted);margin-top:8px">
+      Changing storage mode takes effect immediately on next write. Restart not required.
+      Re-run <code>python scripts/seed_sqlite.py</code> to populate the SQLite DB with fresh test data.
+    </p>
   </div>`;
 
   const configCard=`<div class="card">
@@ -2315,7 +2740,7 @@ async function viewAdmin(){
       <button class="btn btn-xs btn-yellow" style="margin-left:8px" onclick="archiveProject('${s.project_id}')">Archive</button></li>`).join('')}</ul>
   </div>`:'';
 
-  return healthCard+configCard+lifecycleCard+suggestCard;
+  return healthCard+storageCard+configCard+lifecycleCard+suggestCard;
 }
 
 async function saveAdminConfig(){
@@ -2323,6 +2748,8 @@ async function saveAdminConfig(){
     max_active_projects:parseInt(document.getElementById('cfgMaxP').value)||5,
     default_persona:document.getElementById('cfgPersona').value,
     admin_pin:document.getElementById('cfgPin').value,
+    sqlite_write_enabled:document.getElementById('cfgSqlite')?.checked!==false,
+    file_write_enabled:document.getElementById('cfgFileWrite')?.checked!==false,
     api_keys:{}
   };
   const g=document.getElementById('cfgGroq').value;
