@@ -34,6 +34,9 @@ RUN pip install --no-cache-dir -e .
 # resolve in air-gapped builds; the app falls back to files_only mode).
 RUN pip install --no-cache-dir -e ".[ai]" || true
 
+# Install document parsing extras (pypdf, python-docx) – also soft-fail safe.
+RUN pip install --no-cache-dir -e ".[docs]" || true
+
 # ── Application source ────────────────────────────────────────────────────────
 COPY admin/           ./admin/
 COPY ai_backends/     ./ai_backends/

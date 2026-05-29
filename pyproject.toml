@@ -18,6 +18,10 @@ ai = [
     "ollama>=0.1.0",
     "google-genai>=1.0.0",
 ]
+docs = [
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
+]
 agents = [
     "strands-agents>=0.1.0",
     "strands-agents-tools>=0.1.0",
