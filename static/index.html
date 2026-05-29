@@ -275,6 +275,40 @@ details[open] .chevron{transform:rotate(90deg);}
 #toast.show{opacity:1;}
 #toast.ok{border-color:var(--green-dim);color:var(--green);}
 #toast.err{border-color:var(--red);color:var(--red);}
+
+/* ─── Workflow steps ─────────────────────────────────────────── */
+.workflow-steps{display:flex;flex-direction:column;gap:0;margin:12px 0;}
+.workflow-step{display:flex;align-items:flex-start;gap:14px;padding:10px 0;position:relative;}
+.workflow-step:not(:last-child)::after{content:'';position:absolute;left:17px;top:42px;
+  width:2px;height:calc(100% - 10px);background:var(--border);z-index:0;}
+.workflow-step-num{width:34px;height:34px;border-radius:50%;background:var(--accent-dim);
+  color:var(--accent);display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:13px;flex-shrink:0;position:relative;z-index:1;border:2px solid var(--accent);}
+.workflow-step-body{flex:1;padding-top:4px;}
+.workflow-step-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;}
+.workflow-step-desc{font-size:11px;color:var(--text-dim);margin-bottom:6px;}
+
+/* ─── Deep Dive improved ─────────────────────────────────────── */
+.dd-section-header{display:flex;align-items:center;gap:8px;padding:10px 12px;
+  background:var(--surface2);border-radius:var(--radius);cursor:pointer;
+  transition:background var(--transition);}
+.dd-section-header:hover{background:var(--surface3);}
+.dd-item-row{display:flex;align-items:flex-start;gap:8px;padding:5px 6px;
+  font-size:12px;border-radius:4px;transition:background var(--transition);width:100%;}
+.dd-item-row:hover{background:var(--surface2);}
+.dd-item-row input[type=checkbox]{margin-top:2px;flex-shrink:0;cursor:pointer;}
+.dd-sticky-bar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);
+  padding:8px 12px;margin:8px -12px -10px;border-radius:0 0 var(--radius-lg) var(--radius-lg);
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;z-index:10;}
+
+/* ─── Coverage pills ─────────────────────────────────────────── */
+.coverage-pills{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;}
+.coverage-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;
+  border-radius:20px;font-size:11px;font-weight:500;border:1px solid;}
+.coverage-pill.covered{border-color:var(--green-dim);color:var(--green);background:rgba(63,185,80,.08);}
+.coverage-pill.missing{border-color:var(--border2);color:var(--text-muted);background:var(--surface2);}
+.coverage-bar-outer{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin:6px 0;}
+.coverage-bar-inner{height:100%;border-radius:3px;transition:width .4s ease;}
 </style>
 
 
@@ -399,6 +433,13 @@ function renderHeader(){
 
 function switchTab(tab){state.tab=tab;render();}
 
+async function refreshReviewList() {
+  const main = document.getElementById('main');
+  if (!main) return;
+  main.innerHTML = '<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>';
+  main.innerHTML = await viewReviews();
+}
+
 async function render(){
   renderHeader();
   const main=document.getElementById('main');
@@ -513,6 +554,46 @@ async function viewDashboard(){
       ${gaps?`<div class="stat red"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
     </div>`;
 
+  // Workflow guide for new/empty projects
+  const workflowGuide=totalV===0?`<div class="card" style="border-color:var(--accent-dim)">
+    <div class="card-title mb"><span class="icon">🚀</span>Getting Started</div>
+    <p class="card-subtitle">Follow these steps to get the most out of Contexta.</p>
+    <div class="workflow-steps">
+      <div class="workflow-step">
+        <div class="workflow-step-num">1</div>
+        <div class="workflow-step-body">
+          <div class="workflow-step-title">📎 Add Documents</div>
+          <div class="workflow-step-desc">Upload files or paste text in the Ingest tab</div>
+          <button class="btn btn-sm btn-outline" onclick="switchTab('ingest')">Go to Ingest</button>
+        </div>
+      </div>
+      <div class="workflow-step">
+        <div class="workflow-step-num">2</div>
+        <div class="workflow-step-body">
+          <div class="workflow-step-title">🔨 Analyse Documents</div>
+          <div class="workflow-step-desc">Run intelligence extraction to identify risks, assumptions, dependencies</div>
+          <button class="btn btn-sm btn-outline" onclick="buildContext()">Analyse Documents</button>
+        </div>
+      </div>
+      <div class="workflow-step">
+        <div class="workflow-step-num">3</div>
+        <div class="workflow-step-body">
+          <div class="workflow-step-title">🔍 Run a Review</div>
+          <div class="workflow-step-desc">Choose a review role and let AI analyse your documents</div>
+          <button class="btn btn-sm btn-outline" onclick="switchTab('reviews')">Go to Reviews</button>
+        </div>
+      </div>
+      <div class="workflow-step">
+        <div class="workflow-step-num">4</div>
+        <div class="workflow-step-body">
+          <div class="workflow-step-title">📋 Compare &amp; Iterate</div>
+          <div class="workflow-step-desc">Build multiple versions as your documents evolve</div>
+          <button class="btn btn-sm btn-outline" onclick="switchTab('versions')">Browse Versions</button>
+        </div>
+      </div>
+    </div>
+  </div>`:'';
+
   const trend=metrics.trend||[];
   let trendHtml='';
   if(trend.length>1){
@@ -537,7 +618,7 @@ async function viewDashboard(){
     <div class="card-title mb"><span class="icon">⚡</span>Quick Actions</div>
     <div class="flex">
       <button class="btn" onclick="switchTab('ingest')">📎 Ingest Artefacts</button>
-      <button class="btn btn-outline" onclick="buildContext()">🔨 Run Intelligence</button>
+      <button class="btn btn-outline" onclick="buildContext()">🔨 Analyse Documents</button>
       <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Run Review</button>
       <button class="btn btn-ghost btn-sm" onclick="switchTab('versions')">📋 Browse Versions</button>
       <button class="btn-icon" title="Toggle debug" onclick="toggleDebug()" style="margin-left:auto">🐛</button>
@@ -550,7 +631,7 @@ async function viewDashboard(){
       project=${pid} | version=${ds.version||'(latest)'} | review=${ds.review||'(active)'} | phase=${ds.phase||'–'}
     </code></div>`:''
 
-  return ctxCard+statsHtml+trendHtml+qa+debugHtml;
+  return ctxCard+statsHtml+workflowGuide+trendHtml+qa+debugHtml;
 }
 
 function navigateToVersion(vid){state._dashVersion=vid;state._dashReview='';state.tab='dashboard';render();}
@@ -895,7 +976,7 @@ async function viewIntelligence(){
   if(!i.risks&&!i.constraints&&!i.scope)
     return`<div class="card"><div class="empty"><div class="empty-icon">🧠</div>
       <p>No intelligence built yet.</p>
-      <button class="btn mt" onclick="buildContext()">Run Intelligence Now</button></div></div>`;
+      <button class="btn mt" onclick="buildContext()">Analyse Documents</button></div></div>`;
 
   const ds=metrics.data_source||{};
   let revFindings={};
@@ -977,7 +1058,7 @@ async function viewVersions(){
   if(!totalV)return`<div class="card"><div class="empty">
     <div class="empty-icon">📋</div>
     <p>No versions yet. Build intelligence to create the first snapshot.</p>
-    <button class="btn mt" onclick="buildContext()">Run Intelligence</button></div></div>`;
+    <button class="btn mt" onclick="buildContext()">Analyse Documents</button></div></div>`;
 
   // Sort control
   const sort=state._versionSort||'newest';
@@ -1108,7 +1189,7 @@ async function viewVersions(){
 
   return`<div class="card">
     <div class="flex-between mb">
-      <div class="card-title"><span class="icon">📋</span>Project History</div>
+      <div class="card-title"><span class="icon">📋</span>Analysis History</div>
     </div>
     ${sortBar}
     ${expandBar}
@@ -1263,6 +1344,43 @@ async function viewReviewDetail(rid){
       <p style="font-size:11px;color:var(--text-muted)">No file information recorded for this review.</p></div>`;
   }
 
+  // Description field
+  if(r.description){
+    html+=`<div class="mb" style="background:var(--surface2);border-radius:var(--radius);padding:8px 12px">
+      <p style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Review Purpose</p>
+      <p style="font-size:12px;color:var(--text-dim);font-style:italic">${escHtml(r.description)}</p>
+    </div>`;
+  }
+
+  // PM Coverage Assessment
+  const PM_COVERAGE_AREAS = [
+    {id:'risks', label:'Risk Management', keywords:['risk','threat','impact','probability','mitigation']},
+    {id:'timeline', label:'Timeline & Schedule', keywords:['timeline','schedule','deadline','milestone','sprint','week','month']},
+    {id:'budget', label:'Budget & Cost', keywords:['budget','cost','price','spend','financial','roi']},
+    {id:'resources', label:'Resource & Staffing', keywords:['resource','team','staff','capacity','skill','headcount']},
+    {id:'dependencies', label:'Dependencies', keywords:['depend','prerequisite','block','integration']},
+    {id:'stakeholders', label:'Stakeholders', keywords:['stakeholder','sponsor','owner','client','customer']},
+    {id:'quality', label:'Quality & Testing', keywords:['quality','test','qa','validation','acceptance','criteria']},
+    {id:'commercials', label:'Commercials & Contracts', keywords:['contract','sla','penalty','commercial','legal','liability']},
+    {id:'governance', label:'Governance & Compliance', keywords:['governance','compliance','audit','regulatory','policy','security']},
+    {id:'change', label:'Change Management', keywords:['change','transition','adoption','training','onboard']},
+  ];
+  const textToSearch=(Object.values(r.findings||{}).flat().join(' ')+(r.questions||[]).join(' ')+(r.summary||'')).toLowerCase();
+  const coveredAreas=PM_COVERAGE_AREAS.filter(a=>a.keywords.some(kw=>textToSearch.includes(kw)));
+  const covScore=coveredAreas.length;
+  const covPct=Math.round(covScore/PM_COVERAGE_AREAS.length*100);
+  const covColor=covScore>=8?'var(--green)':covScore>=5?'var(--yellow)':'var(--red)';
+  html+=`<div class="mb">
+    <div class="flex-between mb" style="margin-bottom:6px">
+      <p class="card-section" style="margin:0">Coverage Assessment</p>
+      <span style="font-size:12px;font-weight:600;color:${covColor}">${covScore}/10 areas covered</span>
+    </div>
+    <div class="coverage-bar-outer"><div class="coverage-bar-inner" style="width:${covPct}%;background:${covColor}"></div></div>
+    <div class="coverage-pills">
+      ${PM_COVERAGE_AREAS.map(a=>{const isCov=coveredAreas.some(c=>c.id===a.id);return`<span class="coverage-pill ${isCov?'covered':'missing'}">${isCov?'✓':'○'} ${escHtml(a.label)}</span>`}).join('')}
+    </div>
+  </div>`;
+
   if(r.categories?.length){
     html+=`<div class="flex gap-sm mb">${r.categories.filter(Boolean).map(c=>`<span class="tag">${escHtml(c)}</span>`).join('')}</div>`;
   }
@@ -1369,11 +1487,15 @@ async function viewReviews(){
   const runCard=`<div class="card">
     <div class="card-title mb"><span class="icon">🔍</span>Run Persona Review</div>
     <div class="flex mb">
-      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">Persona</label>
-        <select id="personaSelect" style="width:100%;margin-top:3px">${(personas.personas||[]).map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select></div>
-      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">AI Backend</label>
+      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">Review Role</label>
+        <select id="personaSelect" style="width:100%;margin-top:3px">${(personas.personas||[]).map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select>
+        <p style="font-size:10px;color:var(--text-muted);margin-top:3px">Each role focuses on different aspects of your document</p>
+      </div>
+      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">AI Model</label>
         <select id="backendSelect" style="width:100%;margin-top:3px">${backendOpts}</select></div>
     </div>
+    <div class="form-row"><label>Review Description / Purpose <span style="font-size:10px;color:var(--text-muted)">(optional)</span></label>
+      <input id="reviewDescription" placeholder="e.g. Initial pre-sales assessment of Cloud Migration SoW"></div>
     <div class="form-row"><label>Custom Prompt <span style="font-size:10px;color:var(--text-muted)">(optional – additional context for AI)</span></label>
       <textarea id="customPrompt" rows="2" placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available."></textarea>
     </div>
@@ -1431,6 +1553,7 @@ async function viewReviews(){
           </summary>
           <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
             ${rev.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(rev.summary.slice(0,180))}</p>`:''}
+            ${rev.description?`<p style="font-size:11px;color:var(--text-muted);margin-bottom:8px;font-style:italic">${escHtml(rev.description)}</p>`:''}
             <div class="flex gap-sm">
               <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rid}')">Full Details</button>
               ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
@@ -1454,10 +1577,13 @@ async function runReview(){
   const persona=document.getElementById('personaSelect').value;
   const backend=document.getElementById('backendSelect').value;
   const custom=document.getElementById('customPrompt').value.trim();
+  const desc=document.getElementById('reviewDescription')?.value.trim()||'';
+  state._reviewDescription=desc;
   const el=document.getElementById('reviewResult');
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running review…</span>';
   const body={project_id:state.current.id,persona,ai_backend:backend};
   if(custom)body.custom_prompt=custom;
+  if(desc)body.description=desc;
   const r=await api('POST','/api/review',body);
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
 
@@ -1497,7 +1623,7 @@ async function runReview(){
   if(r.raw_output)html+=`<details style="margin-top:4px"><summary class="collapse-header" style="list-style:none">
     <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">Raw AI Output</span>
     </summary><div class="prompt-box">${escHtml(r.raw_output)}</div></details>`;
-  html+=`<button class="btn btn-sm btn-ghost mt" onclick="render()">Refresh List</button></div>`;
+  html+=`<button class="btn btn-sm btn-ghost mt" onclick="refreshReviewList()">Refresh List</button></div>`;
   el.innerHTML=html;
 }
 </script>
@@ -1528,57 +1654,83 @@ async function runDeepDive(){
     </div>`;
 
   let idx=0;
-  function ddItems(items,mapFn){
-    return items.map(item=>{
-      const text=mapFn(item);
-      const id=idx++;
-      return`<li style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;font-size:12px">
-        <input type="checkbox" class="dd-item" data-idx="${id}" checked style="margin-top:2px;flex-shrink:0">
-        ${text}
-      </li>`;
-    }).join('');
+
+  function ddSection(sectionId, icon, label, items, rowFn){
+    if(!items||!items.length)return'';
+    const total=items.length;
+    return`<details open style="margin-bottom:6px">
+      <summary class="dd-section-header">
+        <span class="chevron">▶</span>
+        <span>${icon}</span>
+        <strong style="font-size:12px">${label}</strong>
+        <span class="tag tag-red" style="margin-left:4px">${total}</span>
+        <span id="ddcount_${sectionId}" style="font-size:11px;color:var(--text-muted);margin-left:4px">0 selected</span>
+      </summary>
+      <div style="padding:4px 0 2px">
+        ${items.map((item,i)=>{const chkIdx=idx++;return`<div class="dd-item-row">
+          <input type="checkbox" class="dd-item" data-idx="${chkIdx}" data-section="${sectionId}" checked
+            onchange="updateDDCount('${sectionId}')">
+          ${rowFn(item)}
+        </div>`;}).join('')}
+      </div>
+    </details>`;
   }
 
   if(dd.missing_areas?.length){
-    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
-      <span class="chevron">▶</span><strong>Missing Areas</strong><span class="tag tag-red" style="margin-left:4px">${dd.missing_areas.length}</span>
-    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
-      ${ddItems(dd.missing_areas,m=>`<span class="tag ${m.severity==='high'?'tag-red':'tag-yellow'}">${m.severity}</span> <span>${escHtml(m.area)}: ${escHtml(m.suggestion)}</span>`)}
-    </ul></details>`;
+    html+=ddSection('missing','🔴','Missing Areas',dd.missing_areas,m=>
+      `<span class="tag ${m.severity==='high'?'tag-red':'tag-yellow'}" style="flex-shrink:0">${m.severity}</span><span>${escHtml(m.area)}: ${escHtml(m.suggestion)}</span>`);
   }
   if(dd.risk_flags?.length){
-    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
-      <span class="chevron">▶</span><strong>Risk Flags</strong><span class="tag tag-red" style="margin-left:4px">${dd.risk_flags.length}</span>
-    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
-      ${ddItems(dd.risk_flags.slice(0,10),f=>`<span class="tag ${f.severity==='high'?'tag-red':'tag-yellow'}">${f.severity}</span> ${escHtml(f.flag)}`)}
-    </ul></details>`;
+    html+=ddSection('risks','⚠️','Risk Flags',dd.risk_flags.slice(0,10),f=>
+      `<span class="tag ${f.severity==='high'?'tag-red':'tag-yellow'}" style="flex-shrink:0">${f.severity}</span><span>${escHtml(f.flag)}</span>`);
   }
   if(dd.clarification_questions?.length){
-    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
-      <span class="chevron">▶</span><strong>Clarification Questions</strong><span class="tag" style="margin-left:4px">${dd.clarification_questions.length}</span>
-    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
-      ${ddItems(dd.clarification_questions,q=>`❓ ${escHtml(q)}`)}
-    </ul></details>`;
+    html+=ddSection('questions','❓','Questions',dd.clarification_questions,q=>
+      `<span>❓ ${escHtml(q)}</span>`);
   }
   if(dd.suggested_additions?.length){
-    html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
-      <span class="chevron">▶</span><strong>Suggested Additions</strong><span class="tag" style="margin-left:4px">${dd.suggested_additions.length}</span>
-    </summary><ul style="list-style:none;padding-left:8px" class="collapse-body">
-      ${ddItems(dd.suggested_additions,s=>`<span class="tag ${s.priority==='high'?'tag-red':'tag-yellow'}">${s.priority}</span> <span class="tag">${s.category}</span> ${escHtml(s.suggestion)}`)}
-    </ul></details>`;
+    html+=ddSection('suggestions','💡','Suggestions',dd.suggested_additions,s=>
+      `<span class="tag ${s.priority==='high'?'tag-red':'tag-yellow'}" style="flex-shrink:0">${s.priority}</span><span class="tag" style="flex-shrink:0">${escHtml(s.category)}</span><span>${escHtml(s.suggestion)}</span>`);
   }
 
-  html+=`<div class="flex gap-sm mt">
+  html+=`<div class="dd-sticky-bar">
+    <span id="ddTotalCount" style="font-size:11px;color:var(--text-dim)">0 of 0 selected</span>
     <button class="btn btn-sm" onclick="acceptAllSuggestions()">Accept All</button>
-    <button class="btn btn-sm btn-outline" onclick="addSelectedToPrompt()">Add Selected to Prompt</button>
+    <button class="btn btn-sm btn-outline" onclick="addSelectedToPrompt()">Add to Prompt</button>
     <button class="btn btn-sm btn-ghost" onclick="toggleAllDDItems(true)">Select All</button>
     <button class="btn btn-sm btn-ghost" onclick="toggleAllDDItems(false)">Deselect All</button>
   </div>
   <div id="ddFeedbackResult" class="mt"></div></div>`;
   el.innerHTML=html;
+  // init counts after render
+  updateDDCount();
 }
 
-function toggleAllDDItems(c){document.querySelectorAll('.dd-item').forEach(cb=>cb.checked=c);}
+function toggleAllDDItems(c){document.querySelectorAll('.dd-item').forEach(cb=>cb.checked=c);updateDDCount();}
+
+function updateDDCount(sectionId){
+  // Update per-section count
+  if(sectionId){
+    const sectionCbs=document.querySelectorAll(`.dd-item[data-section="${sectionId}"]`);
+    const selCount=[...sectionCbs].filter(cb=>cb.checked).length;
+    const el=document.getElementById(`ddcount_${sectionId}`);
+    if(el)el.textContent=`${selCount} selected`;
+  }else{
+    // Update all sections
+    ['missing','risks','questions','suggestions'].forEach(s=>{
+      const cbs=document.querySelectorAll(`.dd-item[data-section="${s}"]`);
+      if(!cbs.length)return;
+      const sc=[...cbs].filter(cb=>cb.checked).length;
+      const el=document.getElementById(`ddcount_${s}`);
+      if(el)el.textContent=`${sc} selected`;
+    });
+  }
+  // Update total
+  const all=document.querySelectorAll('.dd-item');
+  const sel=[...all].filter(cb=>cb.checked).length;
+  const tot=document.getElementById('ddTotalCount');
+  if(tot)tot.textContent=`${sel} of ${all.length} selected`;
+}
 
 function _getSelectedDDItems(){
   const dd=state.lastDeepDive?.deep_dive||{};
@@ -1915,8 +2067,10 @@ async function createProject(){
 }
 
 async function selectProject(id){
+  const prev=state.current?.id;
   state.current=state.projects.find(x=>x.id===id)||state.current;
-  state.tab='dashboard';render();
+  if(id!==prev)state.tab='dashboard';
+  render();
 }
 
 async function buildContext(){

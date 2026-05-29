@@ -161,6 +161,9 @@ class Review:
     # Deep dive results (if AI mode was on)
     deep_dive: Optional[Dict[str, Any]] = None
 
+    # Review description / purpose (optional)
+    description: str = ""
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -184,6 +187,7 @@ class Review:
             "summary": self.summary[:120] if self.summary else "",
             "included_files": self.included_files,
             "categories": self.categories,
+            "description": self.description,
         }
 
 
@@ -415,6 +419,7 @@ class HierarchyStore:
         categories: Optional[List[str]] = None,
         ai_metadata: Optional[Dict[str, Any]] = None,
         deep_dive: Optional[Dict[str, Any]] = None,
+        description: str = "",
     ) -> Review:
         """Create a new review (execution on a version)."""
         phase_id = self.get_current_phase()
@@ -440,6 +445,7 @@ class HierarchyStore:
             categories=categories or [],
             ai_metadata=ai_metadata or {},
             deep_dive=deep_dive,
+            description=description,
         )
 
         # Save review

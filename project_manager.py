@@ -728,6 +728,7 @@ def run_persona_review(
     persona_name: str,
     ai_backend: str = "files_only",
     custom_prompt: Optional[str] = None,
+    description: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a persona-driven review for a project.
 
@@ -890,6 +891,7 @@ def run_persona_review(
             categories=categories,
             ai_metadata=review.get("ai_metadata", {}),
             deep_dive=review.get("deep_dive"),
+            description=description or "",
         )
     except Exception:
         pass

@@ -412,6 +412,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         persona_name = body.get("persona")
         ai_backend = body.get("ai_backend", "files_only")
         custom_prompt = body.get("custom_prompt")
+        description = body.get("description")
 
         if not project_id:
             self._json_response({"error": "project_id required"}, status=400)
@@ -426,6 +427,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 persona_name=persona_name,
                 ai_backend=ai_backend,
                 custom_prompt=custom_prompt,
+                description=description,
             )
             self._json_response(result)
         except ValueError as e:
