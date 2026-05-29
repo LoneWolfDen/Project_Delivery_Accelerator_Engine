@@ -1,26 +1,28 @@
-"""Persona Review Engine.
+"""Persona Review Engine – v2.
 
-Runs structured analysis using predefined personas (roles).
-Each persona has a specific prompt template and output format.
+Role-to-group mapping: users select familiar role names; the engine maps
+them to grouped intelligence personas behind the scenes.
 
-Supports backends:
-- files_only: Pattern-based analysis (no AI, instant, deterministic)
-- ollama: Local LLM via Ollama API
-- bedrock: AWS Bedrock (Claude, etc.)
-- gemini: Google Gemini Pro via API key
-
-The engine:
-1. Loads the persona YAML definition
-2. Builds a focused prompt from context summary + persona template
-3. Optionally appends user-supplied custom context
-4. Runs analysis (AI or heuristic)
-5. Returns structured ReviewOutput with prompt visibility
+Key design decisions
+────────────────────
+- UI shows role names ("Solution Architect", "DevOps Engineer", …)
+- Internally each role maps to a persona group YAML
+- Up to 3 roles per run; multiple roles in the same group are deduplicated
+- Each group produces one structured review; results are merged with
+  per-role attribution in the output
+- Output structure: summary, findings_by_role, deep_dive, recommended_actions
+- files_only falls back to heuristic keyword analysis (unchanged)
+- Any real AI backend calls the LLM once per persona group
+- custom_prompt is appended to every prompt; findings vary per persona+context
 """
 
+from __future__ import annotations
+
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -28,244 +30,220 @@ from models.project import ReviewOutput
 
 PERSONAS_DIR = Path(__file__).parent / "definitions"
 
-# Available personas (maps user-friendly names to filenames)
-AVAILABLE_PERSONAS = {
-    "solution_architect": "solution_architect.yaml",
-    "delivery_manager": "delivery_manager.yaml",
-    "product_owner": "product_owner.yaml",
-    "resource_manager": "resource_manager.yaml",
+# ── Role → persona group mapping ─────────────────────────────────────────────
+ROLE_TO_GROUP: Dict[str, str] = {
+    "Solution Architect":  "architecture_strategy",
+    "Enterprise Architect":"architecture_strategy",
+    "Delivery Manager":    "solution_delivery",
+    "Product Owner":       "product_value",
+    "Resource Manager":    "people_capacity",
+    "DevOps Engineer":     "platform_reliability",
+    "Cloud Architect":     "platform_reliability",
+    "Platform Engineer":   "platform_reliability",
+    "QA / Test Lead":      "platform_reliability",
+    "Data Engineer":       "data_security_cost",
+    "Security Architect":  "data_security_cost",
+    "FinOps":              "data_security_cost",
 }
 
-# Valid AI backends
+# ── Persona group → YAML filename ────────────────────────────────────────────
+GROUP_TO_FILE: Dict[str, str] = {
+    "architecture_strategy": "architecture_strategy.yaml",
+    "solution_delivery":     "solution_delivery.yaml",
+    "product_value":         "product_value.yaml",
+    "people_capacity":       "people_capacity.yaml",
+    "platform_reliability":  "platform_reliability.yaml",
+    "data_security_cost":    "data_security_cost.yaml",
+}
+
+# Legacy persona IDs (kept for backward-compatibility with stored reviews)
+LEGACY_PERSONAS: Dict[str, str] = {
+    "solution_architect": "architecture_strategy",
+    "delivery_manager":   "solution_delivery",
+    "product_owner":      "product_value",
+    "resource_manager":   "people_capacity",
+}
+
+MAX_ROLES_PER_RUN = 3
+DEFAULT_ROLES = ["Solution Architect", "Delivery Manager", "Product Owner"]
+
 VALID_BACKENDS = {"files_only", "ollama", "bedrock", "gemini", "groq", "openrouter"}
 
 
-def list_personas() -> List[Dict[str, str]]:
-    """List all available personas with their metadata.
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def list_roles() -> List[Dict[str, str]]:
+    """Return all visible roles with their group metadata.
 
     Returns:
-        List of dicts with keys: id, name, role.
+        List of dicts: {role, group_id, group_name, purpose}
     """
-    personas = []
-    for persona_id, filename in AVAILABLE_PERSONAS.items():
-        persona = load_persona(persona_id)
-        personas.append({
-            "id": persona_id,
-            "name": persona["name"],
-            "role": persona["role"],
+    roles = []
+    seen_groups: Dict[str, Dict[str, Any]] = {}
+
+    for role, group_id in ROLE_TO_GROUP.items():
+        if group_id not in seen_groups:
+            try:
+                grp = _load_group(group_id)
+                seen_groups[group_id] = grp
+            except Exception:
+                seen_groups[group_id] = {}
+
+        grp = seen_groups[group_id]
+        roles.append({
+            "id":         role,          # used as the value sent from UI
+            "name":       role,          # display label
+            "group_id":   group_id,
+            "group_name": grp.get("name", group_id),
+            "purpose":    grp.get("purpose", ""),
         })
-    return personas
+    return roles
 
 
-def load_persona(persona_name: str) -> Dict[str, Any]:
-    """Load a persona definition from YAML.
-
-    Args:
-        persona_name: e.g. 'solution_architect', 'delivery_manager'
-
-    Returns:
-        Persona config dict with keys: name, role, prompt_template,
-        output_format, focus_areas.
-
-    Raises:
-        ValueError: If persona not found.
-    """
-    filename = AVAILABLE_PERSONAS.get(persona_name)
-    if not filename:
-        raise ValueError(
-            f"Unknown persona: '{persona_name}'. "
-            f"Available: {', '.join(AVAILABLE_PERSONAS.keys())}"
-        )
-
-    persona_path = PERSONAS_DIR / filename
-    if not persona_path.exists():
-        raise ValueError(f"Persona definition file not found: {persona_path}")
-
-    with open(persona_path) as f:
-        return yaml.safe_load(f)
+def list_personas() -> List[Dict[str, str]]:
+    """Backward-compatible alias — returns roles list."""
+    return list_roles()
 
 
 def run_review(
-    persona_name: str,
+    roles: List[str] | str,
     context: Dict[str, Any],
     ai_backend: Optional[str] = None,
     custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run a persona-driven review against project context.
+    """Run a multi-role review against project context.
 
     Args:
-        persona_name: Which persona to use (e.g. 'solution_architect').
-        context: Built project intelligence dict (from build_context).
-        ai_backend: 'files_only', 'ollama', 'bedrock', or 'gemini' (default: files_only).
-        custom_prompt: Optional additional user context/instructions that the AI
-            must consider when evaluating. Appended to the persona prompt.
+        roles: One role name or list of role names (max 3).
+            Accepts legacy persona IDs (e.g. ``"solution_architect"``) too.
+        context: Built project intelligence dict.
+        ai_backend: Backend name; defaults to ``"files_only"``.
+        custom_prompt: Free-text additional context from the user.
+            Included in every AI prompt — so results vary when changed.
 
     Returns:
-        Review output dict with keys: persona, timestamp, findings (per section),
-        summary, recommendations, questions, prompt_used, raw_output.
-        The 'prompt_used' field shows exactly what was sent to the AI.
+        Review dict with keys:
+            persona, persona_id, roles, timestamp, ai_backend,
+            findings_by_role, findings, summary, recommendations,
+            questions, prompt_used, raw_output, ai_metadata
     """
-    persona = load_persona(persona_name)
     backend = ai_backend or "files_only"
-
     if backend not in VALID_BACKENDS:
-        available = ", ".join(sorted(VALID_BACKENDS))
-        raise ValueError(f"Unknown AI backend: '{backend}'. Use: {available}")
+        raise ValueError(f"Unknown AI backend: '{backend}'. Use: {sorted(VALID_BACKENDS)}")
+
+    # Normalise roles input
+    role_list = _normalise_roles(roles)
+    if not role_list:
+        raise ValueError("At least one role must be specified.")
+
+    # Map roles → distinct groups (preserve order, deduplicate groups)
+    groups_needed: Dict[str, List[str]] = {}  # group_id → [role names]
+    for role in role_list:
+        gid = _resolve_group(role)
+        groups_needed.setdefault(gid, []).append(role)
+
+    # Run one review per group
+    group_results: Dict[str, Dict[str, Any]] = {}
+    for gid, contributing_roles in groups_needed.items():
+        try:
+            group_results[gid] = _run_group_review(
+                group_id=gid,
+                contributing_roles=contributing_roles,
+                context=context,
+                backend=backend,
+                custom_prompt=custom_prompt,
+            )
+        except Exception as exc:
+            group_results[gid] = {
+                "error": str(exc),
+                "roles": contributing_roles,
+                "findings": {},
+            }
+
+    # Merge results
+    return _merge_group_results(group_results, role_list, backend, custom_prompt)
+
+
+# ── Group review runner ───────────────────────────────────────────────────────
+
+def _run_group_review(
+    group_id: str,
+    contributing_roles: List[str],
+    context: Dict[str, Any],
+    backend: str,
+    custom_prompt: Optional[str],
+) -> Dict[str, Any]:
+    """Run a review for one persona group."""
+    persona = _load_group(group_id)
 
     if backend == "files_only":
-        return _run_files_only_review(persona, context, custom_prompt)
-    else:
-        return _run_ai_review(persona, context, backend, custom_prompt)
+        return _run_files_only_review(persona, contributing_roles, context, custom_prompt)
+    return _run_ai_review(persona, contributing_roles, context, backend, custom_prompt)
 
 
-def build_review_prompt(
-    persona: Dict[str, Any],
-    context: Dict[str, Any],
-    custom_prompt: Optional[str] = None,
-) -> str:
-    """Build a structured prompt for AI review.
-
-    Combines persona template with context summary for token-efficient prompts.
-    If custom_prompt is provided, it's appended as additional user context.
-
-    Args:
-        persona: Loaded persona definition.
-        context: Project intelligence dict.
-        custom_prompt: Optional additional context/instructions from the user.
-
-    Returns:
-        Full prompt string ready for AI submission.
-    """
-    from processors.context_builder import build_context_summary
-
-    context_summary = build_context_summary(context)
-    prompt_template = persona.get("prompt_template", "")
-    focus_areas = persona.get("focus_areas", [])
-    output_sections = persona.get("output_format", {}).get("sections", [])
-
-    prompt_parts = [
-        f"# Role: {persona['name']}",
-        "",
-        prompt_template.strip(),
-        "",
-        "## Focus Areas",
-        "",
-    ]
-    for area in focus_areas:
-        prompt_parts.append(f"- {area}")
-
-    prompt_parts.extend([
-        "",
-        "## Required Output Sections",
-        "",
-    ])
-    for section in output_sections:
-        prompt_parts.append(f"- {section}")
-
-    prompt_parts.extend([
-        "",
-        "## Project Context",
-        "",
-        context_summary,
-    ])
-
-    # Append custom user prompt if provided
-    if custom_prompt and custom_prompt.strip():
-        prompt_parts.extend([
-            "",
-            "## Additional Context (User-Provided)",
-            "",
-            custom_prompt.strip(),
-        ])
-
-    prompt_parts.extend([
-        "",
-        "## Instructions",
-        "",
-        "Based on the project context above, provide your review.",
-        "For each output section, list specific findings with evidence.",
-        "Be concise. Use bullet points. Flag severity (Critical/High/Medium/Low).",
-        "End with open questions that need resolution.",
-    ])
-
-    return "\n".join(prompt_parts)
-
-
-# ──────────────────────────────────────────────────────────────
-# Files-only mode (heuristic, no AI)
-# ──────────────────────────────────────────────────────────────
-
+# ── Files-only (heuristic) ────────────────────────────────────────────────────
 
 def _run_files_only_review(
-    persona: Dict[str, Any], context: Dict[str, Any], custom_prompt: Optional[str] = None
+    persona: Dict[str, Any],
+    contributing_roles: List[str],
+    context: Dict[str, Any],
+    custom_prompt: Optional[str],
 ) -> Dict[str, Any]:
-    """Run a deterministic, pattern-based review without AI.
-
-    Analyses the context using persona focus areas to filter
-    and categorise existing extractions.
-    """
+    """Heuristic review — keyword-based, no LLM call."""
     persona_name = persona["name"]
-    focus_areas = persona.get("focus_areas", [])
+    group_id     = persona.get("id", "")
     output_sections = persona.get("output_format", {}).get("sections", [])
 
-    # Build prompt for display even in files-only mode
-    prompt = build_review_prompt(persona, context, custom_prompt)
+    prompt = _build_prompt(persona, contributing_roles, context, custom_prompt)
 
-    # Get extracted intelligence
-    risks = context.get("risks", [])
+    risks       = context.get("risks", [])
     assumptions = context.get("assumptions", [])
-    dependencies = context.get("dependencies", [])
+    dependencies= context.get("dependencies", [])
     constraints = context.get("constraints", [])
-    resources = context.get("resources", [])
-    action_items = context.get("action_items", [])
-    scope = context.get("scope", "")
+    resources   = context.get("resources", [])
+    action_items= context.get("action_items", [])
+    scope       = context.get("scope", "")
 
-    # Run persona-specific analysis
-    findings = _analyse_by_persona(
-        persona_name, focus_areas, output_sections,
-        risks, assumptions, dependencies, constraints, resources, action_items, scope
+    findings = _heuristic_findings(
+        group_id, output_sections,
+        risks, assumptions, dependencies, constraints, resources, action_items, scope,
     )
 
-    # Build review output
-    timestamp = datetime.now(timezone.utc).isoformat()
-    review = {
-        "persona": persona_name,
-        "persona_id": _get_persona_id(persona_name),
-        "timestamp": timestamp,
-        "ai_backend": "files_only",
-        "findings": findings,
-        "summary": _build_review_summary(persona_name, findings),
+    return {
+        "persona":      persona_name,
+        "group_id":     group_id,
+        "roles":        contributing_roles,
+        "ai_backend":   "files_only",
+        "findings":     findings,
+        "summary":      _summarise(persona_name, contributing_roles, findings),
         "recommendations": findings.get("recommendations", []),
-        "questions": findings.get("questions", []),
-        "prompt_used": prompt,
-        "custom_prompt": custom_prompt,
-        "raw_output": None,
+        "questions":    findings.get("questions", []),
+        "prompt_used":  prompt,
+        "raw_output":   None,
+        "ai_metadata":  {},
     }
 
-    return review
 
+# ── AI review ─────────────────────────────────────────────────────────────────
 
 def _run_ai_review(
     persona: Dict[str, Any],
+    contributing_roles: List[str],
     context: Dict[str, Any],
     backend_name: str,
-    custom_prompt: Optional[str] = None,
+    custom_prompt: Optional[str],
 ) -> Dict[str, Any]:
-    """Run review using any AI backend (unified handler).
+    """AI-powered review — calls LLM once per persona group."""
+    from ai_backends import get_backend  # noqa: PLC0415
 
-    Uses the ai_backends module for consistent behavior across all providers.
-    Falls back to files-only analysis if the backend is unavailable.
-    """
-    from ai_backends import get_backend
+    prompt = _build_prompt(persona, contributing_roles, context, custom_prompt)
 
-    prompt = build_review_prompt(persona, context, custom_prompt)
-
-    # System prompt for the AI
     system_prompt = (
-        f"You are a {persona['name']}. {persona.get('role', '')}\n"
-        "Provide structured analysis with bullet points per section.\n"
-        "Flag severity levels: Critical, High, Medium, Low.\n"
-        "Be concise and evidence-based."
+        f"You are an expert reviewer acting as: {', '.join(contributing_roles)}.\n"
+        f"{persona.get('role', '')}\n"
+        "Provide structured analysis with bullet points. "
+        "Flag severity: Critical / High / Medium / Low. "
+        "Be concise, specific, and evidence-based."
     )
 
     backend = get_backend(backend_name)
@@ -273,428 +251,409 @@ def _run_ai_review(
         prompt=prompt,
         system_prompt=system_prompt,
         temperature=0.3,
-        max_tokens=2000,
+        max_tokens=2500,
     )
 
     if not response.success:
-        # Fall back to files-only with a note about the failure
-        review = _run_files_only_review(persona, context, custom_prompt)
-        review["ai_backend"] = f"{backend_name}_fallback"
-        review["raw_output"] = f"{backend_name} unavailable: {response.error}. Fell back to files-only analysis."
+        review = _run_files_only_review(persona, contributing_roles, context, custom_prompt)
+        review["ai_backend"]  = f"{backend_name}_fallback"
+        review["raw_output"]  = f"{backend_name} unavailable: {response.error}"
         review["prompt_used"] = prompt
-        review["custom_prompt"] = custom_prompt
         return review
 
-    # Parse AI output into structured findings
     findings = _parse_ai_output(response.text, persona)
 
     return {
-        "persona": persona["name"],
-        "persona_id": _get_persona_id(persona["name"]),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ai_backend": backend_name,
-        "findings": findings,
-        "summary": _build_review_summary(persona["name"], findings),
+        "persona":      persona["name"],
+        "group_id":     persona.get("id", ""),
+        "roles":        contributing_roles,
+        "ai_backend":   backend_name,
+        "findings":     findings,
+        "summary":      _summarise(persona["name"], contributing_roles, findings),
         "recommendations": findings.get("recommendations", []),
-        "questions": findings.get("questions", []),
-        "prompt_used": prompt,
-        "custom_prompt": custom_prompt,
-        "raw_output": response.text,
-        "ai_metadata": response.to_dict(),
+        "questions":    findings.get("questions", []),
+        "prompt_used":  prompt,
+        "raw_output":   response.text,
+        "ai_metadata":  response.to_dict(),
     }
 
 
-def _analyse_by_persona(
-    persona_name: str,
-    focus_areas: List[str],
-    output_sections: List[str],
-    risks: List[str],
-    assumptions: List[str],
-    dependencies: List[str],
-    constraints: List[str],
-    resources: List[Any],
-    action_items: List[str],
-    scope: str,
-) -> Dict[str, List[str]]:
-    """Route to persona-specific analysis logic."""
-    if "Solution Architect" in persona_name:
-        return _analyse_solution_architect(
-            risks, dependencies, constraints, scope
-        )
-    elif "Delivery Manager" in persona_name:
-        return _analyse_delivery_manager(
-            risks, dependencies, constraints, resources, action_items
-        )
-    elif "Product Owner" in persona_name:
-        return _analyse_product_owner(
-            risks, assumptions, dependencies, constraints, scope
-        )
-    elif "Resource Manager" in persona_name:
-        return _analyse_resource_manager(
-            risks, resources, dependencies, action_items
-        )
-    else:
-        # Generic analysis
-        return _analyse_generic(output_sections, risks, assumptions, dependencies, constraints)
+# ── Prompt builder ────────────────────────────────────────────────────────────
 
+def _build_prompt(
+    persona: Dict[str, Any],
+    contributing_roles: List[str],
+    context: Dict[str, Any],
+    custom_prompt: Optional[str],
+) -> str:
+    """Build the full prompt sent to the LLM."""
+    from processors.context_builder import build_context_summary  # noqa: PLC0415
 
-def _analyse_solution_architect(
-    risks: List[str],
-    dependencies: List[str],
-    constraints: List[str],
-    scope: str,
-) -> Dict[str, List[str]]:
-    """Solution Architect: focus on architecture, technology, integration."""
-    arch_keywords = [
-        "architect", "design", "pattern", "integration", "api", "database",
-        "scalab", "security", "infra", "cloud", "container", "micro",
-        "monolith", "latency", "performance", "migration", "deploy",
-        "network", "data flow", "storage", "cache", "queue", "event",
+    context_summary = build_context_summary(context)
+    role_str  = " / ".join(contributing_roles)
+    focus     = persona.get("focus_areas", [])
+    sections  = persona.get("output_format", {}).get("sections", [])
+    template  = persona.get("prompt_template", "").strip()
+
+    parts = [
+        f"# Review: {role_str}",
+        "",
+        template,
+        "",
+        "## Focus Areas",
+        *[f"- {f}" for f in focus],
+        "",
+        "## Required Output Sections",
+        *[f"- {s}" for s in sections],
+        "",
+        "## Project Context",
+        "",
+        context_summary,
     ]
 
-    findings: Dict[str, List[str]] = {
-        "risks": _filter_by_relevance(risks, arch_keywords),
-        "design_gaps": [],
-        "recommendations": [],
-        "questions": [],
-    }
+    if custom_prompt and custom_prompt.strip():
+        parts += [
+            "",
+            "## Additional Context (User-Provided)",
+            "",
+            custom_prompt.strip(),
+            "",
+            "⚠️  The above user context MUST influence your findings.",
+            "    Findings that contradict the user context should be flagged explicitly.",
+        ]
 
-    # Detect design gaps from constraints
-    for c in constraints:
-        if _is_relevant(c, ["encrypt", "security", "auth", "compliance", "pci", "hipaa"]):
-            findings["design_gaps"].append(f"Security/compliance requirement: {c}")
-        elif _is_relevant(c, ["uptime", "sla", "availability", "latency"]):
-            findings["design_gaps"].append(f"NFR may require architecture decision: {c}")
-
-    # Generate recommendations based on gaps
-    if findings["design_gaps"]:
-        findings["recommendations"].append(
-            "Document architecture decisions for each compliance constraint"
-        )
-    if _any_relevant(dependencies, ["database", "data", "migration"]):
-        findings["recommendations"].append(
-            "Define data migration strategy with rollback plan"
-        )
-    if _any_relevant(risks, ["skill gap", "key person", "single point"]):
-        findings["recommendations"].append(
-            "Mitigate key-person risk with architecture documentation and knowledge transfer"
-        )
-
-    # Generate questions
-    if not _any_relevant(risks + constraints, ["dr", "disaster", "recovery", "failover", "backup"]):
-        findings["questions"].append("What is the disaster recovery strategy?")
-    if not _any_relevant(risks + constraints, ["monitor", "observ", "alert", "log"]):
-        findings["questions"].append("What monitoring and observability approach is planned?")
-    if _any_relevant(constraints, ["encrypt", "transit", "rest"]):
-        findings["questions"].append("Is end-to-end encryption architecture documented?")
-
-    return findings
-
-
-def _analyse_delivery_manager(
-    risks: List[str],
-    dependencies: List[str],
-    constraints: List[str],
-    resources: List[Any],
-    action_items: List[str],
-) -> Dict[str, List[str]]:
-    """Delivery Manager: focus on execution, timelines, dependencies."""
-    exec_keywords = [
-        "timeline", "delay", "slip", "resource", "capacity", "staffing",
-        "dependency", "blocked", "risk", "scope", "milestone", "deadline",
-        "phase", "sprint", "week", "month", "overdue",
+    parts += [
+        "",
+        "## Instructions",
+        "",
+        "Provide your review. For each output section list specific findings with evidence.",
+        "Use bullet points. Include severity labels. End with open questions.",
     ]
 
-    findings: Dict[str, List[str]] = {
-        "execution_risks": _filter_by_relevance(risks, exec_keywords),
-        "dependency_issues": [],
-        "timeline_concerns": [],
-        "recommendations": [],
-        "questions": [],
-    }
-
-    # Analyse dependencies
-    for dep in dependencies:
-        findings["dependency_issues"].append(f"Dependency: {dep}")
-
-    # Analyse resource gaps
-    resource_descriptions = [
-        r.get("description", r) if isinstance(r, dict) else str(r)
-        for r in resources
-    ]
-    if resource_descriptions:
-        findings["timeline_concerns"].append(
-            f"Resource requirements identified: {len(resource_descriptions)} items"
-        )
-    if not resource_descriptions:
-        findings["timeline_concerns"].append(
-            "No explicit resource plan found – potential planning gap"
-        )
-
-    # Check action items for overdue risks
-    if action_items:
-        findings["recommendations"].append(
-            f"Track {len(action_items)} action items for completion and blockers"
-        )
-
-    # Recommendations
-    if dependencies:
-        findings["recommendations"].append(
-            "Create dependency map with owners and target dates"
-        )
-    if _any_relevant(risks, ["skill", "resource", "capacity", "staffing"]):
-        findings["recommendations"].append(
-            "Escalate resourcing gaps before they impact critical path"
-        )
-
-    # Questions
-    if not _any_relevant(constraints + risks, ["buffer", "contingency", "slack"]):
-        findings["questions"].append("Is there schedule contingency/buffer built in?")
-    findings["questions"].append("Are all dependency owners confirmed and committed?")
-
-    return findings
+    return "\n".join(parts)
 
 
-def _analyse_product_owner(
-    risks: List[str],
-    assumptions: List[str],
-    dependencies: List[str],
-    constraints: List[str],
-    scope: str,
-) -> Dict[str, List[str]]:
-    """Product Owner: focus on scope, requirements, value."""
-    findings: Dict[str, List[str]] = {
-        "scope_gaps": [],
-        "backlog_quality_issues": [],
-        "value_alignment": [],
-        "recommendations": [],
-        "questions": [],
-    }
+# ── Merge results ─────────────────────────────────────────────────────────────
 
-    # Check scope definition
-    if not scope:
-        findings["scope_gaps"].append("No explicit scope statement found in documents")
-    elif len(scope) < 100:
-        findings["scope_gaps"].append("Scope definition is very brief – may lack detail")
+def _merge_group_results(
+    group_results: Dict[str, Dict[str, Any]],
+    all_roles: List[str],
+    backend: str,
+    custom_prompt: Optional[str],
+) -> Dict[str, Any]:
+    """Merge per-group results into a single review dict."""
+    findings_by_role: Dict[str, Any] = {}
+    all_findings: Dict[str, List[str]] = {}
+    all_recommendations: List[str] = []
+    all_questions: List[str] = []
+    all_prompts: List[str] = []
+    summaries: List[str] = []
 
-    # Assumptions as scope risk
-    if assumptions:
-        for a in assumptions[:5]:
-            findings["scope_gaps"].append(f"Unvalidated assumption: {a}")
-    else:
-        findings["backlog_quality_issues"].append(
-            "No assumptions documented – may indicate incomplete requirements gathering"
-        )
+    for gid, result in group_results.items():
+        if result.get("error"):
+            findings_by_role[gid] = {"error": result["error"], "roles": result.get("roles", [])}
+            continue
 
-    # Value alignment from constraints
-    value_keywords = ["user", "customer", "business", "value", "roi", "cost", "saving"]
-    value_items = _filter_by_relevance(constraints, value_keywords)
-    if value_items:
-        findings["value_alignment"] = value_items
-    else:
-        findings["value_alignment"].append(
-            "No explicit business value or ROI statements found"
-        )
+        roles_in_group = result.get("roles", [])
+        label = " / ".join(roles_in_group)
+        findings = result.get("findings", {})
 
-    # Recommendations
-    findings["recommendations"].append(
-        "Define clear acceptance criteria for each major deliverable"
+        # Attribute findings to roles
+        findings_by_role[label] = {
+            "group_id":  gid,
+            "roles":     roles_in_group,
+            "findings":  findings,
+        }
+
+        # Aggregate into flat findings (deduplicated)
+        for cat, items in findings.items():
+            if isinstance(items, list):
+                existing = all_findings.setdefault(cat, [])
+                for item in items:
+                    item_s = str(item)
+                    if not any(item_s.lower() in str(e).lower() or str(e).lower() in item_s.lower()
+                               for e in existing):
+                        existing.append(item)
+
+        all_recommendations += [
+            r for r in result.get("recommendations", [])
+            if r not in all_recommendations
+        ]
+        all_questions += [
+            q for q in result.get("questions", [])
+            if q not in all_questions
+        ]
+        if result.get("prompt_used"):
+            all_prompts.append(result["prompt_used"])
+        if result.get("summary"):
+            summaries.append(result["summary"])
+
+    # Recommended actions: deduplicated flat list
+    recommended_actions = list(dict.fromkeys(all_recommendations))
+
+    total_findings = sum(
+        len(v) for v in all_findings.values() if isinstance(v, list)
     )
-    if not assumptions:
-        findings["recommendations"].append(
-            "Conduct assumptions workshop with stakeholders"
-        )
 
-    # Questions
-    findings["questions"].append("Who are the key stakeholders and their success criteria?")
-    findings["questions"].append("What is the definition of done for the overall engagement?")
-    if dependencies:
-        findings["questions"].append(
-            "Are dependencies reflected in prioritisation and sprint planning?"
-        )
+    # Primary persona label (first group)
+    first_result = next(iter(group_results.values()), {})
+    primary_persona = first_result.get("persona", all_roles[0] if all_roles else "Review")
+    primary_persona_id = first_result.get("group_id", "")
 
-    return findings
-
-
-def _analyse_resource_manager(
-    risks: List[str],
-    resources: List[Any],
-    dependencies: List[str],
-    action_items: List[str],
-) -> Dict[str, List[str]]:
-    """Resource Manager: focus on skills, allocation, capacity."""
-    findings: Dict[str, List[str]] = {
-        "skill_gaps": [],
-        "allocation_risks": [],
-        "capacity_concerns": [],
-        "recommendations": [],
-        "questions": [],
+    return {
+        # Legacy-compatible fields
+        "persona":          primary_persona,
+        "persona_id":       primary_persona_id,
+        # v2 fields
+        "roles":            all_roles,
+        "timestamp":        datetime.now(timezone.utc).isoformat(),
+        "ai_backend":       backend,
+        "custom_prompt":    custom_prompt,
+        # Findings
+        "findings":         all_findings,          # flat merged dict (legacy consumers)
+        "findings_by_role": findings_by_role,      # attributed per role
+        "recommended_actions": recommended_actions,
+        "recommendations":  recommended_actions,   # alias
+        "questions":        all_questions[:15],
+        # Output section (spec)
+        "output_structure": {
+            "summary":             " | ".join(summaries),
+            "findings_by_role":    findings_by_role,
+            "recommended_actions": recommended_actions,
+        },
+        # Display
+        "summary":          _build_consolidated_summary(
+                                all_roles, total_findings, backend, custom_prompt
+                            ),
+        "prompt_used":      "\n\n---\n\n".join(all_prompts) if all_prompts else "",
+        "raw_output":       None,
+        "ai_metadata":      first_result.get("ai_metadata", {}),
     }
 
-    # Analyse resources
-    resource_descriptions = [
-        r.get("description", r) if isinstance(r, dict) else str(r)
-        for r in resources
-    ]
 
-    if resource_descriptions:
-        for rd in resource_descriptions:
-            findings["capacity_concerns"].append(f"Resource needed: {rd}")
-    else:
-        findings["capacity_concerns"].append(
-            "No explicit resource requirements found – needs clarification"
-        )
-
-    # Skill gap indicators from risks
-    skill_keywords = ["skill", "knowledge", "experience", "training", "expertise", "key person"]
-    skill_risks = _filter_by_relevance(risks, skill_keywords)
-    if skill_risks:
-        findings["skill_gaps"] = skill_risks
-    else:
-        findings["skill_gaps"].append(
-            "No explicit skill gap analysis found – recommend assessment"
-        )
-
-    # Allocation risks
-    alloc_keywords = ["shared", "part-time", "split", "multiple", "stretch", "overload"]
-    alloc_risks = _filter_by_relevance(risks, alloc_keywords)
-    findings["allocation_risks"].extend(alloc_risks)
-    if _any_relevant(risks, ["key person", "single point", "bus factor"]):
-        findings["allocation_risks"].append(
-            "Key-person dependency identified – single point of failure risk"
-        )
-
-    # Recommendations
-    findings["recommendations"].append(
-        "Create a skills matrix mapping team capabilities to project needs"
-    )
-    if resource_descriptions:
-        findings["recommendations"].append(
-            "Confirm resource availability and start dates with line managers"
-        )
-
-    # Questions
-    findings["questions"].append("What is the onboarding timeline for new team members?")
-    findings["questions"].append("Are there competing priorities for the identified resources?")
-
-    return findings
-
-
-def _analyse_generic(
-    output_sections: List[str],
-    risks: List[str],
-    assumptions: List[str],
-    dependencies: List[str],
-    constraints: List[str],
-) -> Dict[str, List[str]]:
-    """Generic analysis fallback."""
-    findings: Dict[str, List[str]] = {}
-    for section in output_sections:
-        if "risk" in section.lower():
-            findings[section] = risks[:10]
-        elif "assumption" in section.lower():
-            findings[section] = assumptions[:10]
-        elif "depend" in section.lower():
-            findings[section] = dependencies[:10]
-        elif "constraint" in section.lower():
-            findings[section] = constraints[:10]
-        elif "recommend" in section.lower():
-            findings[section] = ["Review all identified risks and assign owners"]
-        elif "question" in section.lower():
-            findings[section] = ["Are all stakeholders aligned on scope and timeline?"]
-        else:
-            findings[section] = []
-    return findings
-
-
-# ──────────────────────────────────────────────────────────────
-# AI output parsing
-# ──────────────────────────────────────────────────────────────
-
-
-def _parse_ai_output(raw_output: str, persona: Dict[str, Any]) -> Dict[str, List[str]]:
-    """Parse AI text output into structured findings.
-
-    Looks for section headings matching persona output_format.
-    Falls back to bullet-point extraction.
-    """
-    import re
-
-    output_sections = persona.get("output_format", {}).get("sections", [])
-    findings: Dict[str, List[str]] = {s: [] for s in output_sections}
-
-    lines = raw_output.splitlines()
-    current_section = ""
-
-    for line in lines:
-        stripped = line.strip()
-
-        # Detect section heading
-        heading_match = re.match(r"^(?:#{1,3}\s+|(?:\*\*|__))?(.+?)(?:\*\*|__)?:?\s*$", stripped)
-        if heading_match:
-            potential_heading = heading_match.group(1).lower().replace(" ", "_").replace("-", "_")
-            for section in output_sections:
-                if section.lower() in potential_heading or potential_heading in section.lower():
-                    current_section = section
-                    break
-
-        # Extract bullet items into current section
-        elif current_section and re.match(r"^\s*[-*•]\s+", stripped):
-            item = re.sub(r"^\s*[-*•]\s+", "", stripped)
-            if item and len(item) > 5:
-                findings[current_section].append(item)
-
-        # Numbered items
-        elif current_section and re.match(r"^\s*\d+[.)]\s+", stripped):
-            item = re.sub(r"^\s*\d+[.)]\s+", "", stripped)
-            if item and len(item) > 5:
-                findings[current_section].append(item)
-
-    # If parsing found nothing, put all content as raw
-    total_items = sum(len(v) for v in findings.values())
-    if total_items == 0:
-        # Fall back: extract all bullet points
-        all_bullets = re.findall(r"[-*•]\s+(.+)", raw_output)
-        if all_bullets and output_sections:
-            findings[output_sections[0]] = all_bullets[:20]
-
-    return findings
-
-
-# ──────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────
-
-
-def _filter_by_relevance(items: List[str], keywords: List[str]) -> List[str]:
-    """Filter items that contain any of the keywords."""
-    return [item for item in items if _is_relevant(item, keywords)]
-
-
-def _is_relevant(text: str, keywords: List[str]) -> bool:
-    """Check if text contains any keyword."""
-    text_lower = text.lower()
-    return any(kw in text_lower for kw in keywords)
-
-
-def _any_relevant(items: List[str], keywords: List[str]) -> bool:
-    """Check if any item in list is relevant to keywords."""
-    return any(_is_relevant(item, keywords) for item in items)
-
-
-def _get_persona_id(persona_name: str) -> str:
-    """Convert persona display name to ID."""
-    for pid, filename in AVAILABLE_PERSONAS.items():
-        if pid.replace("_", " ") in persona_name.lower():
-            return pid
-    return persona_name.lower().replace(" ", "_")
-
-
-def _build_review_summary(persona_name: str, findings: Dict[str, List[str]]) -> str:
-    """Build a one-line summary of review findings."""
-    total = sum(len(v) for v in findings.values())
-    sections_with_items = sum(1 for v in findings.values() if v)
+def _build_consolidated_summary(
+    roles: List[str],
+    total_findings: int,
+    backend: str,
+    custom_prompt: Optional[str],
+) -> str:
+    role_str = ", ".join(roles)
+    cp_note  = " (with user context)" if custom_prompt else ""
     return (
-        f"{persona_name} review: {total} findings across "
-        f"{sections_with_items} categories"
+        f"{role_str} review{cp_note}: "
+        f"{total_findings} findings via {backend}"
     )
+
+
+# ── AI output parser ──────────────────────────────────────────────────────────
+
+def _parse_ai_output(raw: str, persona: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Parse LLM text into per-section lists."""
+    sections = persona.get("output_format", {}).get("sections", [])
+    findings: Dict[str, List[str]] = {s: [] for s in sections}
+    current = ""
+
+    for line in raw.splitlines():
+        stripped = line.strip()
+        # Section heading detection
+        m = re.match(r"^(?:#{1,3}\s*|(?:\*\*|__))?(.+?)(?:\*\*|__)?:?\s*$", stripped)
+        if m:
+            candidate = m.group(1).lower().replace(" ", "_").replace("-", "_")
+            for sec in sections:
+                if sec.lower() in candidate or candidate in sec.lower():
+                    current = sec
+                    break
+        elif current and re.match(r"^\s*[-*•]\s+", stripped):
+            item = re.sub(r"^\s*[-*•]\s+", "", stripped)
+            if len(item) > 5:
+                findings[current].append(item)
+        elif current and re.match(r"^\s*\d+[.)]\s+", stripped):
+            item = re.sub(r"^\s*\d+[.)]\s+", "", stripped)
+            if len(item) > 5:
+                findings[current].append(item)
+
+    # Fallback: dump all bullets into first section
+    if not any(findings.values()) and sections:
+        bullets = re.findall(r"[-*•]\s+(.+)", raw)
+        findings[sections[0]] = bullets[:20]
+
+    return findings
+
+
+# ── Heuristic fallback ────────────────────────────────────────────────────────
+
+def _heuristic_findings(
+    group_id: str,
+    sections: List[str],
+    risks: List[str],
+    assumptions: List[str],
+    dependencies: List[str],
+    constraints: List[str],
+    resources: List[Any],
+    action_items: List[str],
+    scope: str,
+) -> Dict[str, List[str]]:
+    """Simple keyword-based heuristic for files_only mode."""
+    f: Dict[str, List[str]] = {s: [] for s in sections}
+
+    def _fil(items: List[str], keywords: List[str]) -> List[str]:
+        kws = [k.lower() for k in keywords]
+        return [i for i in items if any(k in i.lower() for k in kws)]
+
+    def _put(key: str, items: List[Any]) -> None:
+        if key in f:
+            f[key] = [str(i) for i in items]
+
+    if group_id == "architecture_strategy":
+        arch_kw = ["architect","design","integration","api","cloud","security","scalab","infra","deploy"]
+        _put("risks",         _fil(risks, arch_kw))
+        _put("design_gaps",   [f"Compliance requirement: {c}" for c in constraints if any(
+            k in c.lower() for k in ["encrypt","security","hipaa","pci","gdpr","sla","uptime"])])
+        _put("recommendations",["Document architecture decisions for each constraint"] if constraints else [])
+        _put("questions",     _arch_questions(risks, constraints))
+
+    elif group_id == "solution_delivery":
+        exec_kw = ["timeline","delay","risk","dependency","blocked","resource","milestone","sprint"]
+        _put("execution_risks",  _fil(risks, exec_kw))
+        _put("dependency_issues",[f"Dependency: {d}" for d in dependencies])
+        res_list = [r.get("description", str(r)) if isinstance(r, dict) else str(r) for r in resources]
+        _put("timeline_concerns",
+             [f"Resource requirements: {len(res_list)} identified"] if res_list
+             else ["No explicit resource plan found"])
+        _put("recommendations",
+             [f"Track {len(action_items)} action items"] if action_items else [])
+        _put("questions",["Is there schedule contingency built in?",
+                          "Are all dependency owners confirmed?"])
+
+    elif group_id == "product_value":
+        _put("scope_gaps",
+             ["No explicit scope statement found"] if not scope
+             else ([f"Unvalidated assumption: {a}" for a in assumptions[:5]]
+                   or ["Scope present but no assumptions documented"]))
+        val_kw = ["user","customer","business","value","roi","cost","saving"]
+        _put("value_alignment",  _fil(constraints, val_kw) or ["No ROI statements found"])
+        _put("backlog_quality_issues",
+             [] if assumptions else ["No assumptions documented — possible requirements gap"])
+        _put("recommendations",["Define acceptance criteria for each deliverable"])
+        _put("questions",["Who are the key stakeholders and their success criteria?",
+                          "What is the definition of done?"])
+
+    elif group_id == "people_capacity":
+        skill_kw = ["skill","knowledge","training","expertise","key person"]
+        alloc_kw = ["shared","part-time","stretch","overload"]
+        _put("skill_gaps",
+             _fil(risks, skill_kw) or ["No skill gap analysis found — recommend assessment"])
+        _put("allocation_risks",
+             _fil(risks, alloc_kw)
+             + (["Key-person dependency identified"] if any("key person" in r.lower() or
+                "single point" in r.lower() for r in risks) else []))
+        res_list = [r.get("description", str(r)) if isinstance(r, dict) else str(r) for r in resources]
+        _put("capacity_concerns",
+             [f"Resource needed: {r}" for r in res_list]
+             or ["No explicit resource requirements found"])
+        _put("recommendations",["Create skills matrix for project needs"])
+        _put("questions",["What is the onboarding timeline for new members?",
+                          "Are there competing priorities for key resources?"])
+
+    elif group_id == "platform_reliability":
+        deploy_kw = ["deploy","ci/cd","pipeline","release","rollout"]
+        test_kw   = ["test","qa","quality","validation"]
+        rel_kw    = ["monitor","sla","uptime","availability","backup","recovery","dr"]
+        _put("deployment_risks", _fil(risks, deploy_kw))
+        _put("reliability_gaps", _fil(constraints, rel_kw))
+        _put("testing_concerns",
+             _fil(risks, test_kw) or ["No testing strategy mentioned in documents"])
+        _put("recommendations",["Define deployment runbook and rollback procedure"])
+        _put("questions",["Is a CI/CD pipeline defined?","What is the testing strategy?"])
+
+    elif group_id == "data_security_cost":
+        sec_kw  = ["security","encrypt","auth","compliance","pci","hipaa","gdpr","audit"]
+        cost_kw = ["cost","budget","spend","pricing","cloud cost","finops"]
+        _put("data_risks",     _fil(risks, sec_kw + ["data","pipeline","migration"]))
+        _put("security_gaps",  [f"Compliance req: {c}" for c in constraints
+                                if any(k in c.lower() for k in sec_kw)])
+        _put("cost_concerns",  _fil(constraints, cost_kw)
+                                or ["No cost model or FinOps strategy found"])
+        _put("recommendations",["Conduct security threat model","Define cost baseline"])
+        _put("questions",["Is data residency and sovereignty addressed?",
+                          "What is the cloud cost estimate at full scale?"])
+    else:
+        # Generic fallback
+        for sec in sections:
+            if "risk" in sec:       f[sec] = risks[:8]
+            elif "question" in sec: f[sec] = ["Are all stakeholders aligned on scope and timeline?"]
+            elif "recommend" in sec:f[sec] = ["Review all identified risks and assign owners"]
+
+    return f
+
+
+def _arch_questions(risks: List[str], constraints: List[str]) -> List[str]:
+    q = []
+    all_text = " ".join(risks + constraints).lower()
+    if not any(k in all_text for k in ["dr", "disaster", "failover", "backup"]):
+        q.append("What is the disaster recovery strategy?")
+    if not any(k in all_text for k in ["monitor", "observ", "alert", "log"]):
+        q.append("What monitoring and observability approach is planned?")
+    if any(k in all_text for k in ["encrypt", "transit", "rest", "tls"]):
+        q.append("Is end-to-end encryption architecture documented?")
+    return q or ["Are all non-functional requirements covered in the architecture?"]
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _normalise_roles(roles: List[str] | str) -> List[str]:
+    """Accept string or list; resolve legacy IDs; cap at MAX_ROLES_PER_RUN."""
+    if isinstance(roles, str):
+        roles = [roles]
+
+    resolved = []
+    for r in roles[:MAX_ROLES_PER_RUN]:
+        # Accept legacy persona IDs transparently
+        if r in LEGACY_PERSONAS:
+            # Map to a visible role name for the first visible role in that group
+            target_group = LEGACY_PERSONAS[r]
+            for role_name, gid in ROLE_TO_GROUP.items():
+                if gid == target_group:
+                    resolved.append(role_name)
+                    break
+        else:
+            resolved.append(r)
+    return resolved
+
+
+def _resolve_group(role: str) -> str:
+    """Map a role name to its persona group id."""
+    if role in ROLE_TO_GROUP:
+        return ROLE_TO_GROUP[role]
+    # Fuzzy fallback: match any keyword in role name
+    role_lower = role.lower()
+    for known_role, gid in ROLE_TO_GROUP.items():
+        if known_role.lower() in role_lower or role_lower in known_role.lower():
+            return gid
+    # Last resort: treat as literal group id
+    if role in GROUP_TO_FILE:
+        return role
+    raise ValueError(
+        f"Unknown role: '{role}'. "
+        f"Available: {', '.join(ROLE_TO_GROUP.keys())}"
+    )
+
+
+def _load_group(group_id: str) -> Dict[str, Any]:
+    """Load a persona group YAML."""
+    filename = GROUP_TO_FILE.get(group_id)
+    if not filename:
+        raise ValueError(f"Unknown persona group: '{group_id}'")
+    path = PERSONAS_DIR / filename
+    if not path.exists():
+        raise ValueError(f"Persona definition not found: {path}")
+    with open(path) as fh:
+        return yaml.safe_load(fh)
+
+
+def _summarise(
+    persona_name: str, roles: List[str], findings: Dict[str, List[str]]
+) -> str:
+    total = sum(len(v) for v in findings.values() if isinstance(v, list))
+    cats  = sum(1 for v in findings.values() if isinstance(v, list) and v)
+    return f"{' / '.join(roles)}: {total} findings across {cats} categories"

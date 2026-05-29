@@ -1640,22 +1640,63 @@ async function viewReviews(){
     <button class="sort-btn ${sort==='most-findings'?'active':''}" onclick="setReviewSort('most-findings')">Most Findings</button>
   </div>`;
 
+  // Build role checkboxes grouped by persona group
+  const allRoles=personas.personas||personas.roles||[];
+  const groupMap={};
+  for(const r of allRoles){
+    const g=r.group_name||r.group_id||'Other';
+    (groupMap[g]=groupMap[g]||[]).push(r);
+  }
+  const roleGrid=Object.entries(groupMap).map(([grpName,roles])=>`
+    <div style="margin-bottom:8px">
+      <div style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">${escHtml(grpName)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${roles.map(r=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;
+          padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);
+          background:var(--surface2);user-select:none" title="${escHtml(r.purpose||'')}">
+          <input type="checkbox" class="role-check" value="${escHtml(r.id)}"
+            onchange="_onRoleCheck(this)" style="accent-color:var(--accent)">
+          ${escHtml(r.name)}
+        </label>`).join('')}
+      </div>
+    </div>`).join('');
+
   const runCard=`<div class="card">
     <div class="card-title mb"><span class="icon">🔍</span>Run Persona Review</div>
-    <div class="flex mb">
-      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">Persona</label>
-        <select id="personaSelect" style="width:100%;margin-top:3px">${(personas.personas||[]).map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('')}</select></div>
-      <div style="flex:1"><label style="font-size:10px;color:var(--text-dim)">AI Backend</label>
-        <select id="backendSelect" style="width:100%;margin-top:3px">${backendOpts}</select></div>
+
+    <div class="form-row">
+      <label style="display:flex;align-items:baseline;gap:6px">
+        Roles
+        <span id="roleCountBadge" style="font-size:10px;color:var(--text-muted)">(select up to 3)</span>
+      </label>
+      <div style="margin-top:6px">${roleGrid}</div>
     </div>
-    <div class="form-row"><label>Custom Prompt <span style="font-size:10px;color:var(--text-muted)">(optional – additional context for AI)</span></label>
-      <textarea id="customPrompt" rows="2" placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available."></textarea>
+
+    <div style="margin-top:8px">
+      <label style="font-size:10px;color:var(--text-dim)">AI Backend</label>
+      <select id="backendSelect" style="width:100%;margin-top:3px;background:var(--surface2);
+        border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;
+        color:var(--text);font-size:12px">${backendOpts}</select>
     </div>
-    <div class="flex gap-sm">
+
+    <div class="form-row" style="margin-top:10px">
+      <label>Custom Prompt
+        <span style="font-size:10px;color:var(--text-muted)"> (optional — add constraints, context, or selected Deep Dive questions)</span>
+      </label>
+      <textarea id="customPrompt" rows="3"
+        placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available.&#10;Paste selected Deep Dive questions here before running the review."></textarea>
+    </div>
+
+    <div class="flex gap-sm" style="margin-top:8px">
       <button class="btn" onclick="runReview()">▶ Run Review</button>
-      <button class="btn btn-outline" onclick="runDeepDive()" title="Structured gap analysis">🔬 Deep Dive Analysis</button>
+      <button class="btn btn-outline" onclick="runDeepDive()" title="SME questions for this persona — select and add to prompt before running review">
+        🔬 Ask SME Questions
+      </button>
     </div>
-    <p style="font-size:10px;color:var(--text-muted);margin-top:6px">Deep Dive: scope validation, gap identification, risk flags, clarification questions. Enhanced with AI when an AI backend is selected.</p>
+    <p style="font-size:10px;color:var(--text-muted);margin-top:6px">
+      💡 Workflow: Select role(s) → <strong>Ask SME Questions</strong> → tick relevant questions →
+      <strong>Add to Prompt</strong> → <strong>Run Review</strong>
+    </p>
     <div id="reviewResult" class="mt"></div>
     <div id="deepDiveResult" class="mt"></div>
   </div>`;
@@ -1724,36 +1765,84 @@ function setReviewSort(s){state._reviewSort=s;render();}
 function expandAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=true);}
 function collapseAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
 
+// ── Role checkbox helpers ──────────────────────────────────────────────────
+function _getSelectedRoles(){
+  return [...document.querySelectorAll('.role-check:checked')].map(c=>c.value);
+}
+function _onRoleCheck(chk){
+  const checked=[...document.querySelectorAll('.role-check:checked')];
+  const badge=document.getElementById('roleCountBadge');
+  if(checked.length>3){chk.checked=false;toast('Maximum 3 roles per review','err');return;}
+  if(badge)badge.textContent=`(${checked.length} selected — max 3)`;
+}
+
+// ── Review runner ─────────────────────────────────────────────────────────
 async function runReview(){
-  const persona=document.getElementById('personaSelect').value;
-  const backend=document.getElementById('backendSelect').value;
-  const custom=document.getElementById('customPrompt').value.trim();
+  const roles=_getSelectedRoles();
+  if(!roles.length){toast('Select at least one role','err');return;}
+  const backend=document.getElementById('backendSelect')?.value||'files_only';
+  const custom=document.getElementById('customPrompt')?.value.trim()||'';
   const el=document.getElementById('reviewResult');
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running review…</span>';
-  const body={project_id:state.current.id,persona,ai_backend:backend};
+
+  const body={project_id:state.current.id,roles,ai_backend:backend};
   if(custom)body.custom_prompt=custom;
   const r=await api('POST','/api/review',body);
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
 
+  const roleTag=`<span class="tag tag-purple">${escHtml((r.roles||[r.persona]).join(' / '))}</span>`;
   let html=`<div class="card">
     <div class="flex-between mb">
-      <div class="card-title"><span class="icon">✅</span>${escHtml(r.persona)}</div>
-      <div class="flex gap-sm">
-        <span class="tag tag-purple">${escHtml(r.ai_backend)}</span>
-        ${r.ai_metadata?.tokens_used?`<span class="tag tag-green">${r.ai_metadata.tokens_used} tokens</span>`:''}
-      </div>
+      <div class="card-title"><span class="icon">✅</span>Review Results</div>
+      <div class="flex gap-sm">${roleTag}<span class="tag">${escHtml(r.ai_backend||'files_only')}</span>
+      ${r.ai_metadata?.tokens_used?`<span class="tag tag-green">${r.ai_metadata.tokens_used} tokens</span>`:''}</div>
     </div>
     ${r.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">${escHtml(r.summary)}</p>`:''}`;
 
-  for(const[s,items]of Object.entries(r.findings||{})){
-    if(items.length)html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
-        <span class="chevron">▶</span>
-        <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">${escHtml(s.replace(/_/g,' '))}</strong>
-        <span class="tag" style="margin-left:4px">${items.length}</span>
-      </summary>
-      <div class="collapse-body" style="padding-left:12px">
-        ${items.map(i=>`<div class="findings-item">${escHtml(String(i))}</div>`).join('')}
-      </div></details>`;
+  if(r.findings_by_role&&Object.keys(r.findings_by_role).length){
+    for(const[roleLabel,roleData]of Object.entries(r.findings_by_role)){
+      if(roleData.error)continue;
+      html+=`<details open style="border-left:3px solid var(--accent);padding-left:10px;margin-bottom:8px">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:6px 0">
+          <span class="chevron">▶</span><span class="tag tag-purple">${escHtml(roleLabel)}</span>
+        </summary><div style="padding-top:6px">`;
+      for(const[sec,items]of Object.entries(roleData.findings||{})){
+        if(!Array.isArray(items)||!items.length)continue;
+        html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:2px">
+            <span class="chevron">▶</span>
+            <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">${escHtml(sec.replace(/_/g,' '))}</strong>
+            <span class="tag" style="margin-left:4px">${items.length}</span>
+          </summary>
+          <div class="collapse-body" style="padding-left:12px">
+            ${items.map(i=>`<div class="findings-item">${escHtml(String(i))}</div>`).join('')}
+          </div></details>`;
+      }
+      html+=`</div></details>`;
+    }
+  } else {
+    for(const[s,items]of Object.entries(r.findings||{})){
+      if(!Array.isArray(items)||!items.length)continue;
+      html+=`<details open><summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+          <span class="chevron">▶</span>
+          <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">${escHtml(s.replace(/_/g,' '))}</strong>
+          <span class="tag" style="margin-left:4px">${items.length}</span>
+        </summary>
+        <div class="collapse-body" style="padding-left:12px">
+          ${items.map(i=>`<div class="findings-item">${escHtml(String(i))}</div>`).join('')}
+        </div></details>`;
+    }
+  }
+
+  const actions=r.recommended_actions||r.recommendations||[];
+  if(actions.length){
+    html+=`<details open><summary class="collapse-header" style="list-style:none;margin:4px 0">
+      <span class="chevron">▶</span>
+      <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Recommended Actions</strong>
+      <span class="tag" style="margin-left:4px">${actions.length}</span>
+    </summary>
+    <div class="collapse-body" style="padding-left:12px">
+      ${actions.map(a=>`<div class="findings-item">→ ${escHtml(String(a))}</div>`).join('')}
+    </div></details>`;
   }
   if(r.questions?.length){
     html+=`<details open><summary class="collapse-header" style="list-style:none;margin:4px 0">
@@ -1766,7 +1855,7 @@ async function runReview(){
     </div></details>`;
   }
   if(r.prompt_used)html+=`<details style="margin-top:8px"><summary class="collapse-header" style="list-style:none">
-    <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">View Prompt</span>
+    <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">View Prompt(s)</span>
     </summary><div class="prompt-box">${escHtml(r.prompt_used)}</div></details>`;
   if(r.raw_output)html+=`<details style="margin-top:4px"><summary class="collapse-header" style="list-style:none">
     <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">Raw AI Output</span>
@@ -1779,54 +1868,50 @@ async function runReview(){
 
 <script>
 // ═══════════════════════════════════════════════════════════════
-// DEEP DIVE
+// DEEP DIVE  –  SME Questions workflow
 // ═══════════════════════════════════════════════════════════════
 async function runDeepDive(){
   if(!state.current)return;
   const el=document.getElementById('deepDiveResult');
-  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running Deep Dive…</span>';
-  const persona=document.getElementById('personaSelect')?.value||'';
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Generating SME questions…</span>';
+  const roles=_getSelectedRoles();
+  const persona=roles[0]||'Solution Architect';
   const custom=document.getElementById('customPrompt')?.value||'';
-  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive`,{persona,custom_prompt:custom});
+  const backend=document.getElementById('backendSelect')?.value||'files_only';
+  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive`,
+    {persona,custom_prompt:custom,ai_backend:backend});
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
   state.lastDeepDive=r;
-  const dd=r.deep_dive||{};
-  const sv=r.scope_validation||{};
-  const pct=Math.round((sv.completeness_score||0)*100);
-  const pctTag=sv.completeness_score>=0.7?'tag-green':sv.completeness_score>=0.4?'tag-yellow':'tag-red';
+  const groups=r.question_groups||[];
+  const allQ=r.all_questions||[];
+  const pct=r.scope_completeness??Math.round((r.scope_validation?.completeness_score||0)*100);
+  const pctTag=pct>=70?'tag-green':pct>=40?'tag-yellow':'tag-red';
+  const srcLabel=r.ai_mode
+    ?`✨ AI (${escHtml(r.ai_backend)}) — questions tailored to this project`
+    :'🔍 Heuristic — select an AI backend for project-specific questions';
+  state._ddAllItems=allQ;
+  let globalIdx=0;
 
-  // Build flat items array for index-based retrieval
-  state._ddAllItems=[
-    ...(dd.missing_areas||[]).map(m=>`[Missing] ${m.area}: ${m.suggestion}`),
-    ...(dd.risk_flags||[]).slice(0,10).map(f=>`[Risk] ${f.flag}`),
-    ...(dd.clarification_questions||[]).map(q=>`[Question] ${q}`),
-    ...(dd.suggested_additions||[]).map(s=>`[Suggestion] ${s.suggestion}`),
-  ];
-
-  let idx=0;
-
-  // Each row is a clickable div — clicking anywhere selects/deselects the item
-  // The checkbox is hidden visually but stays in DOM for form semantics.
-  function ddSection(sectionId, icon, label, colorTag, items, rowFn){
-    if(!items||!items.length)return'';
-    const total=items.length;
-    const rows=items.map((item)=>{
-      const i=idx++;
+  function ddGroup(grp){
+    const sectionId=`grp_${globalIdx}`;
+    const rows=(grp.questions||[]).map(q=>{
+      const i=globalIdx++;
       return`<div class="dd-row" data-idx="${i}" data-section="${sectionId}" onclick="toggleDDRow(this)">
         <span class="dd-row-check-icon" id="dd-chk-${i}">✓</span>
-        <span class="dd-row-content">${rowFn(item)}</span>
+        <span class="dd-row-content">❓ ${escHtml(q)}</span>
       </div>`;
     }).join('');
     return`<details open style="margin-bottom:8px">
       <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
-        padding:9px 12px;background:var(--surface2);border-radius:var(--radius);
-        transition:background var(--transition)" class="dd-sum"
+        padding:9px 12px;background:var(--surface2);border-radius:var(--radius)"
         onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">
-        <span class="chevron" style="font-size:9px;color:var(--text-muted);transition:transform .2s">▶</span>
-        <span>${icon}</span>
-        <strong style="font-size:12px">${label}</strong>
-        <span class="tag ${colorTag}" style="margin-left:2px">${total}</span>
-        <span class="dd-sec-count" id="ddsec_${sectionId}" style="font-size:11px;color:var(--text-muted);margin-left:auto">${total} selected</span>
+        <span class="chevron" style="font-size:9px">▶</span>
+        <span>${escHtml(grp.icon||'❓')}</span>
+        <strong style="font-size:12px">${escHtml(grp.category)}</strong>
+        <span class="tag tag-blue" style="margin-left:2px">${(grp.questions||[]).length}</span>
+        <span class="dd-sec-count" id="ddsec_${sectionId}" style="font-size:11px;color:var(--text-muted);margin-left:auto">
+          ${(grp.questions||[]).length} selected
+        </span>
       </summary>
       <div style="padding:4px 0 0">${rows}</div>
     </details>`;
@@ -1834,36 +1919,19 @@ async function runDeepDive(){
 
   let html=`<div class="card" id="ddResultCard">
     <div class="flex-between mb">
-      <div class="card-title"><span class="icon">🔬</span>Deep Dive Results</div>
-      <span class="tag ${pctTag}">Scope ${pct}% complete</span>
-    </div>`;
+      <div class="card-title"><span class="icon">🔬</span>SME Questions — ${escHtml(persona)}</div>
+      <span class="tag ${pctTag}">Scope ${pct}%</span>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px">${srcLabel}</p>`;
 
-  if(dd.missing_areas?.length){
-    html+=ddSection('missing','🔴','Missing Areas','tag-red',dd.missing_areas,m=>
-      `<span class="tag ${m.severity==='high'?'tag-red':'tag-yellow'}" style="flex-shrink:0;margin-right:4px">${m.severity}</span>`+
-      `<span><strong>${escHtml(m.area)}</strong>: ${escHtml(m.suggestion)}</span>`);
-  }
-  if(dd.risk_flags?.length){
-    html+=ddSection('risks','⚠️','Risk Flags','tag-yellow',dd.risk_flags.slice(0,10),f=>
-      `<span class="tag ${f.severity==='high'?'tag-red':'tag-yellow'}" style="flex-shrink:0;margin-right:4px">${f.severity}</span>`+
-      `<span>${escHtml(f.flag)}</span>`);
-  }
-  if(dd.clarification_questions?.length){
-    html+=ddSection('questions','❓','Clarification Questions','tag-blue',dd.clarification_questions,q=>
-      `<span>❓ ${escHtml(q)}</span>`);
-  }
-  if(dd.suggested_additions?.length){
-    html+=ddSection('suggestions','💡','Suggested Additions','',dd.suggested_additions,s=>
-      `<span class="tag ${s.priority==='high'?'tag-red':'tag-yellow'}" style="flex-shrink:0;margin-right:4px">${s.priority}</span>`+
-      `<span class="tag" style="flex-shrink:0;margin-right:4px">${escHtml(s.category)}</span>`+
-      `<span>${escHtml(s.suggestion)}</span>`);
-  }
+  html+=(groups.length
+    ? groups.map(ddGroup).join('')
+    : `<p style="color:var(--text-dim);font-size:12px">No questions generated. Run Intelligence first, or select an AI backend.</p>`);
 
   html+=`<div class="dd-sticky-bar">
     <span id="ddTotalCount" style="font-size:11px;font-weight:600;color:var(--text-dim)">
-      ${state._ddAllItems.length} of ${state._ddAllItems.length} selected
+      ${allQ.length} of ${allQ.length} selected
     </span>
-    <button class="btn btn-sm" onclick="acceptAllSuggestions()">✅ Accept</button>
     <button class="btn btn-sm btn-outline" onclick="addSelectedToPrompt()">📋 Add to Prompt</button>
     <button class="btn btn-sm btn-ghost" onclick="toggleAllDDRows(true)">Select All</button>
     <button class="btn btn-sm btn-ghost" onclick="toggleAllDDRows(false)">Deselect All</button>
@@ -1873,44 +1941,34 @@ async function runDeepDive(){
   _refreshDDTotals();
 }
 
-// Toggle an individual row (called by clicking the whole row div)
 function toggleDDRow(rowEl){
-  const isSelected=!rowEl.classList.contains('dd-row-deselected');
-  if(isSelected){
-    rowEl.classList.add('dd-row-deselected');
-    rowEl.classList.remove('dd-row-selected');
-  }else{
-    rowEl.classList.remove('dd-row-deselected');
-    rowEl.classList.add('dd-row-selected');
-  }
-  const sectionId=rowEl.dataset.section;
-  _refreshDDSectionCount(sectionId);
-  _refreshDDTotals();
+  const sel=!rowEl.classList.contains('dd-row-deselected');
+  if(sel){rowEl.classList.add('dd-row-deselected');rowEl.classList.remove('dd-row-selected');}
+  else{rowEl.classList.remove('dd-row-deselected');rowEl.classList.add('dd-row-selected');}
+  _refreshDDSectionCount(rowEl.dataset.section);_refreshDDTotals();
 }
-
 function toggleAllDDRows(select){
   document.querySelectorAll('.dd-row').forEach(row=>{
     if(select){row.classList.remove('dd-row-deselected');row.classList.add('dd-row-selected');}
     else{row.classList.add('dd-row-deselected');row.classList.remove('dd-row-selected');}
   });
-  ['missing','risks','questions','suggestions'].forEach(s=>_refreshDDSectionCount(s));
+  document.querySelectorAll('[id^="ddsec_"]').forEach(el=>{
+    _refreshDDSectionCount(el.id.replace('ddsec_',''));
+  });
   _refreshDDTotals();
 }
-
 function _refreshDDSectionCount(sectionId){
   const rows=document.querySelectorAll(`.dd-row[data-section="${sectionId}"]`);
-  const selCount=[...rows].filter(r=>!r.classList.contains('dd-row-deselected')).length;
+  const sel=[...rows].filter(r=>!r.classList.contains('dd-row-deselected')).length;
   const el=document.getElementById(`ddsec_${sectionId}`);
-  if(el)el.textContent=`${selCount} selected`;
+  if(el)el.textContent=`${sel} selected`;
 }
-
 function _refreshDDTotals(){
   const all=document.querySelectorAll('.dd-row');
   const sel=[...all].filter(r=>!r.classList.contains('dd-row-deselected')).length;
   const tot=document.getElementById('ddTotalCount');
   if(tot)tot.textContent=`${sel} of ${all.length} selected`;
 }
-
 function _getSelectedDDItems(){
   const allItems=state._ddAllItems||[];
   const sel=[];
@@ -1922,28 +1980,17 @@ function _getSelectedDDItems(){
   });
   return sel;
 }
-
-async function acceptAllSuggestions(){
-  if(!state.current)return;
-  const items=_getSelectedDDItems();
-  if(!items.length){toast('No items selected','err');return;}
-  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive/feedback`,{accepted:items});
-  if(r.error){toast(r.error,'err');return;}
-  toast(`Accepted ${r.accepted_count} items`);
-  document.getElementById('ddFeedbackResult').innerHTML=`<p style="color:var(--green);font-size:12px">✓ Accepted ${r.accepted_count} items</p>`;
-}
-
 async function addSelectedToPrompt(){
-  if(!state.current)return;
   const items=_getSelectedDDItems();
-  if(!items.length){toast('No items selected','err');return;}
-  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive/feedback`,{added_to_prompt:items});
-  if(r.error){toast(r.error,'err');return;}
-  toast(`Added ${r.added_to_prompt_count} items to prompt`);
+  if(!items.length){toast('No questions selected','err');return;}
+  const cleaned=items.map(q=>q.replace(/^\[[^\]]+\]\s*/,''));
   const ta=document.getElementById('customPrompt');
-  if(ta){ta.value=(ta.value?ta.value+'\n':'')+items.join('\n');}
-  document.getElementById('ddFeedbackResult').innerHTML=`<p style="color:var(--green);font-size:12px">✓ Added ${r.added_to_prompt_count} items to prompt</p>`;
+  if(ta){ta.value=(ta.value?ta.value+'\n\n':'')+cleaned.join('\n');}
+  toast(`Added ${cleaned.length} question(s) to prompt — now click Run Review`);
+  document.getElementById('ddFeedbackResult').innerHTML=
+    `<p style="color:var(--green);font-size:12px">✓ Added ${cleaned.length} question(s). Click <strong>Run Review</strong>.</p>`;
 }
+async function acceptAllSuggestions(){await addSelectedToPrompt();}
 </script>
 
 

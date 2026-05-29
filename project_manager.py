@@ -729,23 +729,25 @@ def get_project_summary(project_id: str) -> str:
 
 def run_persona_review(
     project_id: str,
-    persona_name: str,
+    persona_name: str | List[str],
     ai_backend: str = "files_only",
     custom_prompt: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run a persona-driven review for a project.
 
-    V3: Includes Deep Dive output when AI mode is ON.
-    Records run in version control for traceability.
+    V4: Supports multi-role reviews.  ``persona_name`` may be a single
+    role string (e.g. ``"Solution Architect"`` or legacy id
+    ``"solution_architect"``) or a list of up to 3 role names.
 
     Args:
         project_id: Project ID.
-        persona_name: Persona to use (e.g. 'solution_architect').
-        ai_backend: 'files_only', 'ollama', 'bedrock', or 'gemini'.
-        custom_prompt: Optional additional context/instructions for the AI to consider.
+        persona_name: Role name, legacy persona id, or list of role names.
+        ai_backend: Backend name; defaults to ``"files_only"``.
+        custom_prompt: Optional additional context/instructions.
+            Included verbatim in every AI prompt so results vary when changed.
 
     Returns:
-        Review result dict (includes deep_dive when AI mode ON).
+        Review result dict.
 
     Raises:
         ValueError: If project not found or no intelligence built.
@@ -773,13 +775,17 @@ def run_persona_review(
     except ImportError:
         pass
 
-    # Run the review
+    # Run the review (v2 engine accepts str or list)
     review = run_review(
-        persona_name=persona_name,
+        roles=persona_name,
         context=intelligence,
         ai_backend=ai_backend,
         custom_prompt=custom_prompt,
     )
+
+    # Derive a canonical persona label for storage/display
+    roles_used = review.get("roles", [persona_name] if isinstance(persona_name, str) else persona_name)
+    canonical_persona = " / ".join(roles_used) if roles_used else str(persona_name)
 
     # Run Deep Dive when AI mode is ON (non-files_only)
     if ai_backend != "files_only":
@@ -826,7 +832,7 @@ def run_persona_review(
             project_id=project_id,
             run_type="persona_review",
             input_files=file_info,
-            persona_used=persona_name,
+            persona_used=canonical_persona,
             ai_backend=ai_backend,
             file_toggles=file_toggles,
             outputs=[review.get("timestamp", "")],
@@ -883,7 +889,7 @@ def run_persona_review(
 
         store.create_review(
             version_id=latest_version_id,
-            persona=persona_name,
+            persona=canonical_persona,
             ai_backend=ai_backend,
             prompt_used=review.get("prompt_used", ""),
             custom_prompt=custom_prompt or "",
