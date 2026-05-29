@@ -1,0 +1,82 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Project Delivery Accelerator Engine – Docker Compose
+#
+# Profiles:
+#   default  →  app only          (cloud AI backends + files_only)
+#   ollama   →  app + Ollama      (adds local LLM sidecar for offline AI)
+#
+# Quick start:
+#   cp .env.example .env          # fill in ADMIN_PIN at minimum
+#   docker compose up             # app only
+#   docker compose --profile ollama up   # app + local Ollama
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Main application ────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: contexta:latest
+    container_name: contexta
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - contexta-data:/data
+    environment:
+      # Core
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      APP_NAME: "${APP_NAME:-Project Delivery Accelerator Engine}"
+      PROJECTS_DATA_DIR: "/data"
+
+      # Security — MUST be set in .env before first run
+      ADMIN_PIN: "${ADMIN_PIN}"
+
+      # Ollama sidecar URL (used when profile=ollama)
+      OLLAMA_HOST: "http://ollama:11434"
+
+      # Cloud AI keys (optional — leave blank to use files_only or Ollama)
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:-us-east-1}"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    depends_on:
+      ollama:
+        condition: service_healthy
+        required: false   # app starts even if Ollama profile is not active
+
+  # ── Ollama sidecar (optional – activate with --profile ollama) ────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: contexta-ollama
+    profiles: ["ollama"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  contexta-data:
+    driver: local
+  ollama-models:
+    driver: local
