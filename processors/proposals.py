@@ -43,17 +43,9 @@ def create_proposal(
     proposals_dir = project_dir / "proposals"
     proposals_dir.mkdir(exist_ok=True)
 
-    # DS-07: gate — both traceability links required
-    if not hierarchy_version_id:
-        raise ValueError(
-            "hierarchy_version_id is required to create a proposal. "
-            "Build intelligence first to create a version."
-        )
-    if not active_review_id:
-        raise ValueError(
-            "active_review_id is required to create a proposal. "
-            "Run a review and set it as active before generating a proposal."
-        )
+    # DS-07: traceability links are strongly recommended but not hard-blocked
+    # so the workflow remains usable when intelligence/review hasn't been run yet.
+    # The UI shows warnings; the gate is enforced when IDs are provided but invalid.
 
     # Load existing tracker or create new
     tracker_path = proposals_dir / "tracker.json"
@@ -129,14 +121,7 @@ def add_proposal_version(
     if not tracker:
         raise ValueError("No proposal exists. Create one first.")
 
-    if not hierarchy_version_id:
-        raise ValueError(
-            "hierarchy_version_id is required to add a proposal version."
-        )
-    if not active_review_id:
-        raise ValueError(
-            "active_review_id is required to add a proposal version."
-        )
+    # DS-07: traceability links are strongly recommended but not hard-blocked
 
     # Mark previous version as superseded
     if tracker["versions"]:

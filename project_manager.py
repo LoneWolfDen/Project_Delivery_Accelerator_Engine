@@ -17,6 +17,7 @@ V3 Enhancements:
 import json
 import shutil
 import time
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
@@ -103,7 +104,7 @@ def create_project(name: str, description: str = "") -> Dict[str, Any]:
             f"Please archive or delete an existing project, or contact your admin to increase the limit."
         )
 
-    project_id = f"proj-{len(projects) + 1:03d}"
+    project_id = f"proj-{uuid.uuid4().hex[:6]}"
 
     # Get defaults from admin config
     try:
@@ -319,6 +320,19 @@ def delete_project(project_id: str, pin: str) -> Dict[str, Any]:
     project_dir = PROJECTS_DIR / project_id
     if project_dir.exists():
         shutil.rmtree(project_dir)
+
+    # Also remove from SQLite so IDs don't leak into version counts
+    try:
+        from db.database import get_db
+        db = get_db()
+        for table in ("versions", "reviews", "phases", "artifacts",
+                      "proposals", "proposal_versions", "presales_feedback",
+                      "feedback_tokens", "proposal_documents", "decision_log"):
+            db.execute(f"DELETE FROM {table} WHERE project_id=?", (project_id,))
+        db.execute("DELETE FROM projects WHERE id=?", (project_id,))
+        db.commit()
+    except Exception:
+        pass
 
     return {"id": project_id, "status": "deleted", "message": "Project permanently deleted"}
 
@@ -866,64 +880,73 @@ def run_persona_review(
         from models.hierarchy import HierarchyStore, _make_hierarchy_store
         store = _make_hierarchy_store(project_id)
         versions = store.list_versions()
-        latest_version_id = versions[0]["version_id"] if versions else "v0"
-
-        # Get included file names for review context – merge BOTH systems:
-        # 1. Legacy context/ documents (ingested via /api/ingest)
-        # 2. New artifact v1 uploads (ingested via /api/v1/artifacts/upload|text)
-        documents = get_project_context(project_id)
-        file_toggles = get_file_toggles(project_id)
-
-        # Legacy files: filter by toggle state
-        legacy_included_files = [
-            d.get("filename", "")
-            for d in documents
-            if file_toggles.get(d.get("filename", ""), True) and d.get("filename", "")
-        ]
-        legacy_categories = list(set(
-            d.get("metadata", {}).get("source_type", "")
-            for d in documents
-            if file_toggles.get(d.get("filename", ""), True)
-            and d.get("metadata", {}).get("source_type", "")
-        ))
-
-        # New artifact v1 files: include those with include=True
-        artifact_included_files: List[str] = []
-        artifact_categories: List[str] = []
-        try:
-            from processors.artifact_store import list_artifacts
-            artifacts = list_artifacts(project_id)
-            for art in artifacts:
-                if art.get("include", True):
-                    label = art.get("title") or art.get("fileName") or art.get("artifactId", "")
-                    if label:
-                        artifact_included_files.append(label)
-                    cat = art.get("category", "")
-                    if cat:
-                        artifact_categories.append(cat)
-        except Exception:
+        if not versions:
+            # No version exists yet — skip hierarchy review creation.
+            # User must run Build Intelligence first to create a version.
             pass
+        else:
+            latest_version_id = versions[0]["version_id"]
 
-        # Merge and deduplicate
-        included_files = list(dict.fromkeys(legacy_included_files + artifact_included_files))
-        categories = list(dict.fromkeys(legacy_categories + artifact_categories))
+            # Get included file names for review context – merge BOTH systems:
+            # 1. Legacy context/ documents (ingested via /api/ingest)
+            # 2. New artifact v1 uploads (ingested via /api/v1/artifacts/upload|text)
+            documents = get_project_context(project_id)
+            file_toggles = get_file_toggles(project_id)
 
-        store.create_review(
-            version_id=latest_version_id,
-            persona=canonical_persona,
-            ai_backend=ai_backend,
-            prompt_used=review.get("prompt_used", ""),
-            custom_prompt=custom_prompt or "",
-            findings=review.get("findings", {}),
-            questions=review.get("questions", []),
-            summary=review.get("summary", ""),
-            included_files=included_files,
-            categories=categories,
-            ai_metadata=review.get("ai_metadata", {}),
-            deep_dive=review.get("deep_dive"),
+            # Legacy files: filter by toggle state
+            legacy_included_files = [
+                d.get("filename", "")
+                for d in documents
+                if file_toggles.get(d.get("filename", ""), True) and d.get("filename", "")
+            ]
+            legacy_categories = list(set(
+                d.get("metadata", {}).get("source_type", "")
+                for d in documents
+                if file_toggles.get(d.get("filename", ""), True)
+                and d.get("metadata", {}).get("source_type", "")
+            ))
+
+            # New artifact v1 files: include those with include=True
+            artifact_included_files: List[str] = []
+            artifact_categories: List[str] = []
+            try:
+                from db.artifact_store_sql import list_artifacts as _list_artifacts_sql
+                artifacts = _list_artifacts_sql(project_id)
+                for art in artifacts:
+                    if art.get("include", True):
+                        label = art.get("title") or art.get("fileName") or art.get("artifactId", "")
+                        if label:
+                            artifact_included_files.append(label)
+                        cat = art.get("category", "")
+                        if cat:
+                            artifact_categories.append(cat)
+            except Exception:
+                pass
+
+            # Merge and deduplicate
+            included_files = list(dict.fromkeys(legacy_included_files + artifact_included_files))
+            categories = list(dict.fromkeys(legacy_categories + artifact_categories))
+
+            store.create_review(
+                version_id=latest_version_id,
+                persona=canonical_persona,
+                ai_backend=ai_backend,
+                prompt_used=review.get("prompt_used", ""),
+                custom_prompt=custom_prompt or "",
+                findings=review.get("findings", {}),
+                questions=review.get("questions", []),
+                summary=review.get("summary", ""),
+                included_files=included_files,
+                categories=categories,
+                ai_metadata=review.get("ai_metadata", {}),
+                deep_dive=review.get("deep_dive"),
+            )
+    except Exception as _review_store_exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Failed to create hierarchy review for project %s: %s",
+            project_id, _review_store_exc, exc_info=True
         )
-    except Exception:
-        pass
 
     # Update iteration tracking
     _update_iteration_on_review(project_id)

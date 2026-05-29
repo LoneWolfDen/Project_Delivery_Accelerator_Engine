@@ -1969,16 +1969,36 @@ async function runDeepDive(){
   const el=document.getElementById('deepDiveResult');
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Generating SME questions…</span>';
   const roles=_getSelectedRoles();
-  const persona=roles[0]||'Solution Architect';
   const custom=document.getElementById('customPrompt')?.value||'';
   const backend=document.getElementById('backendSelect')?.value||'files_only';
-  const r=await api('POST',`/api/projects/${state.current.id}/deep-dive`,
-    {persona,custom_prompt:custom,ai_backend:backend});
+  // Send ALL selected roles; server loops through each and merges question groups
+  const allRoles=roles.length?roles:['Solution Architect'];
+  let mergedGroups=[],mergedQuestions=[],mergedPct=0;
+  for(const persona of allRoles){
+    const r=await api('POST',`/api/projects/${state.current.id}/deep-dive`,
+      {persona,custom_prompt:custom,ai_backend:backend});
+    if(r.error)continue;
+    // Tag each group with the role it came from
+    (r.question_groups||[]).forEach(g=>{
+      mergedGroups.push({...g,category:`[${persona}] ${g.category}`});
+    });
+    mergedQuestions.push(...(r.all_questions||[]).map(q=>`[${persona}] ${q}`));
+    mergedPct=Math.max(mergedPct,r.scope_completeness||0);
+  }
+  const r={question_groups:mergedGroups,all_questions:mergedQuestions,
+    scope_completeness:mergedPct,ai_mode:backend!=='files_only',ai_backend:backend,
+    error:mergedGroups.length===0?'No questions generated':undefined};
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
   state.lastDeepDive=r;
+  state.lastDeepDive.roles=allRoles;
   const groups=r.question_groups||[];
   const allQ=r.all_questions||[];
-  const pct=r.scope_completeness??Math.round((r.scope_validation?.completeness_score||0)*100);
+  const pct=r.scope_completeness??0;
+  const pctTag=pct>=70?'tag-green':pct>=40?'tag-yellow':'tag-red';
+  const srcLabel=r.ai_mode
+    ?`✨ AI (${escHtml(r.ai_backend)}) — questions tailored to this project`
+    :'🔍 Heuristic — select an AI backend for project-specific questions';
+  state._ddAllItems=allQ;
   const pctTag=pct>=70?'tag-green':pct>=40?'tag-yellow':'tag-red';
   const srcLabel=r.ai_mode
     ?`✨ AI (${escHtml(r.ai_backend)}) — questions tailored to this project`
@@ -2013,7 +2033,7 @@ async function runDeepDive(){
 
   let html=`<div class="card" id="ddResultCard">
     <div class="flex-between mb">
-      <div class="card-title"><span class="icon">🔬</span>SME Questions — ${escHtml(persona)}</div>
+      <div class="card-title"><span class="icon">🔬</span>SME Questions — ${escHtml(allRoles.join(' + '))}</div>
       <span class="tag ${pctTag}">Scope ${pct}%</span>
     </div>
     <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px">${srcLabel}</p>`;
