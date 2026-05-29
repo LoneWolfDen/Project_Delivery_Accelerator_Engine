@@ -174,6 +174,11 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/summary"):
             project_id = clean_path.split("/")[3]
             self._handle_get_presales_summary(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/stop-condition"):
+            # GET /api/projects/{id}/presales/stop-condition — DS-08
+            project_id = clean_path.split("/")[3]
+            result = project_manager.get_presales_stop_condition(project_id)
+            self._json_response(result)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback"):
             project_id = clean_path.split("/")[3]
             self._handle_list_presales_feedback(project_id)
@@ -480,6 +485,24 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/share"):
             project_id = clean_path.split("/")[3]
             self._handle_create_feedback_token(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/finalise"):
+            # POST /api/projects/{id}/presales/finalise — DS-08 atomic finalisation
+            project_id = clean_path.split("/")[3]
+            body = self._read_body() or {}
+            decided_by = body.get("decided_by", "")
+            if not decided_by:
+                self._json_response({"error": "decided_by is required to finalise"}, status=400)
+            else:
+                result = project_manager.finalise_presales(
+                    project_id,
+                    decided_by=decided_by,
+                    reason=body.get("reason", ""),
+                    force=bool(body.get("force", False)),
+                )
+                if result.get("error"):
+                    self._json_response(result, status=422)
+                else:
+                    self._json_response(result, status=200)
         elif clean_path == "/api/feedback/submit":
             self._handle_external_feedback_submit()
         else:
@@ -858,29 +881,40 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, status=404)
 
     def _handle_create_proposal(self, project_id: str) -> None:
-        """Create a proposal for a project."""
+        """Create a proposal for a project. DS-07: requires hierarchy_version_id + review_id."""
         body = self._read_body() or {}
-        # UI sends proposal_name; legacy fallback accepts name
         name = body.get("proposal_name") or body.get("name") or "Untitled Proposal"
+        hierarchy_version_id = body.get("hierarchy_version_id", "")
+        active_review_id     = body.get("review_id", "") or body.get("active_review_id", "")
         try:
             result = project_manager.create_proposal(
-                project_id, name, body.get("client", ""), notes=body.get("notes", "")
+                project_id, name,
+                client=body.get("client", ""),
+                notes=body.get("notes", ""),
+                hierarchy_version_id=hierarchy_version_id,
+                active_review_id=active_review_id,
             )
             self._json_response(result, status=201)
         except ValueError as e:
-            self._json_response({"error": str(e)}, status=400)
+            self._json_response({"error": str(e)}, status=422)
 
     def _handle_add_proposal_version(self, project_id: str) -> None:
-        """Add a version to existing proposal."""
+        """Add a version to existing proposal. DS-07: requires hierarchy_version_id + review_id."""
         body = self._read_body() or {}
         try:
             result = project_manager.add_proposal_version(
-                project_id, body.get("label", ""), notes=body.get("notes", ""),
+                project_id,
+                label=body.get("label", ""),
+                notes=body.get("notes", ""),
                 changes=body.get("changes", ""),
+                hierarchy_version_id=body.get("hierarchy_version_id", ""),
+                active_review_id=body.get("review_id", "") or body.get("active_review_id", ""),
+                feedback_applied=body.get("feedback_applied", []),
+                changes_summary=body.get("changes_summary", ""),
             )
             self._json_response(result, status=201)
         except ValueError as e:
-            self._json_response({"error": str(e)}, status=400)
+            self._json_response({"error": str(e)}, status=422)
 
     def _handle_update_proposal_version_status(self, project_id: str, version_id: str) -> None:
         """POST /api/projects/{id}/proposal/version/{version_id}/status"""
@@ -889,6 +923,38 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         if not new_status:
             self._json_response({"error": "status required"}, status=400)
             return
+        # DS-08: enforce soft lock — reject writes unless override_reason provided
+        try:
+            from db.project_store_sql import get_db, Database
+            db = get_db()
+            row = db.fetchone(
+                "SELECT lock_status, lock_reason FROM proposal_versions "
+                "WHERE project_id=? AND version_id=?",
+                (project_id, version_id),
+            )
+            if row and row.get("lock_status") == "soft_locked":
+                override_reason = body.get("override_reason", "")
+                if not override_reason:
+                    self._json_response({
+                        "error": "This proposal version is soft-locked (finalised). "
+                                 "Provide 'override_reason' to proceed.",
+                        "lock_reason": row.get("lock_reason", ""),
+                        "lock_status": "soft_locked",
+                    }, status=409)
+                    return
+                # Log the override
+                from db.decision_log import log_decision
+                log_decision(
+                    project_id=project_id,
+                    entity_type="proposal_version",
+                    entity_id=version_id,
+                    action="lock_overridden",
+                    actor=body.get("decided_by", ""),
+                    reason=override_reason,
+                    metadata={"new_status": new_status},
+                )
+        except Exception:
+            pass
         try:
             result = project_manager.update_proposal_status(project_id, version_id, new_status)
             self._json_response(result)

@@ -1133,8 +1133,14 @@ def create_proposal(
     client: str = "",
     files: Optional[List[Path]] = None,
     notes: str = "",
+    hierarchy_version_id: str = "",
+    active_review_id: str = "",
 ) -> Dict[str, Any]:
-    """Create a proposal for a project."""
+    """Create a proposal for a project.
+
+    DS-07: hierarchy_version_id and active_review_id are now required.
+    Raises ValueError if either is missing or if review gate not passed.
+    """
     from processors.proposals import create_proposal as _create
     from db.project_store_sql import save_proposal_sql, _flags
 
@@ -1142,12 +1148,28 @@ def create_proposal(
     if project is None:
         raise ValueError(f"Project not found: {project_id}")
 
+    # DS-07: validate review quality gate before allowing proposal creation
+    if active_review_id:
+        try:
+            from processors.review_quality import check_review_gate
+            gate = check_review_gate(project_id, active_review_id)
+            if not gate["can_set_active"]:
+                raise ValueError(
+                    f"Review {active_review_id} has not passed the quality gate. "
+                    f"Mark it as complete or interim first. Blockers: {'; '.join(gate['blockers'])}"
+                )
+        except ImportError:
+            pass
+
     project_dir = PROJECTS_DIR / project_id
     intel = get_project_intelligence(project_id)
-    ctx_version = intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
+    ctx_version = hierarchy_version_id or intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
 
     file_strs = [str(f) for f in (files or [])]
-    tracker = _create(project_dir, proposal_name, client, file_strs, notes, ctx_version)
+    tracker = _create(
+        project_dir, proposal_name, client, file_strs, notes,
+        ctx_version, hierarchy_version_id, active_review_id
+    )
 
     sql_on, _ = _flags()
     if sql_on:
@@ -1161,23 +1183,46 @@ def add_proposal_version(
     files: Optional[List[Path]] = None,
     notes: str = "",
     changes: str = "",
+    hierarchy_version_id: str = "",
+    active_review_id: str = "",
+    feedback_applied: Optional[List[str]] = None,
+    changes_summary: str = "",
 ) -> Dict[str, Any]:
-    """Add a new version to the project's proposal."""
+    """Add a new version to the project's proposal.
+
+    DS-07: hierarchy_version_id and active_review_id are required.
+    Clears feedback cache for the previous proposal version.
+    """
     from processors.proposals import add_proposal_version as _add
     from db.project_store_sql import load_proposal_sql, save_proposal_sql, _flags
 
+    # DS-07: validate review quality gate
+    if active_review_id:
+        try:
+            from processors.review_quality import check_review_gate
+            gate = check_review_gate(project_id, active_review_id)
+            if not gate["can_set_active"]:
+                raise ValueError(
+                    f"Review {active_review_id} has not passed the quality gate. "
+                    f"Blockers: {'; '.join(gate['blockers'])}"
+                )
+        except ImportError:
+            pass
+
     project_dir = PROJECTS_DIR / project_id
     intel = get_project_intelligence(project_id)
-    ctx_version = intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
+    ctx_version = hierarchy_version_id or intel.get("_build_metadata", {}).get("built_at", "") if intel else ""
 
     file_strs = [str(f) for f in (files or [])]
-    version = _add(project_dir, file_strs, label, notes, changes, ctx_version)
+    version = _add(
+        project_dir, file_strs, label, notes, changes,
+        ctx_version, hierarchy_version_id, active_review_id,
+        feedback_applied, changes_summary
+    )
 
-    # Re-sync the full tracker to SQLite
     sql_on, _ = _flags()
     if sql_on:
-        from processors.proposals import get_proposal
-        tracker = get_proposal(project_dir)
+        tracker = load_proposal_sql(project_id)
         if tracker:
             save_proposal_sql(project_id, tracker)
     return version
@@ -1621,6 +1666,27 @@ def get_proposal_doc(project_id: str, proposal_ver_id: str) -> Optional[Dict[str
     """Get the latest generated proposal document for a version."""
     from db.decision_log import get_latest_proposal_document
     return get_latest_proposal_document(project_id, proposal_ver_id)
+
+
+# ──────────────────────────────────────────────────────────────
+# Pre-sales Finalisation (DS-08)
+# ──────────────────────────────────────────────────────────────
+
+def get_presales_stop_condition(project_id: str) -> Dict[str, Any]:
+    """Check pre-sales stop condition without any state changes."""
+    from processors.presales_finaliser import check_stop_condition
+    return check_stop_condition(project_id)
+
+
+def finalise_presales(
+    project_id: str,
+    decided_by: str,
+    reason: str = "",
+    force: bool = False,
+) -> Dict[str, Any]:
+    """Atomically finalise pre-sales: accept + lock + freeze + phase transition."""
+    from processors.presales_finaliser import finalise_presales as _finalise
+    return _finalise(project_id, decided_by, reason, force)
 
 
 # ──────────────────────────────────────────────────────────────
