@@ -1529,3 +1529,112 @@ def get_active_review_for_version(project_id: str, version_id: str) -> Optional[
     if review:
         return review.to_dict()
     return None
+
+
+
+# ──────────────────────────────────────────────────────────────
+# Diagram Generation (P4)
+# ──────────────────────────────────────────────────────────────
+
+DIAGRAM_TYPES = ["dependency_map", "risk_heatmap", "scope_overview"]
+
+
+def generate_diagram(project_id: str, diagram_type: str) -> Dict[str, Any]:
+    """Generate a .drawio diagram from the project's built intelligence.
+
+    Saves the XML to ``projects_data/{id}/diagrams/{type}.drawio`` and
+    returns a summary dict.
+
+    Args:
+        project_id: Project ID.
+        diagram_type: One of ``dependency_map``, ``risk_heatmap``,
+            ``scope_overview``.
+
+    Returns:
+        Dict with keys: diagram_type, xml, path, generated_at.
+
+    Raises:
+        ValueError: If project not found, no intelligence built, or
+            unknown diagram type.
+    """
+    from processors.diagram_generator import generate, DIAGRAM_TYPES as VALID
+    from datetime import datetime, timezone
+
+    if diagram_type not in VALID:
+        raise ValueError(
+            f"Unknown diagram type '{diagram_type}'. "
+            f"Available: {', '.join(VALID)}"
+        )
+
+    intelligence = get_project_intelligence(project_id)
+    if not intelligence:
+        raise ValueError(
+            f"No intelligence built for project '{project_id}'. "
+            "Run Intelligence first."
+        )
+
+    xml = generate(diagram_type, intelligence)
+
+    # Persist to disk
+    diagram_dir = PROJECTS_DIR / project_id / "diagrams"
+    diagram_dir.mkdir(parents=True, exist_ok=True)
+    out_path = diagram_dir / f"{diagram_type}.drawio"
+    out_path.write_text(xml, encoding="utf-8")
+
+    return {
+        "project_id": project_id,
+        "diagram_type": diagram_type,
+        "xml": xml,
+        "path": str(out_path),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "size_bytes": len(xml.encode()),
+    }
+
+
+def get_diagram(project_id: str, diagram_type: str) -> Dict[str, Any]:
+    """Load a previously generated diagram from disk.
+
+    Returns the XML if it exists, or an error dict if not yet generated.
+    """
+    from processors.diagram_generator import DIAGRAM_TYPES as VALID
+
+    if diagram_type not in VALID:
+        return {"error": f"Unknown diagram type '{diagram_type}'."}
+
+    out_path = PROJECTS_DIR / project_id / "diagrams" / f"{diagram_type}.drawio"
+    if not out_path.exists():
+        return {"error": f"Diagram '{diagram_type}' not yet generated."}
+
+    xml = out_path.read_text(encoding="utf-8")
+    return {
+        "project_id": project_id,
+        "diagram_type": diagram_type,
+        "xml": xml,
+        "path": str(out_path),
+        "size_bytes": len(xml.encode()),
+    }
+
+
+def list_diagrams(project_id: str) -> Dict[str, Any]:
+    """List all generated diagrams for a project.
+
+    Returns:
+        Dict with ``diagrams`` list (type, path, size_bytes per entry).
+    """
+    from processors.diagram_generator import DIAGRAM_TYPES as VALID
+
+    diagram_dir = PROJECTS_DIR / project_id / "diagrams"
+    diagrams = []
+    for dtype in VALID:
+        p = diagram_dir / f"{dtype}.drawio"
+        if p.exists():
+            diagrams.append({
+                "diagram_type": dtype,
+                "path": str(p),
+                "size_bytes": p.stat().st_size,
+            })
+    return {
+        "project_id": project_id,
+        "diagrams": diagrams,
+        "available_types": VALID,
+    }

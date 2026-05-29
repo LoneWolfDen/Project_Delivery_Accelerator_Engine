@@ -208,6 +208,33 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             review_filter = query.get("review_id")
             metrics = project_manager.get_hierarchy_metrics(project_id, version_filter, review_filter)
             self._json_response(metrics)
+        # ── Diagram API ──
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/diagrams"):
+            # GET /api/projects/{id}/diagrams  →  list saved diagrams
+            project_id = clean_path.split("/")[3]
+            result = project_manager.list_diagrams(project_id)
+            self._json_response(result)
+        elif clean_path.startswith("/api/projects/") and "/diagrams/" in clean_path:
+            # GET /api/projects/{id}/diagrams/{type}  →  return drawio XML
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            diagram_type = parts[5]
+            result = project_manager.get_diagram(project_id, diagram_type)
+            if result.get("error"):
+                self._json_response(result, status=404)
+            else:
+                # Return as XML download
+                xml = result.get("xml", "")
+                filename = f"{diagram_type}.drawio"
+                self.send_response(200)
+                self.send_header("Content-Type", "application/xml")
+                self.send_header(
+                    "Content-Disposition", f'attachment; filename="{filename}"'
+                )
+                self.send_header("Content-Length", str(len(xml.encode())))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(xml.encode())
         # ── Artifact API v1 ──
         elif "/artifacts" in clean_path and clean_path.startswith("/api/v1/projects/"):
             # GET /api/v1/projects/{projectId}/artifacts
@@ -235,6 +262,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/build-context"):
             project_id = clean_path.split("/")[3]
             self._handle_build_context(project_id)
+        elif clean_path.startswith("/api/projects/") and "/diagrams/" in clean_path and clean_path.endswith("/generate"):
+            # POST /api/projects/{id}/diagrams/{type}/generate
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            diagram_type = parts[5]
+            self._handle_generate_diagram(project_id, diagram_type)
         elif clean_path == "/api/review":
             self._handle_review()
         elif clean_path == "/api/personas":
@@ -459,6 +492,17 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response(result)
         except ValueError as e:
             self._json_response({"error": str(e)}, status=404)
+        except Exception as e:
+            self._json_response({"error": str(e)}, status=500)
+
+    def _handle_generate_diagram(self, project_id: str, diagram_type: str) -> None:
+        """Generate a .drawio diagram from built project intelligence."""
+        try:
+            result = project_manager.generate_diagram(project_id, diagram_type)
+            if result.get("error"):
+                self._json_response(result, status=400)
+            else:
+                self._json_response(result)
         except Exception as e:
             self._json_response({"error": str(e)}, status=500)
 
