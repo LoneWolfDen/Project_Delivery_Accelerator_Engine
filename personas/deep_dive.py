@@ -103,6 +103,28 @@ def run_deep_dive(
         )
         if ai_enhancement:
             deep_dive["ai_enhancement"] = ai_enhancement
+            # Merge AI-parsed structured fields back into the deep_dive output
+            parsed = ai_enhancement.get("parsed", {})
+            if parsed:
+                dd = deep_dive["deep_dive"]
+                # Extend lists — AI findings are additive to heuristic baseline
+                dd["missing_areas"] = _merge_dd_list(
+                    dd["missing_areas"],
+                    [{"area": a, "severity": "medium", "suggestion": a}
+                     for a in parsed.get("missing_areas", [])],
+                )
+                dd["risk_flags"] = _merge_dd_flags(
+                    dd["risk_flags"],
+                    parsed.get("risk_flags", []),
+                )
+                dd["clarification_questions"] = _dedup_strings(
+                    dd["clarification_questions"] + parsed.get("clarification_questions", [])
+                )
+                dd["suggested_additions"] = _merge_dd_list(
+                    dd["suggested_additions"],
+                    [{"category": "ai", "suggestion": s, "priority": "medium"}
+                     for s in parsed.get("suggested_additions", [])],
+                )
 
     return deep_dive
 
@@ -426,14 +448,18 @@ def _run_ai_deep_dive(
     """Run AI-enhanced deep dive analysis.
 
     Only called when ai_backend != 'files_only'.
+    Parses the LLM response into structured fields so they are merged back
+    into the heuristic baseline (missing_areas, risk_flags,
+    clarification_questions, suggested_additions).
     Falls back gracefully if AI is unavailable.
 
     Returns:
-        AI enhancement dict, or None if unavailable.
+        Dict with ``raw_output``, ``parsed`` (structured fields), and
+        ``ai_metadata``.  Returns None on failure.
     """
     try:
-        from ai_backends import get_backend
-        from processors.context_builder import build_context_summary
+        from ai_backends import get_backend  # noqa: PLC0415
+        from processors.context_builder import build_context_summary  # noqa: PLC0415
 
         context_summary = build_context_summary(intelligence)
 
@@ -447,32 +473,142 @@ def _run_ai_deep_dive(
 
 {f'## Additional Context{chr(10)}{custom_prompt}' if custom_prompt else ''}
 
-## Required Output (structured):
+## Required Output
+Return ONLY a JSON object with these keys (no markdown, no prose):
+{{
+  "missing_areas":           ["area not covered", ...],
+  "risk_flags":              ["HIGH: risk description", ...],
+  "clarification_questions": ["question?", ...],
+  "suggested_additions":     ["add X to scope", ...]
+}}
 
-1. **Missing Areas**: What critical areas are not covered?
-2. **Risk Flags**: What are the top risks with severity?
-3. **Clarification Questions**: What must be answered before proceeding?
-4. **Suggested Additions**: What should be added to scope?
-
-Be specific, actionable, and concise. Use bullet points."""
+Rules:
+- Each list contains plain strings (min 15 chars each).
+- Prefix risk_flags items with severity: "CRITICAL:", "HIGH:", "MEDIUM:", or "LOW:".
+- Maximum 10 items per list.
+- Return ONLY the JSON object."""
 
         backend = get_backend(ai_backend)
         response = backend.generate(
             prompt=prompt,
-            system_prompt=f"You are a senior {persona_name} performing deep analysis.",
-            temperature=0.4,
+            system_prompt=f"You are a senior {persona_name} performing deep analysis. Return only valid JSON.",
+            temperature=0.3,
             max_tokens=1500,
         )
 
-        if response.success:
-            return {
-                "raw_output": response.text,
+        if not response.success or not response.text:
+            return None
+
+        parsed = _parse_deep_dive_response(response.text)
+
+        return {
+            "raw_output": response.text,
+            "parsed": parsed,
+            "ai_metadata": {
                 "model": response.model,
-                "tokens_used": response.tokens_used,
                 "backend": ai_backend,
-            }
+                "tokens_used": response.tokens_used,
+                "latency_ms": response.latency_ms,
+            },
+        }
 
     except Exception:
         pass
 
     return None
+
+
+def _parse_deep_dive_response(text: str) -> Dict[str, List[str]]:
+    """Parse the LLM deep dive response into structured fields.
+
+    Handles clean JSON, markdown-fenced JSON, and JSON embedded in prose.
+    Returns empty lists on any parse failure.
+    """
+    import json  # noqa: PLC0415
+    import re    # noqa: PLC0415
+
+    empty: Dict[str, List[str]] = {
+        "missing_areas": [],
+        "risk_flags": [],
+        "clarification_questions": [],
+        "suggested_additions": [],
+    }
+
+    # Strip markdown fences
+    fenced = re.search(r"```(?:json)?\s*([\s\S]+?)```", text)
+    candidate = fenced.group(1) if fenced else text
+
+    # Find first {...} block
+    brace = re.search(r"\{[\s\S]+\}", candidate)
+    if not brace:
+        return empty
+
+    try:
+        data = json.loads(brace.group(0))
+    except (json.JSONDecodeError, ValueError):
+        return empty
+
+    result: Dict[str, List[str]] = {}
+    for key in empty:
+        raw = data.get(key, [])
+        result[key] = [
+            str(item).strip()
+            for item in (raw if isinstance(raw, list) else [])
+            if isinstance(item, str) and len(str(item).strip()) >= 15
+        ][:10]
+
+    return result
+
+
+# ── Merge helpers ─────────────────────────────────────────────────────────────
+
+def _merge_dd_list(
+    base: List[Any], additions: List[Any]
+) -> List[Any]:
+    """Add novel items to a list, deduplicating by lowercased text."""
+    seen = {
+        (item.get("area", "") + item.get("suggestion", "")).lower()
+        for item in base
+        if isinstance(item, dict)
+    }
+    result = list(base)
+    for item in additions:
+        key = (item.get("area", "") + item.get("suggestion", "")).lower()
+        if key and key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result
+
+
+def _merge_dd_flags(
+    base: List[Any], additions: List[str]
+) -> List[Any]:
+    """Merge AI risk flag strings into the structured flags list."""
+    seen = {str(f.get("flag", "")).lower() for f in base if isinstance(f, dict)}
+    result = list(base)
+    for item in additions:
+        item = str(item).strip()
+        # Parse "SEVERITY: description" prefix
+        sev = "medium"
+        flag_text = item
+        for prefix in ("CRITICAL:", "HIGH:", "MEDIUM:", "LOW:"):
+            if item.upper().startswith(prefix):
+                sev = prefix.rstrip(":").lower()
+                flag_text = item[len(prefix):].strip()
+                break
+        if flag_text.lower() not in seen:
+            seen.add(flag_text.lower())
+            result.append({"flag": flag_text, "severity": sev, "source": "ai"})
+    return result
+
+
+def _dedup_strings(items: List[str]) -> List[str]:
+    """Deduplicate a list of strings case-insensitively."""
+    seen: set = set()
+    out = []
+    for item in items:
+        norm = item.lower().strip()
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(item)
+    return out

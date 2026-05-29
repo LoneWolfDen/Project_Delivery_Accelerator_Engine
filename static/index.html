@@ -388,7 +388,7 @@ let state={
   _reviewSort:'newest',
   _debugMode:false,
 };
-const TABS=['dashboard','ingest','intelligence','versions','reviews','phases','admin'];
+const TABS=['dashboard','ingest','intelligence','versions','reviews','diagrams','phases','admin'];
 
 // Shared hierarchy loader
 async function loadHierarchy(pid){
@@ -450,7 +450,7 @@ async function render(){
   main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
   const views={
     dashboard:viewDashboard,ingest:viewIngest,intelligence:viewIntelligence,
-    versions:viewVersions,reviews:viewReviews,phases:viewPhases,
+    versions:viewVersions,reviews:viewReviews,diagrams:viewDiagrams,phases:viewPhases,
     settings:viewSettings,admin:viewAdmin
   };
   main.innerHTML=await(views[state.tab]||viewDashboard)();
@@ -1948,6 +1948,123 @@ async function addSelectedToPrompt(){
 
 
 <script>
+// ═══════════════════════════════════════════════════════════════
+// DIAGRAMS VIEW
+// ═══════════════════════════════════════════════════════════════
+async function viewDiagrams(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+
+  // Check if intelligence is built
+  let intel={};
+  try{const r=await api('GET',`/api/projects/${pid}/intelligence`);intel=r.intelligence||r;}catch(e){}
+  const hasIntel=!!(intel.risks||intel.scope||intel.dependencies);
+
+  // Load list of already-generated diagrams
+  let existing=[];
+  try{const r=await api('GET',`/api/projects/${pid}/diagrams`);existing=r.diagrams||[];}catch(e){}
+
+  const TYPES=[
+    {key:'dependency_map',   label:'Dependency Map',   icon:'🔗',
+     desc:'Nodes for each intelligence item grouped by category (risks, dependencies, assumptions, constraints, action items).'},
+    {key:'risk_heatmap',     label:'Risk Heatmap',     icon:'🔴',
+     desc:'Risks plotted on a 3×3 Impact vs Likelihood grid, colour-coded by severity.'},
+    {key:'scope_overview',   label:'Scope Overview',   icon:'📄',
+     desc:'One swimlane per category showing all extracted items — a single-page project summary.'},
+  ];
+
+  const existingKeys=new Set(existing.map(d=>d.diagram_type));
+
+  if(!hasIntel){
+    return`<div class="card"><div class="empty">
+      <div class="empty-icon">📐</div>
+      <p>No intelligence built yet. Run Intelligence first, then generate diagrams.</p>
+      <button class="btn mt" onclick="buildContext()">🔨 Run Intelligence</button>
+    </div></div>`;
+  }
+
+  let html=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">📐</span>Diagram Generator</div>
+      <button class="btn btn-sm btn-outline" onclick="generateAllDiagrams()">⚡ Generate All</button>
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:0">
+      Auto-generates .drawio diagrams from built project intelligence.
+      Open in <a href="https://app.diagrams.net" target="_blank" style="color:var(--accent)">diagrams.net</a> or VS Code Draw.io extension.
+    </p>
+  </div>`;
+
+  for(const t of TYPES){
+    const isReady=existingKeys.has(t.key);
+    html+=`<div class="card">
+      <div class="flex-between mb">
+        <div>
+          <div style="font-size:14px;font-weight:600">${t.icon} ${escHtml(t.label)}</div>
+          <p style="font-size:12px;color:var(--text-dim);margin:4px 0 0">${escHtml(t.desc)}</p>
+        </div>
+        <span class="tag ${isReady?'tag-green':'tag-yellow'}">${isReady?'Ready':'Not generated'}</span>
+      </div>
+      <div class="flex gap-sm">
+        <button class="btn btn-sm" id="gen-${t.key}"
+          onclick="generateDiagram('${t.key}')">
+          ${isReady?'🔄 Regenerate':'⚡ Generate'}
+        </button>
+        ${isReady?`<button class="btn btn-sm btn-outline"
+          onclick="downloadDiagram('${t.key}','${t.label}')">
+          ⬇ Download .drawio
+        </button>`:''}
+      </div>
+      <div id="diag-status-${t.key}" style="margin-top:8px;font-size:11px;color:var(--text-dim)"></div>
+    </div>`;
+  }
+
+  return html;
+}
+
+async function generateDiagram(dtype){
+  if(!state.current)return;
+  const pid=state.current.id;
+  const btn=document.getElementById(`gen-${dtype}`);
+  const status=document.getElementById(`diag-status-${dtype}`);
+  if(btn){btn.disabled=true;btn.textContent='⏳ Generating…';}
+  if(status)status.textContent='';
+  try{
+    const r=await api('POST',`/api/projects/${pid}/diagrams/${dtype}/generate`,{});
+    if(r.error){
+      if(status)status.textContent=`Error: ${r.error}`;
+      if(btn){btn.disabled=false;btn.textContent='⚡ Generate';}
+    }else{
+      toast(`${dtype.replace(/_/g,' ')} diagram generated (${(r.size_bytes/1024).toFixed(1)} KB)`);
+      render();
+    }
+  }catch(e){
+    if(status)status.textContent='Generation failed.';
+    if(btn){btn.disabled=false;btn.textContent='⚡ Generate';}
+  }
+}
+
+async function generateAllDiagrams(){
+  const types=['dependency_map','risk_heatmap','scope_overview'];
+  for(const t of types)await generateDiagram(t);
+}
+
+async function downloadDiagram(dtype,label){
+  if(!state.current)return;
+  const pid=state.current.id;
+  try{
+    const resp=await fetch(`/api/projects/${pid}/diagrams/${dtype}`);
+    if(!resp.ok){toast('Download failed','err');return;}
+    const xml=await resp.text();
+    const blob=new Blob([xml],{type:'application/xml'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=`${dtype}.drawio`;
+    document.body.appendChild(a);a.click();
+    document.body.removeChild(a);URL.revokeObjectURL(url);
+    toast(`Downloaded ${label}.drawio`);
+  }catch(e){toast('Download error','err');}
+}
+
 // ═══════════════════════════════════════════════════════════════
 // PHASES VIEW
 // ═══════════════════════════════════════════════════════════════
