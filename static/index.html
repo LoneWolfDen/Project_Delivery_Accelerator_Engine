@@ -974,18 +974,35 @@ async function viewIntelligence(){
   if(ps.length)metricsUrl+='?'+ps.join('&');
   let metrics={};
   try{metrics=await api('GET',metricsUrl);}catch(e){}
-  const data=await api('GET',`/api/projects/${pid}/intelligence`);
-  const i=data.intelligence||data;
-  if(!i.risks&&!i.constraints&&!i.scope)
+  
+  const ds=metrics.data_source||{};
+  
+  // Try to get data from review first (if selected), then from intelligence
+  let revFindings={};
+  let intelligenceData={};
+  
+  if(ds.review){
+    try{
+      const rd=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${ds.review}`);
+      if(rd&&rd.findings)revFindings=rd.findings;
+    }catch(e){}
+  }
+  
+  // Always load intelligence.json as fallback
+  try{
+    const data=await api('GET',`/api/projects/${pid}/intelligence`);
+    intelligenceData=data.intelligence||data;
+  }catch(e){}
+  
+  // Determine which source to use
+  const useReview=Object.keys(revFindings).length>0;
+  const src=useReview?revFindings:intelligenceData;
+  
+  // Check if we have any data at all
+  if(!useReview && !intelligenceData.risks && !intelligenceData.constraints && !intelligenceData.scope){
     return`<div class="card"><div class="empty"><div class="empty-icon">🧠</div>
       <p>No intelligence built yet.</p>
       <button class="btn mt" onclick="buildContext()">Run Intelligence Now</button></div></div>`;
-
-  const ds=metrics.data_source||{};
-  let revFindings={};
-  if(ds.review){
-    try{const rd=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${ds.review}`);
-      if(rd&&rd.findings)revFindings=rd.findings;}catch(e){}
   }
 
   const cats=['risks','assumptions','dependencies','constraints','action_items'];
@@ -1004,9 +1021,6 @@ async function viewIntelligence(){
       Scope: <strong>${escHtml(ds.version_label||ds.version)}</strong> → <strong>${ds.review_persona?escHtml(ds.review_persona)+' ('+ds.review+')':ds.review||'latest'}</strong>
     </p>`:''}
   </div>`;
-
-  const useReview=Object.keys(revFindings).length>0;
-  const src=useReview?revFindings:i;
 
   let html=header;
   const allCats=useReview?Object.keys(revFindings):cats;
@@ -1027,12 +1041,12 @@ async function viewIntelligence(){
       </div>
     </details>`;
   }
-  if(i.scope){
+  if(intelligenceData.scope){
     html+=`<details class="card">
       <summary class="collapse-header" style="list-style:none;margin:-16px -18px 0;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
         <span class="chevron">▶</span> <span>📄</span> <strong>Scope</strong>
       </summary>
-      <div class="collapse-body"><p style="font-size:12px;white-space:pre-wrap;color:var(--text-dim)">${escHtml(i.scope.slice(0,2000))}</p></div>
+      <div class="collapse-body"><p style="font-size:12px;white-space:pre-wrap;color:var(--text-dim)">${escHtml(intelligenceData.scope.slice(0,2000))}</p></div>
     </details>`;
   }
   // Scroll to highlighted category after render
