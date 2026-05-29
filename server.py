@@ -17,9 +17,18 @@ from typing import Any
 
 import project_manager
 
-# Configuration
-HOST = "localhost"
-PORT = 8080
+# ── Runtime configuration (all overridable via environment variables) ─────────
+HOST = os.environ.get("HOST", "localhost")
+PORT = int(os.environ.get("PORT", "8080"))
+APP_NAME = os.environ.get("APP_NAME", "Project Delivery Accelerator Engine")
+APP_VERSION = "3.3.0"
+
+# Redirect projects_data to PROJECTS_DATA_DIR env var when set (e.g. Docker volume)
+_data_dir = os.environ.get("PROJECTS_DATA_DIR", "")
+if _data_dir:
+    from pathlib import Path as _Path
+    project_manager.PROJECTS_DIR = _Path(_data_dir)
+    project_manager.PROJECTS_FILE = _Path(_data_dir) / "projects.json"
 
 
 class AcceleratorHandler(SimpleHTTPRequestHandler):
@@ -60,7 +69,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
         # API endpoints
         if clean_path == "/api/health":
-            self._json_response({"status": "ok", "version": "3.0.0"})
+            self._json_response({"status": "ok", "version": APP_VERSION, "app": APP_NAME})
         elif clean_path == "/api/backends":
             from ai_backends import list_backends
             self._json_response({"backends": list_backends()})
@@ -975,9 +984,10 @@ def main() -> None:
     """Start the server."""
     project_manager.PROJECTS_DIR.mkdir(exist_ok=True)
     server = HTTPServer((HOST, PORT), AcceleratorHandler)
-    print("Project Delivery Accelerator Engine v3.0")
+    print(f"{APP_NAME} v{APP_VERSION}")
     print(f"Listening on http://{HOST}:{PORT}")
-    print("V3: Admin, Archive/Restore, Persona Deep Dive, Version Control, Guardrails")
+    data_dir = os.environ.get("PROJECTS_DATA_DIR", "projects_data/")
+    print(f"Data directory: {data_dir}")
     server.serve_forever()
 
 

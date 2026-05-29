@@ -162,7 +162,31 @@ def list_all_projects() -> List[Dict[str, Any]]:
 
 
 # Default PIN for destructive operations
-ADMIN_PIN = "1234"
+import os as _os
+# Default PIN is read from ADMIN_PIN env var. No hardcoded fallback —
+# operators must set ADMIN_PIN before enabling destructive operations.
+ADMIN_PIN = _os.environ.get("ADMIN_PIN", "")
+
+
+def _validate_pin(pin: str) -> None:
+    """Validate admin PIN against config or ADMIN_PIN env var.
+
+    Raises:
+        ValueError: If PIN is wrong, empty, or no PIN is configured.
+    """
+    try:
+        from admin.config import load_config
+        configured_pin = load_config().admin_pin
+    except Exception:
+        configured_pin = ADMIN_PIN
+
+    if not configured_pin:
+        raise ValueError(
+            "No admin PIN configured. Set the ADMIN_PIN environment variable "
+            "or configure a PIN via the Admin panel before performing this action."
+        )
+    if pin != configured_pin:
+        raise ValueError("Invalid PIN")
 
 
 def archive_project(project_id: str, pin: str) -> Dict[str, Any]:
@@ -181,16 +205,7 @@ def archive_project(project_id: str, pin: str) -> Dict[str, Any]:
     Raises:
         ValueError: If PIN is wrong or project not found.
     """
-    # Validate PIN from admin config
-    try:
-        from admin.config import load_config
-        config = load_config()
-        admin_pin = config.admin_pin
-    except Exception:
-        admin_pin = ADMIN_PIN
-
-    if pin != admin_pin:
-        raise ValueError("Invalid PIN")
+    _validate_pin(pin)
 
     projects = load_projects()
     target = None
@@ -255,16 +270,7 @@ def delete_project(project_id: str, pin: str) -> Dict[str, Any]:
     Raises:
         ValueError: If PIN is wrong or project not found.
     """
-    # Validate PIN from admin config
-    try:
-        from admin.config import load_config
-        config = load_config()
-        admin_pin = config.admin_pin
-    except Exception:
-        admin_pin = ADMIN_PIN
-
-    if pin != admin_pin:
-        raise ValueError("Invalid PIN")
+    _validate_pin(pin)
 
     projects = load_projects()
     found = None
@@ -356,16 +362,7 @@ def restore_project(project_id: str, pin: str) -> Dict[str, Any]:
     Raises:
         ValueError: If PIN wrong, project not found, or not archived.
     """
-    # Validate PIN
-    try:
-        from admin.config import load_config
-        config = load_config()
-        admin_pin = config.admin_pin
-    except Exception:
-        admin_pin = ADMIN_PIN
-
-    if pin != admin_pin:
-        raise ValueError("Invalid PIN")
+    _validate_pin(pin)
 
     projects = load_projects()
     target = None
