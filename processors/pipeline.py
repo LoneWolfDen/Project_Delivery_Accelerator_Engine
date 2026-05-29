@@ -196,16 +196,18 @@ def process_artifact(project_id: str, artifact_id: str) -> Dict[str, Any]:
 
 
 def process_all_artifacts(
-    project_id: str, only_included: bool = True
+    project_id: str, only_included: bool = True, force: bool = True
 ) -> List[str]:
     """Process all eligible artifacts for a project.
 
     Args:
         project_id: Project ID.
         only_included: If True, only process artifacts with include=True.
+        force: If True (default), re-process even already-processed artifacts.
+               This ensures the button is always useful regardless of prior state.
 
     Returns:
-        List of queued artifact IDs.
+        List of processed artifact IDs.
     """
     registry = _load_registry(project_id)
     queued_ids: List[str] = []
@@ -217,9 +219,8 @@ def process_all_artifacts(
         if only_included and not artifact.include:
             continue
 
-        # Skip if already processed (re-processing allowed by re-running)
-        # Process all that are in 'ingested' or 'failed' status
-        if artifact.status not in (
+        # When force=False (legacy), skip already-processed
+        if not force and artifact.status not in (
             ArtifactStatus.INGESTED.value,
             ArtifactStatus.FAILED.value,
         ):
