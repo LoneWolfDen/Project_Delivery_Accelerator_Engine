@@ -545,7 +545,9 @@ def _update_project_files(project_id: str, file_paths: List[Path]) -> None:
 
 
 def build_project_intelligence(
-    project_id: str, version_label: Optional[str] = None
+    project_id: str,
+    version_label: Optional[str] = None,
+    ai_backend: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build (or rebuild) project intelligence from all ingested documents.
 
@@ -556,6 +558,8 @@ def build_project_intelligence(
     Args:
         project_id: Project ID.
         version_label: Optional label for this build (e.g. 'post-discovery').
+        ai_backend: Optional backend override for this build only.  When
+            ``None`` the project's configured ``ai_backend`` is used.
 
     Returns:
         Built context dict with metadata and version info.
@@ -601,7 +605,10 @@ def build_project_intelligence(
     if not active_docs:
         raise ValueError("All files are excluded. Include at least one file.")
 
-    context = build_context(active_docs)
+    # Determine which AI backend to use for this build
+    effective_backend = ai_backend or project.get("ai_backend", "files_only")
+
+    context = build_context(active_docs, ai_backend=effective_backend)
 
     # Persist current intelligence (data separation: intelligence/ dir)
     project_dir = PROJECTS_DIR / project_id
@@ -656,7 +663,7 @@ def build_project_intelligence(
             excluded_artifacts=excluded,
             persona=project.get("settings", {}).get("default_persona", ""),
             scope=context.get("scope", ""),
-            ai_backend=project.get("ai_backend", "files_only"),
+            ai_backend=effective_backend,
             label=version_label or version_meta.get("label", ""),
             stats=version_meta.get("stats", {}),
         )

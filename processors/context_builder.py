@@ -24,14 +24,24 @@ from models.project import ProjectContext
 from processors.extractors.intelligence_extractor import extract_intelligence
 
 
-def build_context(ingested_documents: List[Dict[str, Any]]) -> Dict[str, Any]:
+def build_context(
+    ingested_documents: List[Dict[str, Any]],
+    ai_backend: Optional[str] = None,
+) -> Dict[str, Any]:
     """Build a structured context pack from ingested documents.
 
     This is the main entry point. Takes all documents for a project
     and produces a unified context pack.
 
+    When ``ai_backend`` is supplied (and is not ``"files_only"``), a second
+    AI-powered extraction pass runs after the regex baseline and its findings
+    are merged in additively.  Regex extraction always runs first; the AI
+    pass degrades gracefully to a no-op on any error.
+
     Args:
         ingested_documents: List of IngestedDocument dicts (from to_dict()).
+        ai_backend: Optional AI backend name (e.g. ``"groq"``, ``"gemini"``).
+            Pass ``None`` or ``"files_only"`` to skip AI enrichment.
 
     Returns:
         Dict representing a ProjectContext with all extracted intelligence,
@@ -40,7 +50,7 @@ def build_context(ingested_documents: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not ingested_documents:
         return _empty_context()
 
-    # Extract intelligence from each document
+    # ── Phase 1: regex baseline (always runs) ────────────────────────────────
     extractions: List[Dict[str, Any]] = []
     for doc in ingested_documents:
         if doc.get("is_valid", False):
@@ -50,8 +60,37 @@ def build_context(ingested_documents: List[Dict[str, Any]]) -> Dict[str, Any]:
     # Aggregate across all documents
     aggregated = _aggregate_extractions(extractions)
 
+    # ── Phase 2: AI enrichment pass (runs only when a real backend given) ────
+    # Build intermediate context dict so the AI extractor has the regex
+    # baseline to merge into.
+    if ai_backend and ai_backend != "files_only":
+        _baseline_for_ai = {
+            "risks": aggregated.get("risks", []),
+            "assumptions": aggregated.get("assumptions", []),
+            "dependencies": aggregated.get("dependencies", []),
+            "constraints": aggregated.get("constraints", []),
+            "action_items": aggregated.get("action_items", []),
+            "scope": _build_scope_summary(aggregated.get("scope_fragments", [])),
+            "_build_metadata": {},
+        }
+        try:
+            from processors.extractors.ai_extractor import extract_with_ai  # noqa: PLC0415
+            enriched = extract_with_ai(ingested_documents, ai_backend, _baseline_for_ai)
+            # Write AI-enriched lists back into aggregated
+            for cat in ("risks", "assumptions", "dependencies", "constraints", "action_items"):
+                aggregated[cat] = enriched.get(cat, aggregated.get(cat, []))
+            # Preserve AI scope override if set
+            if enriched.get("scope") and not aggregated.get("scope_fragments"):
+                aggregated["_ai_scope"] = enriched["scope"]
+            aggregated["_ai_extraction_meta"] = enriched.get("_ai_extraction_meta", {})
+        except Exception:
+            pass  # Degrade silently – regex results are untouched
+
     # Build scope summary from scope fragments
     scope = _build_scope_summary(aggregated.get("scope_fragments", []))
+    # Use AI-generated scope if regex found none
+    if not scope:
+        scope = aggregated.get("_ai_scope", "")
 
     # Build project context
     context = ProjectContext(
@@ -76,8 +115,12 @@ def build_context(ingested_documents: List[Dict[str, Any]]) -> Dict[str, Any]:
         "total_dependencies": len(context.dependencies),
         "total_constraints": len(context.constraints),
         "total_action_items": len(aggregated.get("action_items", [])),
+        "ai_backend": ai_backend or "files_only",
+        "ai_enriched": bool(aggregated.get("_ai_extraction_meta")),
     }
     result["action_items"] = aggregated.get("action_items", [])
+    if aggregated.get("_ai_extraction_meta"):
+        result["_ai_extraction_meta"] = aggregated["_ai_extraction_meta"]
 
     return result
 
