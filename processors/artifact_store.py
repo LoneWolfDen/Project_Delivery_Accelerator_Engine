@@ -335,7 +335,42 @@ def get_artifact_text_content(project_id: str, artifact_id: str) -> str:
         p = Path(artifact.raw_path)
         if p.exists():
             ext = p.suffix.lower()
-            if ext in {".txt", ".md", ".csv", ".eml", ".json", ".yaml", ".yml"}:
-                with open(p) as f:
+            # Strip the artifact_id prefix to get the real extension
+            # raw files are stored as  {artifact_id}_{original_filename}
+            original_name = artifact.file_name or ""
+            orig_ext = Path(original_name).suffix.lower() if original_name else ext
+
+            if orig_ext in {".txt", ".md", ".csv", ".eml", ".json", ".yaml", ".yml"}:
+                with open(p, encoding="utf-8", errors="replace") as f:
                     return f.read()
+
+            if orig_ext == ".pdf":
+                try:
+                    import pypdf  # noqa: PLC0415
+                    reader = pypdf.PdfReader(str(p))
+                    return "\n\n".join(
+                        (page.extract_text() or "").strip()
+                        for page in reader.pages
+                    ).strip()
+                except ImportError:
+                    return "[PDF extraction unavailable – install pypdf]"
+                except Exception as exc:
+                    return f"[PDF extraction error: {exc}]"
+
+            if orig_ext == ".docx":
+                try:
+                    from docx import Document  # noqa: PLC0415
+                    doc = Document(str(p))
+                    parts = [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+                    for table in doc.tables:
+                        for row in table.rows:
+                            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                            if cells:
+                                parts.append(" | ".join(cells))
+                    return "\n\n".join(parts)
+                except ImportError:
+                    return "[DOCX extraction unavailable – install python-docx]"
+                except Exception as exc:
+                    return f"[DOCX extraction error: {exc}]"
+
     return ""

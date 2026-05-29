@@ -9,6 +9,8 @@ Supported formats:
 - CSV (.csv) – resource plans, tracking sheets
 - Email (.eml, text-with-headers) – client correspondence
 - Transcripts (auto-detected from .txt) – meeting recordings
+- PDF (.pdf) – requires pypdf  (pip install pypdf)
+- Word (.docx) – requires python-docx  (pip install python-docx)
 """
 
 from pathlib import Path
@@ -17,7 +19,7 @@ from typing import List
 from models.document import IngestedDocument
 
 # Supported file extensions
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".csv", ".eml"}
+SUPPORTED_EXTENSIONS = {".txt", ".md", ".csv", ".eml", ".pdf", ".docx"}
 
 
 def ingest_file(file_path: Path) -> IngestedDocument:
@@ -111,6 +113,14 @@ def _get_parser(file_path: Path):
     if extension == ".txt":
         # Detect if it's an email or transcript
         return _detect_txt_parser(file_path)
+
+    if extension == ".pdf":
+        from processors.parsers.pdf_parser import parse
+        return parse
+
+    if extension == ".docx":
+        from processors.parsers.docx_parser import parse
+        return parse
 
     # Fallback
     from processors.parsers.plain_text import parse
