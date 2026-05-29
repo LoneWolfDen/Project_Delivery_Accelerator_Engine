@@ -246,7 +246,103 @@ async function viewDashboard() {
         <button class="btn btn-outline" onclick="switchTab('versions')">Browse History</button>
         <button class="btn btn-sm" style="margin-left:auto;background:var(--warn);color:#000" onclick="toggleDebug()">Debug</button>
       </div>
-    </div>` + trendHtml + debugHtml;
+    </div>` + trendHtml + buildHierarchyVisual(metrics, versions, availableReviews, ds) + debugHtml;
+}
+
+// Build visual hierarchy diagram (Project > Phase > Version > Review)
+function buildHierarchyVisual(metrics, versions, availableReviews, ds) {
+  const phases = metrics.phases || [];
+  const currentPhase = metrics.current_phase || '';
+  const projectName = state.current?.name || 'Project';
+
+  // Group versions by phase
+  const phaseMap = {};
+  for (const p of phases) phaseMap[p.id] = { ...p, versions: [] };
+  for (const v of versions) {
+    if (phaseMap[v.phase_id]) phaseMap[v.phase_id].versions.push(v);
+  }
+
+  // Build the visual tree
+  let phaseNodes = '';
+  const sortedPhases = phases.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+  for (const phase of sortedPhases) {
+    const isCurrent = phase.id === currentPhase;
+    const phaseVers = phaseMap[phase.id]?.versions || [];
+    if (!phaseVers.length && !isCurrent) continue;
+
+    const phaseColor = isCurrent ? 'var(--accent)' : 'var(--text-dim)';
+    const phaseBorder = isCurrent ? '2px solid var(--accent)' : '1px solid var(--border)';
+
+    let versionNodes = '';
+    for (const ver of phaseVers.slice(0, 5)) {
+      const isSelected = ver.version_id === ds.version;
+      const verColor = isSelected ? 'var(--accent2)' : 'var(--text)';
+      const verBorder = isSelected ? '2px solid var(--accent2)' : '1px solid var(--border)';
+
+      // Show reviews for this version
+      const verReviews = isSelected ? availableReviews : [];
+      let reviewNodes = '';
+      for (const rev of verReviews.slice(0, 3)) {
+        const isActiveReview = rev.review_id === ds.review;
+        const revColor = isActiveReview ? 'var(--warn)' : 'var(--text-dim)';
+        const revBorder = isActiveReview ? '2px solid var(--warn)' : '1px dashed var(--border)';
+        reviewNodes += `<div style="margin-left:24px;padding:4px 8px;border:${revBorder};border-radius:4px;font-size:10px;color:${revColor};cursor:pointer;display:flex;align-items:center;gap:4px" onclick="state._dashReview='${rev.review_id}';render()">
+          <span style="font-size:8px">&#9679;</span>
+          <span>${rev.review_id}</span>
+          <span style="color:var(--text-dim)">${rev.persona}</span>
+          ${isActiveReview ? '<span style="font-size:8px;background:var(--warn);color:#000;padding:1px 4px;border-radius:3px">active</span>' : ''}
+        </div>`;
+      }
+      if (verReviews.length > 3) {
+        reviewNodes += `<div style="margin-left:24px;font-size:9px;color:var(--text-dim);padding:2px 8px">+${verReviews.length - 3} more reviews</div>`;
+      }
+
+      versionNodes += `<div style="margin-left:16px;margin-top:4px">
+        <div style="padding:5px 10px;border:${verBorder};border-radius:5px;font-size:11px;color:${verColor};cursor:pointer;display:flex;align-items:center;gap:6px" onclick="state._dashVersion='${ver.version_id}';state._dashReview='';render()">
+          <span style="font-size:10px">&#9654;</span>
+          <strong>${ver.version_id}</strong>
+          <span style="color:var(--text-dim)">${ver.label||''}</span>
+          <span style="font-size:9px;color:var(--text-dim)">${ver.review_count||0}R</span>
+          ${isSelected ? '<span style="font-size:8px;background:var(--accent2);color:#000;padding:1px 4px;border-radius:3px">selected</span>' : ''}
+        </div>
+        ${reviewNodes}
+      </div>`;
+    }
+    if (phaseVers.length > 5) {
+      versionNodes += `<div style="margin-left:16px;font-size:9px;color:var(--text-dim);padding:4px 10px">+${phaseVers.length - 5} more versions</div>`;
+    }
+
+    phaseNodes += `<div style="margin-top:8px">
+      <div style="padding:6px 12px;border:${phaseBorder};border-radius:6px;font-size:12px;color:${phaseColor};display:flex;align-items:center;gap:6px;cursor:pointer" onclick="switchTab('phases')">
+        <span style="font-size:12px">&#9632;</span>
+        <strong>${phase.label}</strong>
+        <span style="font-size:10px;color:var(--text-dim)">${(phaseMap[phase.id]?.versions||[]).length}v</span>
+        ${isCurrent ? '<span style="font-size:8px;background:var(--accent);color:#000;padding:1px 4px;border-radius:3px">current</span>' : ''}
+      </div>
+      ${versionNodes}
+    </div>`;
+  }
+
+  return `<div class="card mt">
+    <h2>Hierarchy Map</h2>
+    <p style="font-size:10px;color:var(--text-dim);margin-bottom:8px">Click nodes to navigate. Project &gt; Phase &gt; Version &gt; Review</p>
+    <div style="padding:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto">
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:2px solid var(--accent);border-radius:6px;font-size:12px;font-weight:600;color:var(--accent);width:fit-content">
+        <span style="font-size:14px">&#9733;</span> ${escHtml(projectName)}
+      </div>
+      <div style="margin-left:8px;border-left:2px solid var(--border);padding-left:8px">
+        ${phaseNodes || '<div style="font-size:11px;color:var(--text-dim);padding:8px">No phases with versions yet</div>'}
+      </div>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;font-size:9px;color:var(--text-dim)">
+      <span><span style="color:var(--accent)">&#9632;</span> Phase</span>
+      <span><span style="color:var(--accent2)">&#9654;</span> Version</span>
+      <span><span style="color:var(--warn)">&#9679;</span> Review</span>
+      <span style="border:1px solid var(--accent2);padding:0 4px;border-radius:3px">= selected</span>
+      <span style="border:1px solid var(--warn);padding:0 4px;border-radius:3px">= active review</span>
+    </div>
+  </div>`;
 }
 
 // Navigate to version detail from trend chart
