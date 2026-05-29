@@ -1,6 +1,7 @@
 """Ollama backend – local LLM via Ollama API."""
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -8,15 +9,21 @@ from typing import Optional
 
 from ai_backends.base import AIBackend, AIResponse
 
+# Allow OLLAMA_HOST to override the default (useful for Docker Compose sidecar).
+# Accepts either a bare host:port or a full URL.
+_DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+if _DEFAULT_OLLAMA_URL and not _DEFAULT_OLLAMA_URL.startswith("http"):
+    _DEFAULT_OLLAMA_URL = f"http://{_DEFAULT_OLLAMA_URL}"
+
 
 class OllamaBackend(AIBackend):
     """Local Ollama LLM backend.
 
-    Requires Ollama running on localhost:11434.
+    Requires Ollama running on localhost:11434 (or OLLAMA_HOST env var).
     Default model: llama3.2 (configurable).
     """
 
-    def __init__(self, model: str = "llama3.2", base_url: str = "http://localhost:11434"):
+    def __init__(self, model: str = "llama3.2", base_url: str = _DEFAULT_OLLAMA_URL):
         self.model = model
         self.base_url = base_url.rstrip("/")
 
