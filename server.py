@@ -25,6 +25,23 @@ PORT = 8080
 class AcceleratorHandler(SimpleHTTPRequestHandler):
     """HTTP handler for the delivery accelerator API."""
 
+    def _parse_path(self):
+        """Split self.path into clean path and query params dict.
+
+        Returns (path_str, query_dict) – e.g.:
+            '/api/projects/p1/hierarchy/metrics?version_id=v1&review_id=r1'
+            → ('/api/projects/p1/hierarchy/metrics', {'version_id': 'v1', 'review_id': 'r1'})
+        """
+        if "?" in self.path:
+            path_part, query_str = self.path.split("?", 1)
+            params = {}
+            for param in query_str.split("&"):
+                if "=" in param:
+                    k, v = param.split("=", 1)
+                    params[k] = v
+            return path_part, params
+        return self.path, {}
+
     def do_GET(self) -> None:
         """Handle GET requests."""
         # Serve Web UI
@@ -38,56 +55,59 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._serve_static(filename.replace("static/", ""))
             return
 
+        # Normalize: strip query params for route matching
+        clean_path, query = self._parse_path()
+
         # API endpoints
-        if self.path == "/api/health":
+        if clean_path == "/api/health":
             self._json_response({"status": "ok", "version": "3.0.0"})
-        elif self.path == "/api/backends":
+        elif clean_path == "/api/backends":
             from ai_backends import list_backends
             self._json_response({"backends": list_backends()})
-        elif self.path == "/api/projects":
+        elif clean_path == "/api/projects":
             projects = project_manager.list_projects()
             self._json_response({"projects": projects})
-        elif self.path == "/api/projects/all":
+        elif clean_path == "/api/projects/all":
             projects = project_manager.list_all_projects()
             self._json_response({"projects": projects})
         # ── Admin endpoints ──
-        elif self.path == "/api/admin/config":
+        elif clean_path == "/api/admin/config":
             config = project_manager.get_admin_config()
             self._json_response({"config": config})
-        elif self.path == "/api/admin/health":
+        elif clean_path == "/api/admin/health":
             health = project_manager.get_system_health_status()
             self._json_response({"health": health})
-        elif self.path == "/api/admin/lifecycle":
+        elif clean_path == "/api/admin/lifecycle":
             logs = project_manager.get_lifecycle_logs()
             self._json_response({"lifecycle": logs})
-        elif self.path == "/api/admin/auto-archive-suggestions":
+        elif clean_path == "/api/admin/auto-archive-suggestions":
             suggestions = project_manager.get_auto_archive_suggestions()
             self._json_response({"suggestions": suggestions})
         # ── Project-specific endpoints ──
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/context"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/context"):
+            project_id = clean_path.split("/")[3]
             context = project_manager.get_project_context(project_id)
             toggles = project_manager.get_file_toggles(project_id)
             self._json_response({"project_id": project_id, "documents": context, "file_toggles": toggles})
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/file-toggles"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/file-toggles"):
+            project_id = clean_path.split("/")[3]
             toggles = project_manager.get_file_toggles(project_id)
             self._json_response({"project_id": project_id, "file_toggles": toggles})
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/intelligence"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/intelligence"):
+            project_id = clean_path.split("/")[3]
             intelligence = project_manager.get_project_intelligence(project_id)
             self._json_response({"project_id": project_id, "intelligence": intelligence})
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/summary"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/summary"):
+            project_id = clean_path.split("/")[3]
             summary = project_manager.get_project_summary(project_id)
             self._json_response({"project_id": project_id, "summary": summary})
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/versions"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/versions"):
+            project_id = clean_path.split("/")[3]
             versions = project_manager.get_project_versions(project_id)
             self._json_response({"project_id": project_id, "versions": versions})
-        elif self.path.startswith("/api/projects/") and "/versions/" in self.path:
+        elif clean_path.startswith("/api/projects/") and "/versions/" in clean_path:
             # GET /api/projects/{id}/versions/{version_id}
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[3]
             version_id = parts[5]
             version = project_manager.get_project_version(project_id, version_id)
@@ -95,13 +115,13 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response({"project_id": project_id, "version": version})
             else:
                 self._json_response({"error": f"Version not found: {version_id}"}, status=404)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/run-history"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/run-history"):
+            project_id = clean_path.split("/")[3]
             history = project_manager.get_run_history_for_project(project_id)
             self._json_response({"project_id": project_id, "run_history": history})
-        elif self.path.startswith("/api/projects/") and "/file-snapshot/" in self.path:
+        elif clean_path.startswith("/api/projects/") and "/file-snapshot/" in clean_path:
             # GET /api/projects/{id}/file-snapshot/{version_id}
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[3]
             version_id = parts[5]
             snapshot = project_manager.get_file_snapshot(project_id, version_id)
@@ -109,48 +129,42 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(snapshot)
             else:
                 self._json_response({"error": "Snapshot not found"}, status=404)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/reviews"):
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/reviews"):
             # GET /api/projects/{id}/reviews?persona=solution_architect
-            project_id = self.path.split("/")[3].split("?")[0]
-            # Simple query param parsing
-            persona_filter = None
-            if "?" in self.path:
-                query = self.path.split("?")[1]
-                for param in query.split("&"):
-                    if param.startswith("persona="):
-                        persona_filter = param.split("=")[1]
+            project_id = clean_path.split("/")[3]
+            persona_filter = query.get("persona")
             reviews = project_manager.get_project_review_history(project_id, persona_filter)
             self._json_response({"project_id": project_id, "reviews": reviews})
-        elif self.path.startswith("/api/projects/") and "/evolution/" in self.path:
+        elif clean_path.startswith("/api/projects/") and "/evolution/" in clean_path:
             # GET /api/projects/{id}/evolution/{category}
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[3]
             category = parts[5]
             timeline = project_manager.get_project_evolution(project_id, category)
             self._json_response({"project_id": project_id, "category": category, "timeline": timeline})
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/proposal"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal"):
+            project_id = clean_path.split("/")[3]
             proposal = project_manager.get_proposal_info(project_id)
             if proposal:
                 self._json_response(proposal)
             else:
                 self._json_response({"error": "No proposal exists"}, status=404)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/phase-history"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/phase-history"):
+            project_id = clean_path.split("/")[3]
             history = project_manager.get_phase_history_for_project(project_id)
             self._json_response({"project_id": project_id, "history": history})
         # ── Hierarchy API (Phase→Version→Review) ──
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy"):
+            project_id = clean_path.split("/")[3]
             hierarchy = project_manager.get_hierarchy(project_id)
             self._json_response(hierarchy)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/phases"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/phases"):
+            project_id = clean_path.split("/")[3]
             phases = project_manager.get_hierarchy_phases(project_id)
             self._json_response({"project_id": project_id, "phases": phases})
-        elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path:
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path:
             # GET /api/projects/{id}/hierarchy/versions/{version_id}
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[3]
             version_id = parts[6]
             detail = project_manager.get_hierarchy_version_detail(project_id, version_id)
@@ -158,21 +172,14 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(detail)
             else:
                 self._json_response({"error": "Version not found"}, status=404)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/versions"):
-            project_id = self.path.split("/")[3]
-            # Optional query param: ?phase_id=pre-sales
-            phase_filter = None
-            if "?" in self.path:
-                query = self.path.split("?")[1]
-                for param in query.split("&"):
-                    if param.startswith("phase_id="):
-                        phase_filter = param.split("=")[1]
-                project_id = project_id.split("?")[0]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/versions"):
+            project_id = clean_path.split("/")[3]
+            phase_filter = query.get("phase_id")
             versions = project_manager.get_hierarchy_versions(project_id, phase_filter)
             self._json_response({"project_id": project_id, "versions": versions})
-        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path:
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path:
             # GET /api/projects/{id}/hierarchy/reviews/{review_id}
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[3]
             review_id = parts[6]
             detail = project_manager.get_hierarchy_review_detail(project_id, review_id)
@@ -180,46 +187,28 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(detail)
             else:
                 self._json_response({"error": "Review not found"}, status=404)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/reviews"):
-            project_id = self.path.split("/")[3]
-            # Optional: ?version_id=v1&phase_id=pre-sales
-            version_filter = None
-            phase_filter = None
-            if "?" in self.path:
-                query = self.path.split("?")[1]
-                for param in query.split("&"):
-                    if param.startswith("version_id="):
-                        version_filter = param.split("=")[1]
-                    elif param.startswith("phase_id="):
-                        phase_filter = param.split("=")[1]
-                project_id = project_id.split("?")[0]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/reviews"):
+            project_id = clean_path.split("/")[3]
+            version_filter = query.get("version_id")
+            phase_filter = query.get("phase_id")
             reviews = project_manager.get_hierarchy_reviews(project_id, version_filter, phase_filter)
             self._json_response({"project_id": project_id, "reviews": reviews})
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/metrics"):
-            project_id = self.path.split("/")[3]
-            # Optional: ?version_id=v1&review_id=r1
-            version_filter = None
-            review_filter = None
-            if "?" in self.path:
-                query = self.path.split("?")[1]
-                for param in query.split("&"):
-                    if param.startswith("version_id="):
-                        version_filter = param.split("=")[1]
-                    elif param.startswith("review_id="):
-                        review_filter = param.split("=")[1]
-                project_id = project_id.split("?")[0]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/metrics"):
+            project_id = clean_path.split("/")[3]
+            version_filter = query.get("version_id")
+            review_filter = query.get("review_id")
             metrics = project_manager.get_hierarchy_metrics(project_id, version_filter, review_filter)
             self._json_response(metrics)
         # ── Artifact API v1 ──
-        elif "/artifacts" in self.path and self.path.startswith("/api/v1/projects/"):
+        elif "/artifacts" in clean_path and clean_path.startswith("/api/v1/projects/"):
             # GET /api/v1/projects/{projectId}/artifacts
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[4]
             self._handle_list_artifacts(project_id)
         # ── Job Status (Section C) ──
-        elif self.path.startswith("/api/v1/jobs/"):
+        elif clean_path.startswith("/api/v1/jobs/"):
             # GET /api/v1/jobs/{jobId}
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             job_id = parts[4] if len(parts) > 4 else parts[3]
             self._handle_get_job(job_id)
         else:
@@ -227,55 +216,58 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Handle POST requests."""
-        if self.path == "/api/projects":
+        # Normalize path for route matching
+        clean_path, query = self._parse_path()
+
+        if clean_path == "/api/projects":
             self._handle_create_project()
-        elif self.path == "/api/ingest":
+        elif clean_path == "/api/ingest":
             self._handle_ingest()
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/build-context"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/build-context"):
+            project_id = clean_path.split("/")[3]
             self._handle_build_context(project_id)
-        elif self.path == "/api/review":
+        elif clean_path == "/api/review":
             self._handle_review()
-        elif self.path == "/api/personas":
+        elif clean_path == "/api/personas":
             self._handle_list_personas()
         # ── Admin endpoints ──
-        elif self.path == "/api/admin/config":
+        elif clean_path == "/api/admin/config":
             self._handle_update_config()
         # ── Project lifecycle ──
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/archive"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/archive"):
+            project_id = clean_path.split("/")[3]
             self._handle_archive_project(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/restore"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/restore"):
+            project_id = clean_path.split("/")[3]
             self._handle_restore_project(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/delete"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/delete") and "/hierarchy/" not in clean_path:
+            project_id = clean_path.split("/")[3]
             self._handle_delete_project(project_id)
         # ── Deep Dive & Feedback ──
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/deep-dive"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/deep-dive"):
+            project_id = clean_path.split("/")[3]
             self._handle_deep_dive(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/deep-dive/feedback"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/deep-dive/feedback"):
+            project_id = clean_path.split("/")[3]
             self._handle_deep_dive_feedback(project_id)
         # ── Existing endpoints ──
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/compare-versions"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/compare-versions"):
+            project_id = clean_path.split("/")[3]
             self._handle_compare_versions(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/compare-reviews"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/compare-reviews"):
+            project_id = clean_path.split("/")[3]
             self._handle_compare_reviews(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/proposal"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal"):
+            project_id = clean_path.split("/")[3]
             self._handle_create_proposal(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/proposal/version"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal/version"):
+            project_id = clean_path.split("/")[3]
             self._handle_add_proposal_version(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/phase"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/phase"):
+            project_id = clean_path.split("/")[3]
             self._handle_phase_transition(project_id)
-        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/phase"):
-            project_id = self.path.split("/")[3]
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/phase"):
+            project_id = clean_path.split("/")[3]
             self._handle_hierarchy_phase_transition(project_id)
         elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/delete"):
             # POST /api/projects/{id}/hierarchy/reviews/{review_id}/delete
@@ -293,43 +285,43 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             project_id = self.path.split("/")[3]
             self._handle_toggle_file(project_id)
         # ── Guardrails ──
-        elif self.path == "/api/validate-files":
+        elif clean_path == "/api/validate-files":
             self._handle_validate_files()
         # ── Artifact API v1 ──
-        elif "/artifacts/upload" in self.path and self.path.startswith("/api/v1/projects/"):
-            parts = self.path.split("/")
+        elif "/artifacts/upload" in clean_path and clean_path.startswith("/api/v1/projects/"):
+            parts = clean_path.split("/")
             project_id = parts[4]
             self._handle_artifact_upload(project_id)
-        elif "/artifacts/text" in self.path and self.path.startswith("/api/v1/projects/"):
-            parts = self.path.split("/")
+        elif "/artifacts/text" in clean_path and clean_path.startswith("/api/v1/projects/"):
+            parts = clean_path.split("/")
             project_id = parts[4]
             self._handle_artifact_text(project_id)
-        elif "/artifacts/" in self.path and "/toggle" in self.path and self.path.startswith("/api/v1/projects/"):
-            parts = self.path.split("/")
+        elif "/artifacts/" in clean_path and "/toggle" in clean_path and clean_path.startswith("/api/v1/projects/"):
+            parts = clean_path.split("/")
             project_id = parts[4]
             artifact_id = parts[6]
             self._handle_artifact_toggle(project_id, artifact_id)
-        elif "/artifacts/" in self.path and "/delete" in self.path and self.path.startswith("/api/v1/projects/"):
-            parts = self.path.split("/")
+        elif "/artifacts/" in clean_path and "/delete" in clean_path and clean_path.startswith("/api/v1/projects/"):
+            parts = clean_path.split("/")
             project_id = parts[4]
             artifact_id = parts[6]
             self._handle_artifact_delete(project_id, artifact_id)
         # ── Processing Pipeline (Section C) ──
-        elif "/artifacts/process" in self.path and self.path.startswith("/api/v1/projects/") and not self.path.rstrip("/").split("/")[-1].startswith("a_"):
+        elif "/artifacts/process" in clean_path and clean_path.startswith("/api/v1/projects/") and not clean_path.rstrip("/").split("/")[-1].startswith("a_"):
             # POST /api/v1/projects/{projectId}/artifacts/process  (process ALL)
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[4]
             self._handle_process_all_artifacts(project_id)
-        elif "/artifacts/" in self.path and "/process" in self.path and self.path.startswith("/api/v1/projects/"):
+        elif "/artifacts/" in clean_path and "/process" in clean_path and clean_path.startswith("/api/v1/projects/"):
             # POST /api/v1/projects/{projectId}/artifacts/{artifactId}/process
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             project_id = parts[4]
             artifact_id = parts[6]
             self._handle_process_artifact(project_id, artifact_id)
         # ── PATCH endpoint (Section D) ──
-        elif "/artifacts/" in self.path and self.path.startswith("/api/v1/projects/") and "/toggle" not in self.path and "/delete" not in self.path and "/process" not in self.path:
+        elif "/artifacts/" in clean_path and clean_path.startswith("/api/v1/projects/") and "/toggle" not in clean_path and "/delete" not in clean_path and "/process" not in clean_path:
             # PATCH /api/v1/projects/{projectId}/artifacts/{artifactId} (update include/title/metadata)
-            parts = self.path.split("/")
+            parts = clean_path.split("/")
             if len(parts) >= 7:
                 project_id = parts[4]
                 artifact_id = parts[6]
@@ -349,9 +341,10 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     def do_PATCH(self) -> None:
         """Handle PATCH requests – routed same as POST for artifact updates."""
+        clean_path, query = self._parse_path()
         # PATCH /api/v1/projects/{projectId}/artifacts/{artifactId}
-        if "/artifacts/" in self.path and self.path.startswith("/api/v1/projects/"):
-            parts = self.path.split("/")
+        if "/artifacts/" in clean_path and clean_path.startswith("/api/v1/projects/"):
+            parts = clean_path.split("/")
             if len(parts) >= 7:
                 project_id = parts[4]
                 artifact_id = parts[6]
