@@ -55,6 +55,12 @@ class AdminConfig:
     sqlite_write_enabled: bool = True
     file_write_enabled: bool = True
 
+    # Editable base prompts per persona group.
+    # Keys are group_ids (e.g. "architecture_strategy").
+    # Values are the full prompt_template override string.
+    # Empty dict = use YAML defaults for all groups.
+    persona_prompts: Dict[str, str] = field(default_factory=dict)
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize config with masked API keys for display."""
         d = asdict(self)
@@ -103,6 +109,7 @@ def load_config() -> AdminConfig:
             auto_archive_inactivity_days=data.get("auto_archive_inactivity_days", 30),
             sqlite_write_enabled=data.get("sqlite_write_enabled", True),
             file_write_enabled=data.get("file_write_enabled", True),
+            persona_prompts=data.get("persona_prompts", {}),
         )
     else:
         config = AdminConfig()
@@ -169,6 +176,16 @@ def update_config(updates: Dict[str, Any]) -> AdminConfig:
         for key, val in updates["api_keys"].items():
             if val and val != KEY_MASK:
                 config.api_keys[key] = val
+
+    # Persona prompt overrides — merge per-group; empty string clears an override
+    if "persona_prompts" in updates:
+        if not isinstance(config.persona_prompts, dict):
+            config.persona_prompts = {}
+        for group_id, prompt_text in updates["persona_prompts"].items():
+            if prompt_text is None:
+                config.persona_prompts.pop(group_id, None)
+            else:
+                config.persona_prompts[group_id] = prompt_text
 
     save_config(config)
     return config
