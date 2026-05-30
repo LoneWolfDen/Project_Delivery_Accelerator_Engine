@@ -293,6 +293,8 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             parts = clean_path.split("/")
             job_id = parts[4] if len(parts) > 4 else parts[3]
             self._handle_get_job(job_id)
+        elif clean_path == "/api/personas":
+            self._handle_list_personas()
         else:
             self._json_response({"errorCode": "NOT_FOUND", "message": "Not found"}, status=404)
 
