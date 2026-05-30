@@ -36,7 +36,6 @@
   <main id="main"></main>
 </div>
 
-
 <style>
 /* ─── Reset & Base ──────────────────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -89,7 +88,6 @@ main{max-width:1080px;margin:0 auto;padding:20px 16px;}
 .stat.red .num{color:var(--red);}
 .stat.purple .num{color:var(--purple);}
 </style>
-
 
 <style>
 /* ─── Buttons ───────────────────────────────────────────────── */
@@ -154,7 +152,6 @@ ul.items li::before{content:'›';color:var(--text-muted);margin-right:6px;}
 .empty .empty-icon{font-size:36px;margin-bottom:10px;opacity:.5;}
 .empty p{font-size:13px;margin-bottom:14px;}
 </style>
-
 
 <style>
 /* ─── Collapsible / Details ─────────────────────────────────── */
@@ -318,15 +315,21 @@ details[open] .chevron{transform:rotate(90deg);}
 .coverage-pill.missing{border-color:var(--border2);color:var(--text-muted);background:var(--surface2);}
 .coverage-bar-outer{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin:6px 0 8px;}
 .coverage-bar-inner{height:100%;border-radius:3px;transition:width .4s ease;}
-</style>
 
+/* ─── Utility micro-classes (replaces repeated inline styles) ── */
+.fs10{font-size:10px}.fs11{font-size:11px}.fs12{font-size:12px}
+.c-dim{color:var(--text-dim)}.c-muted{color:var(--text-muted)}.c-accent{color:var(--accent)}
+.fw6{font-weight:600}.fw7{font-weight:700}
+.ml-auto{margin-left:auto}
+.no-ls{list-style:none}
+.mb8{margin-bottom:8px}.mb6{margin-bottom:6px}.mt8{margin-top:8px}
+.fx-wrap{flex-wrap:wrap}
+</style>
 
 <div id="toast"></div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════
 // UTILITIES
-// ═══════════════════════════════════════════════════════════════
 function escHtml(s){
   if(typeof s!=='string')s=String(s||'');
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -378,9 +381,7 @@ function toggleFileExpand(el){
   el.closest('.file-item').classList.toggle('expanded');
 }
 
-// ═══════════════════════════════════════════════════════════════
 // STATE
-// ═══════════════════════════════════════════════════════════════
 let state={
   projects:[],current:null,tab:'dashboard',
   backends:[],adminConfig:{},appName:'Contexta',
@@ -423,11 +424,8 @@ function formatVersionOption(v){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // HEADER & RENDER
-// ═══════════════════════════════════════════════════════════════
 function renderHeader(){
   const proj=state.current;
   const phase=proj?proj.phase:'';
@@ -471,9 +469,7 @@ async function render(){
   main.innerHTML=await(views[state.tab]||viewDashboard)();
 }
 
-// ═══════════════════════════════════════════════════════════════
 // NO PROJECT VIEW
-// ═══════════════════════════════════════════════════════════════
 function viewNoProject(){
   return`<div class="card">
     <div class="empty">
@@ -494,11 +490,8 @@ function viewNoProject(){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // DASHBOARD VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewDashboard(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -530,13 +523,13 @@ async function viewDashboard(){
       <p class="card-subtitle">Scope all dashboard metrics to a specific version and review.</p>
       <div class="flex">
         <div style="flex:1;min-width:160px">
-          <label class="form-row" style="margin-bottom:0"><span style="font-size:10px;color:var(--text-dim)">Version</span>
+          <label class="form-row" style="margin-bottom:0"><span class="fs10 c-dim">Version</span>
           <select id="dashVersion" onchange="onVersionChange()" style="width:100%;margin-top:3px">
             <option value="">Latest Version</option>${vOpts}
           </select></label>
         </div>
         <div style="flex:1;min-width:180px">
-          <label class="form-row" style="margin-bottom:0"><span style="font-size:10px;color:var(--text-dim)">Review</span>
+          <label class="form-row" style="margin-bottom:0"><span class="fs10 c-dim">Review</span>
           <select id="dashReview" onchange="updateDashMetrics()" style="width:100%;margin-top:3px">
             <option value="">Active Review</option>${rOpts}
           </select></label>
@@ -597,7 +590,7 @@ async function viewDashboard(){
     const maxR=Math.max(...trend.map(t=>t.stats?.risks||0),1);
     trendHtml=`<div class="card">
       <div class="flex-between mb"><div class="card-title"><span class="icon">📈</span>Risk Trend</div>
-      <span style="font-size:11px;color:var(--text-dim)">Last ${trend.length} versions</span></div>
+      <span class="fs11 c-dim">Last ${trend.length} versions</span></div>
       <div style="display:flex;gap:10px;align-items:flex-end;padding:6px 0;min-height:56px">
         ${trend.map(t=>{const h=Math.max(8,Math.round((t.stats?.risks||0)/maxR*48));
           return`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;cursor:pointer"
@@ -620,13 +613,13 @@ async function viewDashboard(){
       <button class="btn btn-outline" onclick="goToBuildIntelligence()">🔨 Build Intelligence</button>
       <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Run Review</button>
       <button class="btn btn-ghost btn-sm" onclick="switchTab('versions')">📋 Browse Versions</button>
-      <button class="btn-icon" title="Toggle debug" onclick="toggleDebug()" style="margin-left:auto">🐛</button>
+      <button class="btn-icon" title="Toggle debug" onclick="toggleDebug()" class="ml-auto">🐛</button>
     </div>
   </div>`;
 
   const debugHtml=state._debugMode?`<div class="card" style="border-color:var(--yellow)">
     <div class="card-title" style="color:var(--yellow)">🐛 Debug</div>
-    <code style="font-size:11px;color:var(--text-dim)">
+    <code class="fs11 c-dim">
       project=${pid} | version=${ds.version||'(latest)'} | review=${ds.review||'(active)'} | phase=${ds.phase||'–'}
     </code></div>`:''
 
@@ -662,11 +655,8 @@ async function updateDashMetrics(){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // INGEST VIEW
-// ═══════════════════════════════════════════════════════════════
 const ARTIFACT_CATEGORIES=[
   {value:'project_artefact',label:'Project Artefact',icon:'📋'},
   {value:'meetings_comms',label:'Meetings & Comms',icon:'📞'},
@@ -766,7 +756,7 @@ async function viewIngest(){
           <span class="file-name">${escHtml(a.title||a.fileName||'Untitled')}</span>
           <span class="tag">${escHtml(ci.label)}</span>
           <span class="tag ${statusTag}">${a.status}</span>
-          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(a.createdAt)}</span>
+          <span class="fs10 c-muted">${fmtDateShort(a.createdAt)}</span>
           <span class="toggle-pill ${a.include?'toggle-on':'toggle-off'}" data-aid="${a.artifactId}"
             onclick="event.stopPropagation();toggleArtifact('${pid}','${a.artifactId}',${!a.include})">
             ${a.include?'Included':'Excluded'}</span>
@@ -775,7 +765,7 @@ async function viewIngest(){
           <p style="font-size:11px;color:var(--text-dim);margin-bottom:5px">
             ${a.fileName?`File: <strong>${escHtml(a.fileName)}</strong> · `:''}Type: ${a.type}
           </p>
-          ${meta.length?`<div class="flex gap-sm" style="margin-bottom:6px">${meta.map(([k,v])=>`<span class="tag">${k}: ${Array.isArray(v)?v.join(', '):escHtml(String(v))}</span>`).join('')}</div>`:''}
+          ${meta.length?`<div class="flex gap-sm" class="mb6">${meta.map(([k,v])=>`<span class="tag">${k}: ${Array.isArray(v)?v.join(', '):escHtml(String(v))}</span>`).join('')}</div>`:''}
           <div class="flex gap-sm">
             <button class="btn btn-sm btn-outline" onclick="processArtifact('${pid}','${a.artifactId}')">Process</button>
             <button class="btn btn-sm btn-red" onclick="deleteArtifact('${pid}','${a.artifactId}')">Remove</button>
@@ -795,7 +785,7 @@ async function viewIngest(){
           <span style="font-size:13px">${st==='csv'?'📊':st==='email'?'📧':'📄'}</span>
           <span class="file-name">${escHtml(fn)}</span>
           <span class="tag">${st}</span>
-          <span style="font-size:10px;color:var(--text-muted)">${words} words · ${secs.length} sections</span>
+          <span class="fs10 c-muted">${words} words · ${secs.length} sections</span>
           <span class="toggle-pill ${isOn?'toggle-on':'toggle-off'}" data-legacy="1"
             onclick="event.stopPropagation();toggleFileActive('${escHtml(fn)}',${!isOn})">
             ${isOn?'Included':'Excluded'}</span>
@@ -804,7 +794,7 @@ async function viewIngest(){
           ${secs.length?secs.map(s=>`<div style="font-size:11px;color:var(--text-dim);padding:2px 0 2px 8px;border-left:2px solid var(--border);margin:2px 0">
             <span style="color:var(--text)">${escHtml(s.title||s.heading||'Section')}</span>
             <span style="color:var(--text-muted);font-size:10px"> · ${(s.content||'').length} chars</span>
-          </div>`).join(''):'<p style="font-size:11px;color:var(--text-muted)">No section data</p>'}
+          </div>`).join(''):'<p class="fs11 c-muted">No section data</p>'}
         </div>
       </div>`;
     }
@@ -832,7 +822,7 @@ async function viewIngest(){
       </p>
       <div class="flex gap-sm" style="align-items:center;flex-wrap:wrap">
         <div style="display:flex;flex-direction:column;gap:3px;min-width:180px">
-          <label style="font-size:11px;color:var(--text-dim)">Extraction backend</label>
+          <label class="fs11 c-dim">Extraction backend</label>
           <select id="intelBackendSelect" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px">
             ${backendOpts}
           </select>
@@ -850,7 +840,6 @@ async function viewIngest(){
   return addCard+regHtml+intelActionCard;
 }
 
-
 function switchIngestTab(tab){
   ['upload','paste','paths'].forEach(t=>{
     const el=document.getElementById('ingest'+t[0].toUpperCase()+t.slice(1));
@@ -862,7 +851,6 @@ function switchIngestTab(tab){
   if(tab==='paste')renderMetadataFields('paste');
 }
 </script>
-
 
 <script>
 // ─── Metadata fields helpers ─────────────────────────────────
@@ -1040,11 +1028,8 @@ async function doIngest(){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // INTELLIGENCE VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewIntelligence(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -1107,7 +1092,7 @@ async function viewIntelligence(){
     if(allV.length>1){
       const vOpts=allV.map(v=>`<option value="${v.version_id}" ${v.version_id===selV?'selected':''}>${escHtml(v.version_id)}${v.label?' – '+escHtml(v.label):''} (${fmtDateShort(v.created_at)})</option>`).join('');
       versionSelector=`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
-        <label style="font-size:11px;color:var(--text-dim)">Scope version:</label>
+        <label class="fs11 c-dim">Scope version:</label>
         <select style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
           padding:4px 8px;color:var(--text);font-size:11px"
           onchange="state._dashVersion=this.value;state._dashReview='';render()">
@@ -1220,11 +1205,8 @@ function expandAllReviews(){document.querySelectorAll('#main details').forEach(d
 function collapseAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // VERSIONS VIEW  –  Bug #1 Fixed: compare uses enriched allVersions
-// ═══════════════════════════════════════════════════════════════
 async function viewVersions(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -1277,7 +1259,7 @@ async function viewVersions(){
         ${isCurrent?'<span class="tag tag-green">current</span>':''}
         <span class="tag">${phaseVersions.length} ver</span>
         <span class="tag">${phRevCnt} rev</span>
-        ${phase.description?`<span style="font-size:11px;color:var(--text-muted)">${escHtml(phase.description)}</span>`:''}
+        ${phase.description?`<span class="fs11 c-muted">${escHtml(phase.description)}</span>`:''}
       </summary>
       <div style="padding-top:12px">`;
 
@@ -1294,15 +1276,15 @@ async function viewVersions(){
             <span class="chevron">▶</span>
             <strong style="font-size:12px">${escHtml(ver.version_id)}</strong>
             ${ver.label?`<span style="color:var(--text-dim);font-size:11px">– ${escHtml(ver.label)}</span>`:''}
-            <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(ver.created_at)}</span>
-            <span class="tag ${verRevs.length?'tag-blue':''}" style="margin-left:auto">${verRevs.length} review${verRevs.length===1?'':'s'}</span>
+            <span class="fs10 c-muted">${fmtDateShort(ver.created_at)}</span>
+            <span class="tag ${verRevs.length?'tag-blue':''}" class="ml-auto">${verRevs.length} review${verRevs.length===1?'':'s'}</span>
             ${activeRid?'<span class="tag tag-green" style="font-size:9px">active set</span>':''}
           </summary>
           <div style="padding:6px 0 4px 14px">
             <div class="flex gap-sm mb" style="flex-wrap:wrap">
               <button class="btn btn-xs btn-ghost" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button>
               ${ver.stats?.risks?`<span class="tag tag-red">${ver.stats.risks} risks</span>`:''}
-              <span style="font-size:10px;color:var(--text-dim)">${ver.persona?escHtml(ver.persona)+' · ':''} ${escHtml(ver.ai_backend||'files_only')}</span>
+              <span class="fs10 c-dim">${ver.persona?escHtml(ver.persona)+' · ':''} ${escHtml(ver.ai_backend||'files_only')}</span>
             </div>`;
 
         if(verRevs.length){
@@ -1329,7 +1311,7 @@ async function viewVersions(){
             </div>`;
           }
         }else{
-          treeHtml+=`<p style="font-size:11px;color:var(--text-muted)">No reviews yet.</p>`;
+          treeHtml+=`<p class="fs11 c-muted">No reviews yet.</p>`;
         }
         treeHtml+=`</div></details>`;
       }
@@ -1418,11 +1400,8 @@ async function deleteReview(rid){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // COMPARE VERSIONS (enriched diff display)
-// ═══════════════════════════════════════════════════════════════
 async function compareVersions(){
   const a=document.getElementById('cmpA').value;
   const b=document.getElementById('cmpB').value;
@@ -1481,7 +1460,7 @@ async function compareVersions(){
           ${removed.slice(0,6).map(i=>`<div class="diff-removed">${escHtml(String(i).slice(0,120))}</div>`).join('')}
           ${removed.length>6?`<p style="font-size:10px;color:var(--text-muted);margin-top:2px">… and ${removed.length-6} more</p>`:''}
         </div>`:''}
-        ${!hasChanges?`<p style="font-size:11px;color:var(--text-muted)">No changes in this category.</p>`:''}
+        ${!hasChanges?`<p class="fs11 c-muted">No changes in this category.</p>`:''}
       </div>
     </details>`;
   }
@@ -1492,11 +1471,8 @@ async function compareVersions(){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // PM COVERAGE ASSESSMENT (persona-aware)
-// ═══════════════════════════════════════════════════════════════
 
 // Shared baseline dimensions — present for every persona
 const COVERAGE_BASELINE = [
@@ -1596,9 +1572,7 @@ function renderCoverageAssessment(review){
   </div>`;
 }
 
-// ═══════════════════════════════════════════════════════════════
 // REVIEW FULL DETAIL VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewReviewDetail(rid){
   if(!rid||rid==='undefined'){toast('Invalid review ID','err');return;}
   const pid=state.current.id;
@@ -1629,7 +1603,7 @@ async function viewReviewDetail(rid){
     </div>`;
   }else{
     html+=`<div class="mb"><p class="card-section">Files Included</p>
-      <p style="font-size:11px;color:var(--text-muted)">No file information recorded for this review.</p></div>`;
+      <p class="fs11 c-muted">No file information recorded for this review.</p></div>`;
   }
 
   if(r.categories?.length){
@@ -1638,7 +1612,7 @@ async function viewReviewDetail(rid){
 
   if(r.summary){
     html+=`<div class="mb" style="background:var(--surface2);border-radius:var(--radius);padding:10px">
-      <p style="font-size:12px;color:var(--text-dim)">${escHtml(r.summary)}</p>
+      <p class="fs12 c-dim">${escHtml(r.summary)}</p>
     </div>`;
   }
 
@@ -1682,9 +1656,9 @@ async function viewReviewDetail(rid){
   }
 
   if(r.prompt_used){
-    html+=`<details style="margin-top:8px">
+    html+=`<details class="mt8">
       <summary class="collapse-header" style="list-style:none;margin-bottom:0">
-        <span class="chevron">▶</span> <span style="font-size:12px;color:var(--accent)">Prompt Used</span>
+        <span class="chevron">▶</span> <span class="fs12 c-accent">Prompt Used</span>
       </summary>
       <div class="prompt-box" style="margin-top:6px">${escHtml(r.prompt_used)}</div>
     </details>`;
@@ -1692,7 +1666,7 @@ async function viewReviewDetail(rid){
   if(r.custom_prompt){
     html+=`<details style="margin-top:6px">
       <summary class="collapse-header" style="list-style:none;margin-bottom:0">
-        <span class="chevron">▶</span> <span style="font-size:12px;color:var(--accent)">Custom Prompt</span>
+        <span class="chevron">▶</span> <span class="fs12 c-accent">Custom Prompt</span>
       </summary>
       <div class="prompt-box" style="margin-top:6px">${escHtml(r.custom_prompt)}</div>
     </details>`;
@@ -1707,11 +1681,8 @@ async function viewReviewDetail(rid){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // REVIEWS VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewReviews(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -1763,13 +1734,13 @@ async function viewReviews(){
     <div class="form-row">
       <label style="display:flex;align-items:baseline;gap:6px">
         Roles
-        <span id="roleCountBadge" style="font-size:10px;color:var(--text-muted)">(select up to 3)</span>
+        <span id="roleCountBadge" class="fs10 c-muted">(select up to 3)</span>
       </label>
       <div style="margin-top:6px">${roleGrid}</div>
     </div>
 
-    <div style="margin-top:8px">
-      <label style="font-size:10px;color:var(--text-dim)">AI Backend</label>
+    <div class="mt8">
+      <label class="fs10 c-dim">AI Backend</label>
       <select id="backendSelect" style="width:100%;margin-top:3px;background:var(--surface2);
         border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;
         color:var(--text);font-size:12px">${backendOpts}</select>
@@ -1777,13 +1748,13 @@ async function viewReviews(){
 
     <div class="form-row" style="margin-top:10px">
       <label>Custom Prompt
-        <span style="font-size:10px;color:var(--text-muted)"> (optional — add constraints, context, or selected Deep Dive questions)</span>
+        <span class="fs10 c-muted"> (optional — add constraints, context, or selected Deep Dive questions)</span>
       </label>
       <textarea id="customPrompt" rows="3"
         placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available.&#10;Paste selected Deep Dive questions here before running the review."></textarea>
     </div>
 
-    <div class="flex gap-sm" style="margin-top:8px">
+    <div class="flex gap-sm" class="mt8">
       <button class="btn" onclick="runReview()">▶ Run Review</button>
       <button class="btn btn-outline" onclick="runDeepDive()" title="SME questions for this persona — select and add to prompt before running review">
         🔬 Ask SME Questions
@@ -1850,15 +1821,15 @@ async function viewReviews(){
               const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
               const qBadge=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
               const barColor=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
-              return`<div style="margin-bottom:8px">
+              return`<div class="mb8">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                  <span style="font-size:11px;color:var(--text-dim)">Status</span>
+                  <span class="fs11 c-dim">Status</span>
                   <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden">
                     <div style="width:${score}%;height:100%;background:${barColor};border-radius:3px;transition:width .3s"></div>
                   </div>
                   <span style="font-size:11px;font-weight:600;color:${barColor}">${score}%</span>
                   <span class="tag ${qBadge}" style="font-size:10px">${qLabel}</span>
-                  ${rev.completed_by?`<span style="font-size:10px;color:var(--text-muted)">by ${escHtml(rev.completed_by)}</span>`:''}
+                  ${rev.completed_by?`<span class="fs10 c-muted">by ${escHtml(rev.completed_by)}</span>`:''}
                 </div>
               </div>`;
             })()}
@@ -1874,7 +1845,7 @@ async function viewReviews(){
               <button class="btn btn-sm btn-red" onclick="deleteReview('${rid}')">Delete</button>
             </div>
             <div id="markComplete_${rid}" style="display:none;margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
-              <label style="font-size:11px;color:var(--text-dim)">Your name</label>
+              <label class="fs11 c-dim">Your name</label>
               <div class="flex gap-sm mt-sm">
                 <input id="completedBy_${rid}" placeholder="Your name" style="flex:1">
                 <button class="btn btn-sm btn-ghost" onclick="submitMarkComplete('${rid}','interim')">Save as Draft</button>
@@ -1983,22 +1954,19 @@ async function runReview(){
       ${r.questions.map(q=>`<div class="findings-item">❓ ${escHtml(q)}</div>`).join('')}
     </div></details>`;
   }
-  if(r.prompt_used)html+=`<details style="margin-top:8px"><summary class="collapse-header" style="list-style:none">
-    <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">View Prompt(s)</span>
+  if(r.prompt_used)html+=`<details class="mt8"><summary class="collapse-header" class="no-ls">
+    <span class="chevron">▶</span><span class="fs12 c-accent">View Prompt(s)</span>
     </summary><div class="prompt-box">${escHtml(r.prompt_used)}</div></details>`;
-  if(r.raw_output)html+=`<details style="margin-top:4px"><summary class="collapse-header" style="list-style:none">
-    <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">Raw AI Output</span>
+  if(r.raw_output)html+=`<details style="margin-top:4px"><summary class="collapse-header" class="no-ls">
+    <span class="chevron">▶</span><span class="fs12 c-accent">Raw AI Output</span>
     </summary><div class="prompt-box">${escHtml(r.raw_output)}</div></details>`;
   html+=`</div>`;
   el.innerHTML=html;
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // DEEP DIVE  –  SME Questions workflow
-// ═══════════════════════════════════════════════════════════════
 async function runDeepDive(){
   if(!state.current)return;
   const el=document.getElementById('deepDiveResult');
@@ -2050,7 +2018,7 @@ async function runDeepDive(){
         <span class="dd-row-content">❓ ${escHtml(q)}</span>
       </div>`;
     }).join('');
-    return`<details open style="margin-bottom:8px">
+    return`<details open class="mb8">
       <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
         padding:9px 12px;background:var(--surface2);border-radius:var(--radius)"
         onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">
@@ -2142,11 +2110,8 @@ async function addSelectedToPrompt(){
 async function acceptAllSuggestions(){await addSelectedToPrompt();}
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // DIAGRAMS VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewDiagrams(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -2315,9 +2280,7 @@ async function downloadDiagram(dtype,label){
   }catch(e){toast('Download error','err');}
 }
 
-// ═══════════════════════════════════════════════════════════════
 // PHASES VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewPhases(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -2349,13 +2312,13 @@ async function viewPhases(){
           <span class="icon">${p.is_current?'🟢':'⚪'}</span> ${escHtml(p.label)}
           ${p.is_current?'<span class="tag tag-green" style="margin-left:4px">current</span>':''}
         </div>
-        ${p.entered_at?`<span style="font-size:10px;color:var(--text-muted)">Since ${fmtDateShort(p.entered_at)}</span>`:''}
+        ${p.entered_at?`<span class="fs10 c-muted">Since ${fmtDateShort(p.entered_at)}</span>`:''}
       </div>
       <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(p.description||'')}</p>
       <div class="flex gap-sm">
         <span class="tag tag-blue">${p.version_count||0} versions</span>
         <span class="tag">${p.review_count||0} reviews</span>
-        ${!p.is_current?`<button class="btn btn-xs btn-outline" style="margin-left:auto"
+        ${!p.is_current?`<button class="btn btn-xs btn-outline" class="ml-auto"
           onclick="doHierarchyTransition('${p.id}')">Transition Here</button>`:''}
       </div>
     </div>`;
@@ -2393,9 +2356,9 @@ async function viewPhaseDetail(phaseId){
       html+=`<div class="card" style="background:var(--surface2)">
         <div class="flex-between">
           <strong>${escHtml(v.version_id)}</strong>
-          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(v.created_at)}</span>
+          <span class="fs10 c-muted">${fmtDateShort(v.created_at)}</span>
         </div>
-        <p style="font-size:11px;color:var(--text-dim)">${escHtml(v.label||'')} · ${v.artifact_count||0} files · ${v.review_count||0} reviews</p>
+        <p class="fs11 c-dim">${escHtml(v.label||'')} · ${v.artifact_count||0} files · ${v.review_count||0} reviews</p>
       </div>`;
     }
   }else{html+=`<p style="color:var(--text-muted);font-size:12px;padding:10px 0">No versions in this phase yet.</p>`;}
@@ -2415,11 +2378,8 @@ async function doHierarchyTransition(phaseIdOverride){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // PRE-SALES VIEW  (P9)
-// ═══════════════════════════════════════════════════════════════
 async function viewPresales(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -2460,7 +2420,7 @@ async function viewPresales(){
       <strong style="font-size:13px">${escHtml(proposal.proposal_name||'Proposal')}</strong>
       ${proposal.client?`<span class="tag tag-blue">${escHtml(proposal.client)}</span>`:''}
       ${curVer?`<span class="tag ${statusColor}">${curVer.status}</span>`:''}
-      ${curVer?`<span style="font-size:11px;color:var(--text-muted)">${escHtml(curVer.label||'')} · ${fmtDateShort(curVer.created_at)}</span>`:''}
+      ${curVer?`<span class="fs11 c-muted">${escHtml(curVer.label||'')} · ${fmtDateShort(curVer.created_at)}</span>`:''}
     </div>`}
   </div>`;
 
@@ -2479,7 +2439,7 @@ async function viewPresales(){
             <span class="tag" style="margin-left:6px">${v.version_id}</span>
             <span class="tag" style="margin-left:4px;border-color:${sc};color:${sc}">${v.status}</span>
           </div>
-          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(v.created_at)}</span>
+          <span class="fs10 c-muted">${fmtDateShort(v.created_at)}</span>
         </div>
         ${v.notes?`<p style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${escHtml(v.notes)}</p>`:''}
         ${v.changes_from_previous?`<p style="font-size:11px;color:var(--accent);margin-bottom:6px">↳ ${escHtml(v.changes_from_previous)}</p>`:''}
@@ -2531,27 +2491,27 @@ async function viewPresales(){
             ${doc.word_count?`<span class="tag" style="margin-left:4px">${doc.word_count} words</span>`:''}
           </div>
           <div class="flex gap-sm">
-            <span style="font-size:11px;color:var(--text-muted)">${doc.ai_backend}</span>
+            <span class="fs11 c-muted">${doc.ai_backend}</span>
             <button class="btn btn-sm btn-outline" onclick="regenerateDoc('${curVer.version_id}','${curVer.active_review_id||''}')">🔄 Regenerate</button>
           </div>
         </div>
         ${doc.exec_summary?`<details open><summary class="collapse-header" style="list-style:none;margin:-16px -18px 0;border-radius:var(--radius-lg) var(--radius-lg) 0 0">
           <span class="chevron">▶</span><strong>Executive Summary</strong></summary>
-          <div class="collapse-body"><p style="font-size:12px;color:var(--text-dim)">${escHtml(doc.exec_summary)}</p></div></details>`:''}
-        ${doc.scope?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Scope</strong></summary>
-          <div class="collapse-body"><p style="font-size:12px;color:var(--text-dim)">${escHtml(doc.scope)}</p></div></details>`:''}
-        ${phases.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Delivery Phases</strong><span class="tag" style="margin-left:6px">${phases.length}</span></summary>
+          <div class="collapse-body"><p class="fs12 c-dim">${escHtml(doc.exec_summary)}</p></div></details>`:''}
+        ${doc.scope?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Scope</strong></summary>
+          <div class="collapse-body"><p class="fs12 c-dim">${escHtml(doc.scope)}</p></div></details>`:''}
+        ${phases.length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Delivery Phases</strong><span class="tag" style="margin-left:6px">${phases.length}</span></summary>
           <div class="collapse-body">
             ${phases.map((p,i)=>`<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
               <div style="width:20px;height:20px;border-radius:50%;background:var(--accent-dim);color:#fff;
                 display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${i+1}</div>
               <div>
                 <div style="font-size:12px;font-weight:600">${escHtml(p.phase)}</div>
-                <div style="font-size:11px;color:var(--text-dim)">${escHtml(p.description)} · ${p.duration_weeks}w</div>
+                <div class="fs11 c-dim">${escHtml(p.description)} · ${p.duration_weeks}w</div>
               </div>
             </div>`).join('')}
           </div></details>`:''}
-        ${gantt.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Timeline (Gantt)</strong></summary>
+        ${gantt.length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Timeline (Gantt)</strong></summary>
           <div class="collapse-body" style="overflow-x:auto">
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               <tr style="color:var(--text-muted);border-bottom:1px solid var(--border)">
@@ -2570,7 +2530,7 @@ async function viewPresales(){
               </tr>`).join('')}
             </table>
           </div></details>`:''}
-        ${risks.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Risks</strong><span class="tag tag-red" style="margin-left:6px">${risks.length}</span></summary>
+        ${risks.length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Risks</strong><span class="tag tag-red" style="margin-left:6px">${risks.length}</span></summary>
           <div class="collapse-body">
             ${risks.map(r=>`<div style="padding:5px 0;border-bottom:1px solid var(--border)">
               <div style="display:flex;gap:6px;align-items:center;margin-bottom:2px">
@@ -2579,21 +2539,21 @@ async function viewPresales(){
                 <span class="tag ${r.impact==='high'?'tag-red':r.impact==='medium'?'tag-yellow':''}" style="font-size:9px">I:${r.impact||'?'}</span>
                 <span class="tag ${r.probability==='high'?'tag-red':r.probability==='medium'?'tag-yellow':''}" style="font-size:9px">P:${r.probability||'?'}</span>
               </div>
-              ${r.mitigation?`<div style="font-size:11px;color:var(--text-dim)">→ ${escHtml(r.mitigation)}</div>`:''}
+              ${r.mitigation?`<div class="fs11 c-dim">→ ${escHtml(r.mitigation)}</div>`:''}
             </div>`).join('')}
           </div></details>`:''}
-        ${assumptions.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Assumptions</strong><span class="tag" style="margin-left:6px">${assumptions.length}</span></summary>
+        ${assumptions.length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Assumptions</strong><span class="tag" style="margin-left:6px">${assumptions.length}</span></summary>
           <div class="collapse-body">
             ${assumptions.map(a=>`<div style="padding:3px 0;display:flex;gap:8px;border-bottom:1px solid var(--border)">
               <span class="tag" style="font-size:10px;flex-shrink:0">${escHtml(a.category||'')}</span>
-              <span style="font-size:12px;color:var(--text-dim)">${escHtml(a.assumption)}</span>
+              <span class="fs12 c-dim">${escHtml(a.assumption)}</span>
             </div>`).join('')}
           </div></details>`:''}
-        ${excl.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Exclusions</strong></summary>
+        ${excl.length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Exclusions</strong></summary>
           <div class="collapse-body"><ul class="items">${excl.map(e=>`<li>${escHtml(e)}</li>`).join('')}</ul></div></details>`:''}
-        ${ac.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Acceptance Criteria</strong></summary>
+        ${ac.length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Acceptance Criteria</strong></summary>
           <div class="collapse-body"><ul class="items">${ac.map(a=>`<li>✓ ${escHtml(a)}</li>`).join('')}</ul></div></details>`:''}
-        ${(raci.client_responsibilities||[]).length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Client Responsibilities</strong></summary>
+        ${(raci.client_responsibilities||[]).length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Client Responsibilities</strong></summary>
           <div class="collapse-body"><ul class="items">${(raci.client_responsibilities||[]).map(r=>`<li>● ${escHtml(r)}</li>`).join('')}</ul></div></details>`:''}
       </div>`;
     } else {
@@ -2629,7 +2589,7 @@ async function viewPresales(){
         <span class="tag">${fmtDateShort(activeReview.created_at)}</span>
         <span class="tag">${activeReview.total_findings||0} findings</span>
       </div>
-      ${activeReview.summary?`<p style="font-size:12px;color:var(--text-dim)">${escHtml((activeReview.summary||'').slice(0,300))}${(activeReview.summary||'').length>300?'…':''}</p>`:''}
+      ${activeReview.summary?`<p class="fs12 c-dim">${escHtml((activeReview.summary||'').slice(0,300))}${(activeReview.summary||'').length>300?'…':''}</p>`:''}
       <div class="flex gap-sm mt">
         <button class="btn btn-sm btn-outline" onclick="switchTab('reviews')">View Reviews</button>
         <button class="btn btn-sm btn-ghost" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on Review</button>
@@ -2649,9 +2609,9 @@ async function viewPresales(){
             <span class="tag ${srcTag}">${f.source}</span>
             <span class="tag ${stTag}">${f.status}</span>
             <strong style="font-size:11px">${escHtml(f.responder_name||'Anonymous')}</strong>
-            ${f.responder_email?`<span style="font-size:10px;color:var(--text-muted)">${escHtml(f.responder_email)}</span>`:''}
+            ${f.responder_email?`<span class="fs10 c-muted">${escHtml(f.responder_email)}</span>`:''}
           </div>
-          <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(f.created_at)}</span>
+          <span class="fs10 c-muted">${fmtDateShort(f.created_at)}</span>
         </div>
         ${f.accepted?.length?`<div class="flex gap-sm" style="margin-bottom:3px;flex-wrap:wrap">
           <span style="font-size:10px;color:var(--green);font-weight:600">Accepted:</span>
@@ -2666,7 +2626,7 @@ async function viewPresales(){
           ${f.concerns.map(c=>`<span class="tag tag-yellow">${escHtml(c)}</span>`).join('')}
         </div>`:''}
         ${f.notes?`<p style="font-size:11px;color:var(--text-dim);margin:4px 0">${escHtml(f.notes)}</p>`:''}
-        ${f.next_action?`<p style="font-size:11px;color:var(--accent)">→ ${escHtml(f.next_action)}</p>`:''}
+        ${f.next_action?`<p class="fs11 c-accent">→ ${escHtml(f.next_action)}</p>`:''}
         ${f.status==='open'?`<div class="flex gap-sm mt-sm">
           <button class="btn btn-xs btn-green" onclick="actionFeedback('${f.feedback_id}','actioned')">Mark Actioned</button>
           <button class="btn btn-xs btn-ghost" onclick="actionFeedback('${f.feedback_id}','closed')">Close</button>
@@ -2827,19 +2787,34 @@ async function viewPresales(){
   // and a single clear entry point — no duplicate review runner here.
   const runReviewCard=`<div class="card" style="border-top:2px solid var(--accent)">
     <div class="flex-between mb">
-      <div class="card-title"><span class="icon">🔍</span>Run a Review</div>
-      ${activeReview?`<span style="font-size:11px;color:var(--text-muted)">Last: ${escHtml(activeReview.persona||'')} · ${fmtDateShort(activeReview.created_at)}</span>`:''}
+      <div class="card-title"><span class="icon">▶</span>Run Pre-Sales Review</div>
+      ${activeReview?`<span class="fs11 c-muted">Last: ${escHtml(activeReview.persona||'')} · ${fmtDateShort(activeReview.created_at)}</span>`:''}
     </div>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
       Reviews are run from the <strong>Reviews tab</strong>. Once complete, upload client feedback
       as an artefact and run a follow-up review — captured feedback is automatically injected
       into the next review prompt.
     </p>
-    ${activeReview?`<div style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px">
-      <div class="flex gap-sm mb" style="flex-wrap:wrap">
-        <span class="tag tag-blue">${escHtml(activeReview.persona||'')}</span>
-        <span class="tag">${fmtDateShort(activeReview.created_at)}</span>
-        <span class="tag">${activeReview.total_findings||0} findings</span>
+    ${activeReview?`<details style="margin-bottom:10px">
+      <summary class="collapse-header" style="list-style:none;margin:0 0 0 0;border-radius:var(--radius)">
+        <span class="chevron">▶</span>
+        <span style="font-size:12px">Last review snapshot</span>
+        <span class="tag tag-blue" style="margin-left:6px">${escHtml(activeReview.persona||'')}</span>
+        <span class="tag" style="margin-left:4px">${activeReview.total_findings||0} findings</span>
+      </summary>
+      <div class="collapse-body">
+        ${activeReview.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml((activeReview.summary||'').slice(0,300))}${(activeReview.summary||'').length>300?'…':''}</p>`:''}
+        <button class="btn btn-xs btn-ghost" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on this Review</button>
+      </div>
+    </details>`:''}
+    <div class="flex gap-sm" style="align-items:flex-end;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label class="fs11 c-dim">Persona</label>
+        <select id="presalesRoleSelect" style="min-width:160px">${roleOpts}</select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <label class="fs11 c-dim">Backend</label>
+        <select id="presalesBackendSelect" style="min-width:130px">${backendOpts}</select>
       </div>
       ${activeReview.summary?`<p style="font-size:11px;color:var(--text-dim)">${escHtml((activeReview.summary||'').slice(0,200))}${(activeReview.summary||'').length>200?'…':''}</p>`:''}
       <button class="btn btn-xs btn-ghost mt-sm" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on this Review</button>
@@ -2900,11 +2875,11 @@ async function viewPresales(){
         <div id="finaliseForm" style="${isReady?'':'margin-top:8px'}">
           <div class="flex gap-sm" style="align-items:flex-end;flex-wrap:wrap">
             <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
-              <label style="font-size:11px;color:var(--text-dim)">Decision owner <span style="color:var(--red)">*</span></label>
+              <label class="fs11 c-dim">Decision owner <span style="color:var(--red)">*</span></label>
               <input id="finaliseDecidedBy" placeholder="Your name">
             </div>
             <div style="display:flex;flex-direction:column;gap:3px;flex:2;min-width:200px">
-              <label style="font-size:11px;color:var(--text-dim)">Reason ${!isReady?'(required for override)':''}</label>
+              <label class="fs11 c-dim">Reason ${!isReady?'(required for override)':''}</label>
               <input id="finaliseReason" placeholder="${isReady?'Optional':'Required — explain why proceeding despite open items'}">
             </div>
             <button class="btn ${isReady?'btn-green':'btn-yellow'}"
@@ -3281,11 +3256,8 @@ function copyShareLink(){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // ADMIN VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewAdmin(){
   let config={},health={},lifecycle={},suggestions=[];
   try{const r=await api('GET','/api/admin/config');config=r.config||{};}catch(e){}
@@ -3443,11 +3415,8 @@ async function restoreProject(pid){
 }
 </script>
 
-
 <script>
-// ═══════════════════════════════════════════════════════════════
 // SETTINGS VIEW
-// ═══════════════════════════════════════════════════════════════
 async function viewSettings(){
   const r=await api('GET','/api/projects/all');
   state.allProjects=r.projects||state.projects;
@@ -3481,7 +3450,7 @@ async function viewSettings(){
     <ul class="items">${(state.allProjects||[]).map(p=>`<li>
       <a href="#" onclick="selectProject('${p.id}')">${escHtml(p.name)}</a>
       <span class="tag" style="margin-left:4px">${p.phase||'–'}</span>
-      <span style="font-size:10px;color:var(--text-muted)">${p.file_count} files</span>
+      <span class="fs10 c-muted">${p.file_count} files</span>
       ${p.status==='archived'?'<span class="tag tag-yellow" style="margin-left:4px">archived</span>':''}
     </li>`).join('')}</ul>
   </div>`:'';
@@ -3517,9 +3486,7 @@ async function deleteProject(){
   await loadProjects();state.current=state.projects[0]||null;state.tab='dashboard';render();
 }
 
-// ═══════════════════════════════════════════════════════════════
 // SHARED ACTIONS
-// ═══════════════════════════════════════════════════════════════
 async function createProject(){
   const name=document.getElementById('newName').value.trim();
   const desc=document.getElementById('newDesc')?.value||'';
