@@ -466,7 +466,12 @@ async function render(){
     versions:viewVersions,reviews:viewReviews,diagrams:viewDiagrams,phases:viewPhases,
     presales:viewPresales,settings:viewSettings,admin:viewAdmin
   };
-  main.innerHTML=await(views[state.tab]||viewDashboard)();
+  try{
+    main.innerHTML=await(views[state.tab]||viewDashboard)();
+  }catch(e){
+    console.error('render() view error:',e);
+    main.innerHTML='<div class="card"><p style="color:var(--red);font-size:12px">&#9888; Page failed to load: '+escHtml(e.message)+'</p><button class="btn btn-sm btn-ghost mt" onclick="render()">&#8635; Retry</button></div>';
+  }
 }
 
 // NO PROJECT VIEW
@@ -2157,39 +2162,46 @@ async function viewDiagrams(){
     </div></div>`;
   }
 
-  // Context selector card
-  const vOpts=allVersions.map(v=>`<option value="${v.version_id}" ${v.version_id===selDV?'selected':''}>${escHtml(v.version_id)}${v.label?' – '+escHtml(v.label):''} (${fmtDateShort(v.created_at)})</option>`).join('');
-  const rOpts=diagReviews.map(r=>`<option value="${r.review_id}" ${r.review_id===selDR?'selected':''}>${r.review_id} – ${escHtml(r.persona||'')} (${fmtDateShort(r.created_at)})</option>`).join('');
-
+  // Context selector card — built with string concat to avoid triple-nested template literals
+  const vOpts=allVersions.map(v=>'<option value="'+v.version_id+'" '+(v.version_id===selDV?'selected':'')+'>'
+    +escHtml(v.version_id)+(v.label?' \u2013 '+escHtml(v.label):'')+' ('+fmtDateShort(v.created_at)+')</option>').join('');
+  const rOpts=diagReviews.map(r=>'<option value="'+r.review_id+'" '+(r.review_id===selDR?'selected':'')+'>'
+    +r.review_id+' \u2013 '+escHtml(r.persona||'')+' ('+fmtDateShort(r.created_at)+')</option>').join('');
   let ctxNote='';
-  if(selDR){ctxNote=`<p style="font-size:11px;color:var(--accent);margin-top:6px">⬡ Diagrams include findings from review <strong>${escHtml(selDR)}</strong> merged with base intelligence.</p>`;}
-  else if(selDV){ctxNote=`<p style="font-size:11px;color:var(--text-dim);margin-top:6px">Showing base intelligence scoped to version <strong>${escHtml(selDV)}</strong>. Select a review to include its findings.</p>`;}
+  if(selDR){ctxNote='<p style="font-size:11px;color:var(--accent);margin-top:6px">Diagrams include findings from review <strong>'+escHtml(selDR)+'</strong> merged with base intelligence.</p>';}
+  else if(selDV){ctxNote='<p style="font-size:11px;color:var(--text-dim);margin-top:6px">Scoped to version <strong>'+escHtml(selDV)+'</strong>. Select a review to include its findings.</p>';}
+  let selectorHtml='';
+  if(allVersions.length){
+    let reviewSel='';
+    if(selDV){
+      reviewSel='<div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px">'
+        +'<label style="font-size:11px;color:var(--text-dim)">Review</label>'
+        +'<select onchange="onDiagReviewChange(this.value)" style="width:100%">'
+        +'<option value="">No review (base only)</option>'+rOpts
+        +'</select></div>';
+    }
+    selectorHtml='<div class="flex" style="flex-wrap:wrap;gap:10px;align-items:flex-end">'
+      +'<div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">'
+      +'<label style="font-size:11px;color:var(--text-dim)">Version</label>'
+      +'<select onchange="onDiagVersionChange(this.value)" style="width:100%">'
+      +'<option value="">Latest (base intelligence)</option>'+vOpts
+      +'</select></div>'
+      +reviewSel
+      +'</div>';
+  }
 
-  const ctxCard=`<div class="card">
-    <div class="flex-between mb">
-      <div class="card-title"><span class="icon">📐</span>Diagram Generator</div>
-      <button class="btn btn-sm btn-outline" onclick="generateAllDiagrams()">⚡ Generate All</button>
-    </div>
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-      Diagrams are scoped to a version + review. Select context below then generate or refresh each diagram.
-      Open in <a href="https://app.diagrams.net" target="_blank" style="color:var(--accent)">diagrams.net</a>.
-    </p>
-    ${allVersions.length?`<div class="flex" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
-      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
-        <label style="font-size:11px;color:var(--text-dim)">Version</label>
-        <select onchange="onDiagVersionChange(this.value)" style="width:100%">
-          <option value="">Latest (base intelligence)</option>${vOpts}
-        </select>
-      </div>
-      ${selDV?`<div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px">
-        <label style="font-size:11px;color:var(--text-dim)">Review</label>
-        <select onchange="onDiagReviewChange(this.value)" style="width:100%">
-          <option value="">No review (base only)</option>${rOpts}
-        </select>
-      </div>`:''}
-    </div>`:''}
-    ${ctxNote}
-  </div>`;
+  const ctxCard='<div class="card">'
+    +'<div class="flex-between mb">'
+    +'<div class="card-title"><span class="icon">&#128208;</span>Diagram Generator</div>'
+    +'<button class="btn btn-sm btn-outline" onclick="generateAllDiagrams()">&#9889; Generate All</button>'
+    +'</div>'
+    +'<p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">'
+    +'Diagrams are scoped to a version + review. Select context below then generate or refresh.'
+    +' Open in <a href="https://app.diagrams.net" target="_blank" style="color:var(--accent)">diagrams.net</a>.'
+    +'</p>'
+    +selectorHtml
+    +ctxNote
+    +'</div>';
 
   let html=ctxCard;
 
