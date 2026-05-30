@@ -479,7 +479,7 @@ function viewNoProject(){
   const _projList=state.projects.length
     ?'<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">'
      +'<p class="card-section">Existing Projects</p>'
-     +'<ul class="items">'+state.projects.map(p=>'<li><a href="#" onclick="selectProject(''+p.id+'')">'+escHtml(p.name)+'</a> <span class="tag">'+(p.phase||'–')+'</span></li>').join('')+'</ul>'
+     +'<ul class="items">'+state.projects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')">${escHtml(p.name)}</a> <span class="tag">${p.phase||'–'}</span></li>`).join('')+'</ul>'
     :'';
   return`<div class="card">
     <div class="empty">
@@ -586,9 +586,9 @@ async function viewDashboard(){
   }
   
   // Add remaining standard tiles
-  statsHTML+=`${findings?`<div class="stat yellow" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
-      ${gaps?`<div class="stat red" onclick="navigateToIntelligence('gaps')"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
-    </div>`;
+  statsHTML+=(findings?`<div class="stat yellow" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:'')
+    +(gaps?`<div class="stat red" onclick="navigateToIntelligence('gaps')"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:'')
+    +'</div>';
 
   const statsHtml=statsHTML;
 
@@ -2831,7 +2831,7 @@ async function viewPresales(){
         <label class="fs11 c-dim">Backend</label>
         <select id="presalesBackendSelect" style="min-width:130px">${backendOpts}</select>
       </div>
-      ${activeReview.summary?`<p style="font-size:11px;color:var(--text-dim)">${escHtml((activeReview.summary||'').slice(0,200))}${(activeReview.summary||'').length>200?'…':''}</p>`:''}
+      ${activeReview.summary?('<p style="font-size:11px;color:var(--text-dim)">'+escHtml((activeReview.summary||'').slice(0,200))+((activeReview.summary||'').length>200?'&hellip;':'')+'</p>'):''}
       <button class="btn btn-xs btn-ghost mt-sm" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on this Review</button>
     </div>`:'<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No review run yet for this project.</p>'}
     <button class="btn btn-outline" onclick="switchTab('reviews')">→ Go to Reviews Tab</button>
@@ -3385,7 +3385,7 @@ async function viewAdmin(){
     <div class="card-title mb"><span class="icon">📁</span>Project Lifecycle Logs</div>
     ${archived.length?('<p class="card-section">Archived ('+archived.length+')</p>'
       +'<ul class="items">'+archived.map(a=>'<li><strong>'+escHtml(a.name)+'</strong> — '+fmtDateShort(a.archived_at)
-        +(a.restore_allowed!==false?'<button class="btn btn-xs btn-outline" style="margin-left:8px" onclick="restoreProject(''+a.project_id+'')">Restore</button>':'<span class="tag" style="margin-left:6px">Restored</span>')
+        +(a.restore_allowed!==false?`<button class="btn btn-xs btn-outline" style="margin-left:8px" onclick="restoreProject('${a.project_id}')">Restore</button>`:'<span class="tag" style="margin-left:6px">Restored</span>')
         +'</li>').join('')+'</ul>'):'<p style="color:var(--text-muted);font-size:12px">No archived projects.</p>'}
     ${deleted.length?('<p class="card-section">Deleted ('+deleted.length+')</p>'
       +'<ul class="items">'+deleted.map(d=>'<li><strong>'+escHtml(d.name)+'</strong> — Deleted '+fmtDateShort(d.deleted_at)+'</li>').join('')+'</ul>'):''}
