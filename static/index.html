@@ -1745,6 +1745,23 @@ async function viewReviewDetail(rid){
       <p class="fs11 c-dim">These areas had no findings — consider addressing them in the next review.</p>
     </div>`;
   }
+  // S5-01/S5-03: Decision Points section
+  const decisionPoints = r.decision_points || [];
+  if (decisionPoints.length) {
+    html += `<div class="card" style="margin-top:8px;border-top:2px solid var(--accent)">
+      <div class="flex-between mb">
+        <div class="card-title" style="font-size:12px"><span class="icon">🎯</span>Decision Points <span class="tag" style="background:var(--accent);color:#000">${decisionPoints.length}</span></div>
+      </div>
+      ${decisionPoints.map(dp => `<div class="findings-item" style="font-size:12px;display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
+        <span class="tag" style="font-size:9px">${escHtml(dp.category||'')}</span>
+        <select style="font-size:9px;padding:1px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text)" onchange="updateDecisionStatus('${escHtml(r.review_id)}','${escHtml(dp.id||'')}',this.value)">
+          ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${dp.status===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+        <span style="flex:1">${escHtml(dp.text||'')}</span>
+      </div>`).join('')}
+      <p class="fs11 c-dim" style="margin-top:6px">Decisions that must be made before this review can be finalised.</p>
+    </div>`;
+  }
   // S3-04: What Changed — show diff section when a predecessor review exists
   if(r.previous_review_id){
     html+=`<div class="card" style="margin-top:8px;border-top:2px solid var(--accent-dim)">
@@ -1764,6 +1781,17 @@ async function viewReviewDetail(rid){
   </div>`;
   html+=`</div>`;
   document.getElementById('main').innerHTML=html;
+}
+
+// S5-03: Update decision point status via API
+async function updateDecisionStatus(reviewId, decisionId, status) {
+  if (!state.current) return;
+  const pid = state.current.id;
+  try {
+    await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/decision/${decisionId}/status`, { status });
+  } catch(e) {
+    console.error('Failed to update decision status', e);
+  }
 }
 </script>
 
@@ -2178,9 +2206,18 @@ async function runDeepDive(){
     const sectionId=`grp_${globalIdx}`;
     const rows=(grp.questions||[]).map(q=>{
       const i=globalIdx++;
-      return`<div class="dd-row" data-idx="${i}" data-section="${sectionId}" onclick="toggleDDRow(this)">
+      // S5-02: q may be a dict {question, decision_point_id, decision_point_text}
+      const qText = (typeof q === 'object' && q !== null) ? (q.question||'') : String(q);
+      const dpText = (typeof q === 'object' && q !== null) ? (q.decision_point_text||null) : null;
+      const dpLine = dpText
+        ? `<div style="font-size:9px;color:var(--text-dim);margin-top:2px;padding-left:2px">→ Decision: ${escHtml(dpText)}</div>`
+        : '';
+      return`<div class="dd-row" data-idx="${i}" data-section="${sectionId}"
+          data-decision-id="${(typeof q==='object'&&q)?escHtml(q.decision_point_id||''):''}"
+          data-decision-text="${(typeof q==='object'&&q)?escHtml(q.decision_point_text||''):''}"
+          onclick="toggleDDRow(this)">
         <span class="dd-row-check-icon" id="dd-chk-${i}">✓</span>
-        <span class="dd-row-content">❓ ${escHtml(q)}</span>
+        <span class="dd-row-content" style="flex:1">❓ ${escHtml(qText)}${dpLine}</span>
       </div>`;
     }).join('');
     return`<details open class="mb8">
@@ -2271,6 +2308,21 @@ async function addSelectedToPrompt(){
   for(const q of cleaned){
     if(!state._injectedQuestions.includes(q))state._injectedQuestions.push(q);
   }
+  // S5-02: persist decision_mappings into prompt_builder_state
+  if(!state._promptBuilderState)state._promptBuilderState={};
+  if(!state._promptBuilderState.decision_mappings)state._promptBuilderState.decision_mappings={};
+  document.querySelectorAll('.dd-row').forEach(row=>{
+    if(!row.classList.contains('dd-row-deselected')){
+      const dpId=row.dataset.decisionId||'';
+      const dpText=row.dataset.decisionText||'';
+      if(dpId){
+        const qIdx=parseInt(row.dataset.idx,10);
+        const rawQ=(state._ddAllItems||[])[qIdx]||'';
+        const cleanQ=rawQ.replace(/^\[[^\]]+\]\s*/,'');
+        state._promptBuilderState.decision_mappings[cleanQ]={decision_point_id:dpId,decision_point_text:dpText};
+      }
+    }
+  });
   _renderInjectedQuestions();
   toast(`Added ${cleaned.length} question(s) to prompt — now click Run Review`);
   document.getElementById('ddFeedbackResult').innerHTML=

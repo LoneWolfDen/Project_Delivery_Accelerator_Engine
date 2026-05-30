@@ -352,6 +352,8 @@ class Database:
             ("prompt_builder_state", "TEXT DEFAULT NULL"),
             # S4: weakness and gap intelligence
             ("weaknesses",          "TEXT DEFAULT '[]'"),
+            # S5: decision intelligence
+            ("decision_points",     "TEXT DEFAULT '[]'"),
         ]:
             if col not in rev_cols:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {definition}")
