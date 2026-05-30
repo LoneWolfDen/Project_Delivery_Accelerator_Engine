@@ -15,12 +15,15 @@ V3 Enhancements:
 """
 
 import json
+import logging
 import shutil
 import time
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Any, Dict, List, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 from models.document import IngestedDocument
 from models.project import Project
