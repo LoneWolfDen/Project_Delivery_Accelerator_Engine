@@ -1764,24 +1764,24 @@ async function viewReviews(){
 
     <div class="form-row" style="margin-top:10px">
       <label>Custom Prompt
-        <span class="fs10 c-muted"> (optional — add constraints, context, or selected Deep Dive questions)</span>
+        <span class="fs10 c-muted"> (optional — add constraints, context, or selected SME questions)</span>
       </label>
       <textarea id="customPrompt" rows="3"
-        placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available.&#10;Paste selected Deep Dive questions here before running the review."></textarea>
+        placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available.&#10;Selected SME questions will be added here automatically."></textarea>
     </div>
 
     <div class="flex gap-sm" class="mt8">
-      <button class="btn" onclick="runReview()">▶ Run Review</button>
-      <button class="btn btn-outline" onclick="runDeepDive()" title="SME questions for this persona — select and add to prompt before running review">
+      <button class="btn btn-outline" onclick="runDeepDive()" title="Generate targeted SME questions before running the review">
         🔬 Ask SME Questions
       </button>
+      <button class="btn" onclick="runReview()">▶ Run Review</button>
     </div>
     <p style="font-size:10px;color:var(--text-muted);margin-top:6px">
       💡 Workflow: Select role(s) → <strong>Ask SME Questions</strong> → tick relevant questions →
       <strong>Add to Prompt</strong> → <strong>Run Review</strong>
     </p>
-    <div id="reviewResult" class="mt"></div>
     <div id="deepDiveResult" class="mt"></div>
+    <div id="reviewResult" class="mt"></div>
   </div>`;
 
   let listHtml='';
@@ -1838,17 +1838,12 @@ async function viewReviews(){
               // Human-readable status labels
               const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
               const qBadge=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
-              const barColor=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
-              return`<div class="mb8">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                  <span class="fs11 c-dim">Status</span>
-                  <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden">
-                    <div style="width:${score}%;height:100%;background:${barColor};border-radius:3px;transition:width .3s"></div>
-                  </div>
-                  <span style="font-size:11px;font-weight:600;color:${barColor}">${score}%</span>
-                  <span class="tag ${qBadge}" style="font-size:10px">${qLabel}</span>
-                  ${rev.completed_by?`<span class="fs10 c-muted">by ${escHtml(rev.completed_by)}</span>`:''}
-                </div>
+              // S1-05: score demoted — small inline badge only, no dominant progress bar
+              const scoreColor=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
+              return`<div class="flex gap-sm mb8" style="align-items:center;flex-wrap:wrap">
+                <span class="tag ${qBadge}" style="font-size:10px">${qLabel}</span>
+                <span style="font-size:10px;color:${scoreColor};background:var(--surface3);padding:1px 6px;border-radius:10px">${score}%</span>
+                ${rev.completed_by?`<span class="fs10 c-muted">by ${escHtml(rev.completed_by)}</span>`:''}
               </div>`;
             })()}
             <div class="flex gap-sm">
