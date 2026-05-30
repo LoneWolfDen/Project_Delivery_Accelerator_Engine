@@ -390,6 +390,7 @@ let state={
   _versionSort:'newest',
   _reviewSort:'newest',
   _debugMode:false,
+  _lastRenderedProject:null,
 };
 const TABS=['dashboard','ingest','intelligence','versions','reviews','diagrams','phases','presales','admin'];
 
@@ -445,10 +446,20 @@ function renderHeader(){
     </nav>`;
 }
 
-function switchTab(tab){state.tab=tab;render();}
+function switchTab(tab){
+  // Skip full re-render if same tab and same project — avoids unnecessary API calls
+  if(tab===state.tab&&state.current&&state._lastRenderedProject===state.current.id){
+    // Still scroll to top for UX consistency
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+  state.tab=tab;
+  render();
+}
 
 async function render(){
   renderHeader();
+  if(state.current)state._lastRenderedProject=state.current.id;
   const main=document.getElementById('main');
   main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
   const views={
@@ -734,8 +745,8 @@ async function viewIngest(){
       <div class="flex-between mb">
         <div class="card-title"><span class="icon">🗂️</span>Artefact Registry</div>
         <div class="flex gap-sm">
-          <button class="btn btn-sm btn-ghost" onclick="expandAllFiles()">Expand All</button>
-          <button class="btn btn-sm btn-ghost" onclick="collapseAllFiles()">Collapse All</button>
+          <button class="btn btn-sm btn-ghost" id="filesToggle"
+            onclick="toggleExpandSection('.file-item','filesToggle')">Expand All</button>
           <button class="btn btn-sm btn-outline"
             title="Extract and index text content from all included artefacts so they are ready for intelligence building"
             onclick="processAllArtifacts()">🔄 Re-process Included</button>
@@ -825,7 +836,7 @@ async function viewIngest(){
             ${backendOpts}
           </select>
         </div>
-        <button class="btn" style="margin-top:16px" onclick="buildContext()">🔨 Run Intelligence</button>
+        <button class="btn" style="margin-top:16px" onclick="buildContext()">🔨 Build Intelligence</button>
         <button class="btn btn-ghost" style="margin-top:16px" title="Re-run with same backend, no label prompt" onclick="rebuildContext()">🔁 Rebuild</button>
       </div>
       <p style="font-size:10px;color:var(--text-muted);margin-top:8px">
@@ -838,8 +849,6 @@ async function viewIngest(){
   return addCard+regHtml+intelActionCard;
 }
 
-function expandAllFiles(){document.querySelectorAll('.file-item').forEach(el=>el.classList.add('expanded'));}
-function collapseAllFiles(){document.querySelectorAll('.file-item').forEach(el=>el.classList.remove('expanded'));}
 
 function switchIngestTab(tab){
   ['upload','paste','paths'].forEach(t=>{
@@ -1132,8 +1141,8 @@ async function viewIntelligence(){
     <div class="flex-between mb">
       <div class="card-title"><span class="icon">🧠</span>Project Intelligence</div>
       <div class="flex gap-sm">
-        <button class="btn btn-sm btn-ghost" onclick="expandAllIntel()">Expand All</button>
-        <button class="btn btn-sm btn-ghost" onclick="collapseAllIntel()">Collapse All</button>
+        <button class="btn btn-sm btn-ghost" id="intelToggle"
+          onclick="toggleExpandSection('#main details','intelToggle')">Expand All</button>
         <button class="btn btn-sm btn-outline" onclick="goToBuildIntelligence()">🔨 Rebuild</button>
       </div>
     </div>
@@ -1182,6 +1191,32 @@ async function viewIntelligence(){
 
 function expandAllIntel(){document.querySelectorAll('#main details').forEach(d=>d.open=true);}
 function collapseAllIntel(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
+
+// ── Unified expand/collapse toggle ──────────────────────────────────────────
+// Replaces separate expandAll*/collapseAll* functions.
+// sel: CSS selector for elements to toggle (details elements use .open; file-items use class)
+// btnId: id of the toggle button — its text flips between "Expand All" / "Collapse All"
+function toggleExpandSection(sel,btnId){
+  const btn=document.getElementById(btnId);
+  const isExpanded=btn&&btn.textContent.trim()==='Collapse All';
+  document.querySelectorAll(sel).forEach(el=>{
+    if(el.tagName==='DETAILS'){
+      el.open=!isExpanded;
+    }else{
+      // file-item elements
+      if(isExpanded)el.classList.remove('expanded');
+      else el.classList.add('expanded');
+    }
+  });
+  if(btn)btn.textContent=isExpanded?'Expand All':'Collapse All';
+}
+// Legacy shims — kept so any remaining inline calls still work
+function expandAllFiles(){document.querySelectorAll('.file-item').forEach(el=>el.classList.add('expanded'));}
+function collapseAllFiles(){document.querySelectorAll('.file-item').forEach(el=>el.classList.remove('expanded'));}
+function expandAllVersions(){document.querySelectorAll('#main details').forEach(d=>d.open=true);}
+function collapseAllVersions(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
+function expandAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=true);}
+function collapseAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
 </script>
 
 
@@ -1213,10 +1248,10 @@ async function viewVersions(){
     <button class="sort-btn ${sort==='most-reviews'?'active':''}" onclick="setVersionSort('most-reviews')">Most Reviews</button>
   </div>`;
 
-  // Expand/collapse all control
+  // Expand/collapse all control — single toggle button
   const expandBar=`<div class="expand-bar">
-    <button class="btn btn-sm btn-ghost" onclick="expandAllVersions()">Expand All</button>
-    <button class="btn btn-sm btn-ghost" onclick="collapseAllVersions()">Collapse All</button>
+    <button class="btn btn-sm btn-ghost" id="versionsToggle"
+      onclick="toggleExpandSection('#main details','versionsToggle')">Expand All</button>
     <span style="margin-left:auto;color:var(--text-dim)">${totalV} versions · ${totalR} reviews</span>
   </div>`;
 
@@ -1251,23 +1286,22 @@ async function viewVersions(){
       for(const ver of phaseVersions){
         const verRevs=ver.reviews||[];
         const activeRid=ver.active_review_id||'';
-        treeHtml+=`<details open style="margin:6px 0;padding-left:10px;border-left:2px solid var(--border)">
-          <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:var(--radius);transition:background .15s"
+        // Compact: collapsed by default. Summary shows version id + date + review count only.
+        treeHtml+=`<details style="margin:4px 0;padding-left:8px;border-left:2px solid var(--border)">
+          <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:var(--radius);transition:background .15s"
             onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
             <span class="chevron">▶</span>
-            <strong>${escHtml(ver.version_id)}</strong>
-            ${ver.label?`<span style="color:var(--text-dim)">– ${escHtml(ver.label)}</span>`:''}
+            <strong style="font-size:12px">${escHtml(ver.version_id)}</strong>
+            ${ver.label?`<span style="color:var(--text-dim);font-size:11px">– ${escHtml(ver.label)}</span>`:''}
             <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(ver.created_at)}</span>
-            <span class="tag">${ver.artifact_count||0} files</span>
-            <span class="tag ${verRevs.length?'tag-blue':''}">${verRevs.length} reviews</span>
-            ${ver.stats?.risks?`<span class="tag tag-red">${ver.stats.risks} risks</span>`:''}
+            <span class="tag ${verRevs.length?'tag-blue':''}" style="margin-left:auto">${verRevs.length} review${verRevs.length===1?'':'s'}</span>
+            ${activeRid?'<span class="tag tag-green" style="font-size:9px">active set</span>':''}
           </summary>
-          <div style="padding:8px 0 4px 18px">
-            <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
-              ${ver.persona?`Persona: ${escHtml(ver.persona)} · `:''}Backend: ${escHtml(ver.ai_backend||'files_only')} · ${fmtDate(ver.created_at)}
-            </p>
-            <div class="flex gap-sm mb">
-              <button class="btn btn-sm btn-ghost" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button>
+          <div style="padding:6px 0 4px 14px">
+            <div class="flex gap-sm mb" style="flex-wrap:wrap">
+              <button class="btn btn-xs btn-ghost" onclick="selectVersionContext('${ver.version_id}')">View on Dashboard</button>
+              ${ver.stats?.risks?`<span class="tag tag-red">${ver.stats.risks} risks</span>`:''}
+              <span style="font-size:10px;color:var(--text-dim)">${ver.persona?escHtml(ver.persona)+' · ':''} ${escHtml(ver.ai_backend||'files_only')}</span>
             </div>`;
 
         if(verRevs.length){
@@ -1279,8 +1313,7 @@ async function viewVersions(){
                 <span class="chevron">▶</span>
                 <strong style="font-size:11px">${rid}</strong>
                 ${isActive?'<span class="tag tag-green">active</span>':''}
-                <span class="tag">${escHtml(rev.persona||'–')}</span>
-                <span class="tag">${escHtml(rev.ai_backend||'files_only')}</span>
+                <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
                 ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
                 <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${relativeTime(rev.created_at)}</span>
               </div>
@@ -1350,41 +1383,17 @@ function toggleRevItem(el){
   if(chev)chev.style.transform=isOpen?'':'rotate(90deg)';
 }
 
-function expandAllVersions(){
-  document.querySelectorAll('#main details').forEach(d=>d.open=true);
-  document.querySelectorAll('.review-item-body').forEach(b=>b.style.display='block');
-  document.querySelectorAll('.review-item-header .chevron').forEach(c=>c.style.transform='rotate(90deg)');
-}
-function collapseAllVersions(){
-  document.querySelectorAll('#main details').forEach(d=>d.open=false);
-  document.querySelectorAll('.review-item-body').forEach(b=>b.style.display='none');
-  document.querySelectorAll('.review-item-header .chevron').forEach(c=>c.style.transform='');
-}
-
 function selectVersionContext(vid){state._dashVersion=vid;state._dashReview='';switchTab('dashboard');}
+
+// Single Set Active function — no owner prompt required at selection time.
+// Owner name is collected only during Proposal generation.
 async function setActiveReview(vid,rid){
   const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/versions/${vid}/set-active-review`,{review_id:rid});
   if(r.error){toast(r.error,'err');return;}
   toast(`Active review set to ${rid}`);render();
 }
-async function setActiveReviewGated(vid,rid){
-  // DS-09: use gated endpoint — prompts for decided_by
-  const decided_by=prompt('Your name (decision owner):');
-  if(!decided_by)return;
-  const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/versions/${vid}/set-active-review-gated`,
-    {review_id:rid,decided_by});
-  if(r.error){
-    const msg=r.blockers?r.blockers.join('\n'):r.error;
-    if(confirm(`Gate not passed:\n${msg}\n\nForce-set anyway?`)){
-      const r2=await api('POST',`/api/projects/${state.current.id}/hierarchy/versions/${vid}/set-active-review-gated`,
-        {review_id:rid,decided_by,force:true});
-      if(r2.error){toast(r2.error,'err');return;}
-      toast(`Active review force-set to ${rid}`);render();
-    }
-    return;
-  }
-  toast(`Active review set to ${rid} (by ${decided_by})`);render();
-}
+// setActiveReviewGated kept as alias so any existing inline calls still work
+const setActiveReviewGated=setActiveReview;
 function openMarkComplete(rid,suggestedStatus){
   const el=document.getElementById('markComplete_'+rid);
   if(el){el.style.display='';el.scrollIntoView({behavior:'smooth',block:'nearest'});}
@@ -1396,7 +1405,8 @@ async function submitMarkComplete(rid,qualityStatus){
   const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/reviews/${rid}/complete`,
     {completed_by:name,quality_status:qualityStatus});
   if(r.error){toast(r.error,'err');return;}
-  toast(`Review marked ${qualityStatus} (score: ${r.score}/100)`);render();
+  const label=qualityStatus==='complete'?'Final':qualityStatus==='interim'?'Draft':qualityStatus;
+  toast(`Review marked as ${label}`);render();
 }
 async function deleteReview(rid){
   if(!rid||rid==='undefined'){toast('Invalid review ID','err');return;}
@@ -1639,8 +1649,8 @@ async function viewReviewDetail(rid){
   if(Object.keys(findings).length){
     html+=`<div class="flex-between mb"><p class="card-section" style="margin:0">Findings</p>
       <div class="flex gap-sm">
-        <button class="btn-icon" onclick="expandAllIntel()" title="Expand all">⊕</button>
-        <button class="btn-icon" onclick="collapseAllIntel()" title="Collapse all">⊖</button>
+        <button class="btn-icon" id="detailFindToggle"
+          onclick="toggleExpandSection('#main details','detailFindToggle')" title="Toggle expand">⊕</button>
       </div></div>`;
     for(const[s,items]of Object.entries(findings)){
       if(!items.length)continue;
@@ -1735,19 +1745,16 @@ async function viewReviews(){
     const g=r.group_name||r.group_id||'Other';
     (groupMap[g]=groupMap[g]||[]).push(r);
   }
-  const roleGrid=Object.entries(groupMap).map(([grpName,roles])=>`
-    <div style="margin-bottom:8px">
-      <div style="font-size:10px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">${escHtml(grpName)}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${roles.map(r=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;
-          padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);
-          background:var(--surface2);user-select:none" title="${escHtml(r.purpose||'')}">
-          <input type="checkbox" class="role-check" value="${escHtml(r.id)}"
-            onchange="_onRoleCheck(this)" style="accent-color:var(--accent)">
-          ${escHtml(r.name)}
-        </label>`).join('')}
-      </div>
-    </div>`).join('');
+  // Compact chip grid: one small chip per role, title tooltip for description
+  const roleGrid=`<div style="display:flex;flex-wrap:wrap;gap:5px">`+
+    allRoles.map(r=>`<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;
+        cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:20px;
+        background:var(--surface2);user-select:none;white-space:nowrap"
+        title="${escHtml(r.purpose||r.group_name||'')}">
+        <input type="checkbox" class="role-check" value="${escHtml(r.id)}"
+          onchange="_onRoleCheck(this)" style="accent-color:var(--accent);width:11px;height:11px">
+        ${escHtml(r.name)}
+      </label>`).join('')+`</div>`;
 
   const runCard=`<div class="card">
     <div class="card-title mb"><span class="icon">🔍</span>Run Persona Review</div>
@@ -1795,8 +1802,9 @@ async function viewReviews(){
       <div class="flex-between mb">
         <div class="card-title"><span class="icon">📜</span>Review History</div>
         <div class="flex gap-sm">
-          <button class="btn btn-sm btn-ghost" onclick="expandAllReviews()">Expand All</button>
-          <button class="btn btn-sm btn-ghost" onclick="collapseAllReviews()">Collapse All</button>
+          <button class="btn btn-sm btn-ghost" id="revHistToggle"
+            onclick="toggleExpandSection('#main .rev-hist-detail','revHistToggle')">Expand All</button>
+          <button class="btn btn-sm btn-ghost" onclick="render()">↻ Refresh</button>
         </div>
       </div>
       ${sortBar}`;
@@ -1808,7 +1816,7 @@ async function viewReviews(){
       else revs.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
       const activeId=ver.active_review_id||'';
 
-      listHtml+=`<details open style="border-left:2px solid var(--border);padding-left:10px;margin:8px 0">
+      listHtml+=`<details class="rev-hist-detail" open style="border-left:2px solid var(--border);padding-left:10px;margin:8px 0">
         <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:var(--radius)"
           onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
           <span class="chevron">▶</span>
@@ -1834,41 +1842,42 @@ async function viewReviews(){
           </summary>
           <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
             ${rev.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml(rev.summary.slice(0,180))}</p>`:''}
-            <!-- DS-09: Quality gate bar -->
             ${(()=>{
               const score=rev.completeness_score||0;
               const qs=rev.quality_status||'pending';
-              const qColor=qs==='complete'?'var(--green)':qs==='interim'?'var(--yellow)':'var(--text-muted)';
+              // Human-readable status labels
+              const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
               const qBadge=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
               const barColor=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
               return`<div style="margin-bottom:8px">
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                  <span style="font-size:11px;color:var(--text-dim)">Quality</span>
+                  <span style="font-size:11px;color:var(--text-dim)">Status</span>
                   <div style="flex:1;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden">
                     <div style="width:${score}%;height:100%;background:${barColor};border-radius:3px;transition:width .3s"></div>
                   </div>
                   <span style="font-size:11px;font-weight:600;color:${barColor}">${score}%</span>
-                  <span class="tag ${qBadge}" style="font-size:10px">${qs}</span>
+                  <span class="tag ${qBadge}" style="font-size:10px">${qLabel}</span>
                   ${rev.completed_by?`<span style="font-size:10px;color:var(--text-muted)">by ${escHtml(rev.completed_by)}</span>`:''}
                 </div>
               </div>`;
             })()}
             <div class="flex gap-sm">
               <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rid}')">Full Details</button>
-              ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReviewGated('${ver.version_id}','${rid}')">Set Active</button>`:''}
+              ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
               ${(rev.quality_status||'pending')==='pending'?`
-                <button class="btn btn-sm btn-ghost" onclick="openMarkComplete('${rid}','complete')">✓ Mark Complete</button>
-                <button class="btn btn-sm btn-ghost" onclick="openMarkComplete('${rid}','interim')">~ Interim</button>`
-              :(rev.quality_status==='interim'?`<button class="btn btn-sm btn-ghost" onclick="openMarkComplete('${rid}','complete')">✓ Mark Complete</button>`:'')
+                <button class="btn btn-sm btn-ghost" title="Work in progress — ready for further edits" onclick="openMarkComplete('${rid}','interim')">Mark as Draft</button>
+                <button class="btn btn-sm btn-ghost" title="Ready for proposal generation" onclick="openMarkComplete('${rid}','complete')">Mark as Final</button>`
+              :(rev.quality_status==='interim'?`<button class="btn btn-sm btn-ghost" title="Ready for proposal generation" onclick="openMarkComplete('${rid}','complete')">Mark as Final</button>`:
+                `<span style="font-size:10px;color:var(--green)">✓ Final</span>`)
               }
               <button class="btn btn-sm btn-red" onclick="deleteReview('${rid}')">Delete</button>
             </div>
             <div id="markComplete_${rid}" style="display:none;margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
-              <label style="font-size:11px;color:var(--text-dim)">Marked by</label>
+              <label style="font-size:11px;color:var(--text-dim)">Your name</label>
               <div class="flex gap-sm mt-sm">
                 <input id="completedBy_${rid}" placeholder="Your name" style="flex:1">
-                <button class="btn btn-sm btn-green" onclick="submitMarkComplete('${rid}','complete')">✓ Complete</button>
-                <button class="btn btn-sm btn-yellow" onclick="submitMarkComplete('${rid}','interim')">~ Interim</button>
+                <button class="btn btn-sm btn-ghost" onclick="submitMarkComplete('${rid}','interim')">Save as Draft</button>
+                <button class="btn btn-sm btn-green" onclick="submitMarkComplete('${rid}','complete')">Mark as Final</button>
                 <button class="btn btn-xs btn-ghost" onclick="document.getElementById('markComplete_${rid}').style.display='none'">✕</button>
               </div>
             </div>
@@ -1883,8 +1892,6 @@ async function viewReviews(){
 }
 
 function setReviewSort(s){state._reviewSort=s;render();}
-function expandAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=true);}
-function collapseAllReviews(){document.querySelectorAll('#main details').forEach(d=>d.open=false);}
 
 // ── Role checkbox helpers ──────────────────────────────────────────────────
 function _getSelectedRoles(){
@@ -1981,7 +1988,7 @@ async function runReview(){
   if(r.raw_output)html+=`<details style="margin-top:4px"><summary class="collapse-header" style="list-style:none">
     <span class="chevron">▶</span><span style="font-size:12px;color:var(--accent)">Raw AI Output</span>
     </summary><div class="prompt-box">${escHtml(r.raw_output)}</div></details>`;
-  html+=`<button class="btn btn-sm btn-ghost mt" onclick="render()">Refresh List</button></div>`;
+  html+=`</div>`;
   el.innerHTML=html;
 }
 </script>
