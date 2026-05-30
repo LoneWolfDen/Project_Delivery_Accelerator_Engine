@@ -600,7 +600,7 @@ async function viewDashboard(){
     <div class="card-title mb"><span class="icon">⚡</span>Quick Actions</div>
     <div class="flex">
       <button class="btn" onclick="switchTab('ingest')">📎 Ingest Artefacts</button>
-      <button class="btn btn-outline" onclick="buildContext()">🔨 Run Intelligence</button>
+      <button class="btn btn-outline" onclick="goToBuildIntelligence()">🔨 Build Intelligence</button>
       <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Run Review</button>
       <button class="btn btn-ghost btn-sm" onclick="switchTab('versions')">📋 Browse Versions</button>
       <button class="btn-icon" title="Toggle debug" onclick="toggleDebug()" style="margin-left:auto">🐛</button>
@@ -1087,8 +1087,8 @@ async function viewIntelligence(){
   // Check if we have any data at all
   if(!useReview && !useVersion && !intelligenceData.risks && !intelligenceData.constraints && !intelligenceData.scope){
     return`<div class="card"><div class="empty"><div class="empty-icon">🧠</div>
-      <p>No intelligence built yet.</p>
-      <button class="btn mt" onclick="buildContext()">Run Intelligence Now</button></div></div>`;
+      <p>No intelligence built yet. Go to <strong>Ingest</strong> to add artefacts and run Build Intelligence.</p>
+      <button class="btn mt" onclick="goToBuildIntelligence()">Go to Build Intelligence</button></div></div>`;
   }
 
   const cats=['risks','assumptions','dependencies','constraints','action_items'];
@@ -1112,7 +1112,7 @@ async function viewIntelligence(){
       <div class="flex gap-sm">
         <button class="btn btn-sm btn-ghost" onclick="expandAllIntel()">Expand All</button>
         <button class="btn btn-sm btn-ghost" onclick="collapseAllIntel()">Collapse All</button>
-        <button class="btn btn-sm btn-outline" onclick="buildContext()">Rebuild</button>
+        <button class="btn btn-sm btn-outline" onclick="goToBuildIntelligence()">🔨 Rebuild</button>
       </div>
     </div>
     ${ds.version?`<p style="font-size:11px;color:var(--accent)">
@@ -1179,8 +1179,8 @@ async function viewVersions(){
 
   if(!totalV)return`<div class="card"><div class="empty">
     <div class="empty-icon">📋</div>
-    <p>No versions yet. Build intelligence to create the first snapshot.</p>
-    <button class="btn mt" onclick="buildContext()">Run Intelligence</button></div></div>`;
+    <p>No versions yet. Go to <strong>Ingest</strong>, add artefacts, then use Build Intelligence to create the first snapshot.</p>
+    <button class="btn mt" onclick="goToBuildIntelligence()">Go to Build Intelligence</button></div></div>`;
 
   // Sort control
   const sort=state._versionSort||'newest';
@@ -2144,7 +2144,7 @@ async function viewDiagrams(){
     return`<div class="card"><div class="empty">
       <div class="empty-icon">📐</div>
       <p>No intelligence built yet. Run Intelligence first, then generate diagrams.</p>
-      <button class="btn mt" onclick="buildContext()">🔨 Run Intelligence</button>
+      <button class="btn mt" onclick="goToBuildIntelligence()">🔨 Go to Build Intelligence</button>
     </div></div>`;
   }
 
@@ -3501,6 +3501,24 @@ async function selectProject(id){
   // Persist selection so page reload restores the same project
   try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
   state.tab='dashboard';render();
+}
+
+// Navigate to Ingest tab and scroll to the Build Intelligence card.
+// Used by any button outside the Ingest tab that wants to trigger intelligence building,
+// so that the user can review included artefacts and select the extraction backend first.
+function goToBuildIntelligence(){
+  switchTab('ingest');
+  // After render, scroll to the Build Intelligence card which has a known card-title text
+  setTimeout(()=>{
+    const cards=document.querySelectorAll('.card');
+    for(const c of cards){
+      const title=c.querySelector('.card-title');
+      if(title&&title.textContent.includes('Build Intelligence')){
+        c.scrollIntoView({behavior:'smooth',block:'start'});
+        break;
+      }
+    }
+  },150);
 }
 
 async function buildContext(){
