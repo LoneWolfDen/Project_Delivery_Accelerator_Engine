@@ -29,6 +29,18 @@ STANDARD_CATEGORIES = [
 GATE_THRESHOLD = 70          # minimum score to auto-pass gate
 POINTS_PER_CATEGORY = 20     # 5 categories × 20 = 100
 
+# S4-01: phrases that signal low confidence / unresolved areas in findings text
+_WEAKNESS_SIGNALS = [
+    "unclear", "not defined", "not specified", "tbc", "tbd", "unknown",
+    "assumed", "assumption", "to be confirmed", "to be agreed", "not documented",
+    "not clear", "no information", "missing", "pending", "not yet", "not provided",
+    "unresolved", "low confidence", "not stated", "unconfirmed", "not confirmed",
+    "no detail", "no details", "insufficient", "vague", "undecided",
+]
+
+# S4-01: minimum word count — short findings are flagged as weak
+_WEAK_ITEM_MIN_WORDS = 8
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -69,6 +81,81 @@ def compute_completeness_score(findings: Dict[str, Any]) -> Dict[str, Any]:
         "missing":    missing,
         "passed":     score >= GATE_THRESHOLD,
     }
+
+
+# ──────────────────────────────────────────────────────────────
+# S4-01: Weakness extraction
+# ──────────────────────────────────────────────────────────────
+
+def extract_weaknesses(findings: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Derive structured weaknesses from review findings.
+
+    A weakness is a finding item that:
+    - contains a signal phrase (unclear, TBC, assumed, not defined, …), OR
+    - is very short (< _WEAK_ITEM_MIN_WORDS words) suggesting low detail.
+
+    Returns a list of dicts:
+        [{id, text, category, status}]
+    where status defaults to "open".
+
+    Rules:
+    - Only inspects existing findings — never invents data.
+    - Deterministic: same findings always produce same weaknesses.
+    - Backward-compatible: returns [] for empty or None findings.
+    """
+    if not findings or not isinstance(findings, dict):
+        return []
+
+    weaknesses: List[Dict[str, Any]] = []
+    seen: set = set()          # deduplicate by normalised text
+
+    for category, items in findings.items():
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if not text:
+                continue
+
+            norm = text.lower()
+            is_weak = (
+                any(signal in norm for signal in _WEAKNESS_SIGNALS)
+                or len(text.split()) < _WEAK_ITEM_MIN_WORDS
+            )
+
+            if is_weak and norm not in seen:
+                seen.add(norm)
+                weaknesses.append({
+                    "id":       f"w{len(weaknesses) + 1}",
+                    "text":     text,
+                    "category": category,
+                    "status":   "open",
+                })
+
+    return weaknesses
+
+
+# ──────────────────────────────────────────────────────────────
+# S4-02: Missing category detection
+# ──────────────────────────────────────────────────────────────
+
+def compute_missing_categories(findings: Dict[str, Any]) -> List[str]:
+    """Return STANDARD_CATEGORIES that have zero findings.
+
+    Computed on-read from existing findings — no new DB column needed.
+
+    Returns a list of category names (strings), e.g. ["risks", "constraints"].
+    Returns [] when all standard categories have at least one item.
+    """
+    if not findings or not isinstance(findings, dict):
+        return list(STANDARD_CATEGORIES)
+
+    return [
+        cat for cat in STANDARD_CATEGORIES
+        if not (isinstance(findings.get(cat), list) and len(findings.get(cat, [])) > 0)
+    ]
 
 
 # ──────────────────────────────────────────────────────────────

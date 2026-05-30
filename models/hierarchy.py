@@ -180,6 +180,10 @@ class Review:
     # Schema: {injected_questions: [str], user_notes: str}
     prompt_builder_state: Optional[Dict[str, Any]] = None
 
+    # S4: weakness and gap intelligence
+    weaknesses: List[Dict[str, Any]] = field(default_factory=list)
+    missing_categories: List[str] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -209,6 +213,8 @@ class Review:
             "previous_review_id": self.previous_review_id,
             "iteration_number":   self.iteration_number,
             "prompt_builder_state": self.prompt_builder_state,
+            "weaknesses":         self.weaknesses,
+            "missing_categories": self.missing_categories,
         }
 
 

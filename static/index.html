@@ -1718,6 +1718,33 @@ async function viewReviewDetail(rid){
       Tokens: ${r.ai_metadata.tokens_used} · Latency: ${r.ai_metadata.latency_ms}ms · Model: ${escHtml(r.ai_metadata.model||'–')}
     </p>`;
   }
+  // S4-01: Weaknesses section
+  const weaknesses = r.weaknesses || [];
+  if (weaknesses.length) {
+    html += `<div class="card" style="margin-top:8px;border-top:2px solid var(--yellow)">
+      <div class="flex-between mb">
+        <div class="card-title" style="font-size:12px"><span class="icon">⚠️</span>Weaknesses <span class="tag" style="background:var(--yellow);color:#000">${weaknesses.length}</span></div>
+      </div>
+      ${weaknesses.map(w => `<div class="findings-item" style="font-size:12px">
+        <span class="tag" style="font-size:9px">${escHtml(w.category||'')}</span>
+        <span class="tag tag-yellow" style="font-size:9px">${escHtml(w.status||'open')}</span>
+        ${escHtml(w.text||'')}
+      </div>`).join('')}
+    </div>`;
+  }
+  // S4-02: Missing Areas section
+  const missingCats = r.missing_categories || [];
+  if (missingCats.length) {
+    html += `<div class="card" style="margin-top:8px;border-top:2px solid var(--text-dim)">
+      <div class="flex-between mb">
+        <div class="card-title" style="font-size:12px"><span class="icon">🕳️</span>Missing Areas</div>
+      </div>
+      <div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:6px">
+        ${missingCats.map(c => `<span class="tag" style="color:var(--text-dim)">${escHtml(c)}</span>`).join('')}
+      </div>
+      <p class="fs11 c-dim">These areas had no findings — consider addressing them in the next review.</p>
+    </div>`;
+  }
   // S3-04: What Changed — show diff section when a predecessor review exists
   if(r.previous_review_id){
     html+=`<div class="card" style="margin-top:8px;border-top:2px solid var(--accent-dim)">

@@ -350,6 +350,8 @@ class Database:
             ("previous_review_id",  "TEXT DEFAULT ''"),
             # S2: prompt builder state
             ("prompt_builder_state", "TEXT DEFAULT NULL"),
+            # S4: weakness and gap intelligence
+            ("weaknesses",          "TEXT DEFAULT '[]'"),
         ]:
             if col not in rev_cols:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {definition}")

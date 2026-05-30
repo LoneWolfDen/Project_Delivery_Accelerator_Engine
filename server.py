@@ -1084,9 +1084,24 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         body = self._read_body() or {}
         persona = body.get("persona", "")
         custom_prompt = body.get("custom_prompt", "")
+        review_id = body.get("review_id", "")
+        weaknesses = []
+        missing_categories = []
+        if review_id:
+            try:
+                from models.hierarchy import _make_hierarchy_store
+                from processors.review_quality import extract_weaknesses, compute_missing_categories
+                store = _make_hierarchy_store(project_id)
+                review = store.get_review(review_id)
+                if review:
+                    weaknesses = extract_weaknesses(review.findings)
+                    missing_categories = compute_missing_categories(review.findings)
+            except Exception:
+                pass
         try:
             result = project_manager.run_deep_dive_analysis(
-                project_id, persona, custom_prompt
+                project_id, persona, custom_prompt,
+                weaknesses=weaknesses, missing_categories=missing_categories,
             )
             self._json_response(result)
         except ValueError as e:
