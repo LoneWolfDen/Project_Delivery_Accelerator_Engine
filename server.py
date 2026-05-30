@@ -10,23 +10,31 @@ Lightweight API server providing:
 """
 
 import json
+import logging
 import os
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
 import project_manager
+from core.logging_config import configure_logging
+from version import __version__
+
+# Initialise logging before anything else so early errors are captured.
+configure_logging()
+logger = logging.getLogger(__name__)
 
 # ── Runtime configuration (all overridable via environment variables) ─────────
 HOST = os.environ.get("HOST", "localhost")
 PORT = int(os.environ.get("PORT", "8080"))
 APP_NAME = os.environ.get("APP_NAME", "Project Delivery Accelerator Engine")
-APP_VERSION = "3.3.0"
+APP_VERSION = __version__
 
 # Redirect projects_data to PROJECTS_DATA_DIR env var when set (e.g. Docker volume)
 _data_dir = os.environ.get("PROJECTS_DATA_DIR", "")
 if _data_dir:
     from pathlib import Path as _Path
+
     project_manager.PROJECTS_DIR = _Path(_data_dir)
     project_manager.PROJECTS_FILE = _Path(_data_dir) / "projects.json"
 
@@ -1511,10 +1519,9 @@ def main() -> None:
     """Start the server."""
     project_manager.PROJECTS_DIR.mkdir(exist_ok=True)
     server = HTTPServer((HOST, PORT), AcceleratorHandler)
-    print(f"{APP_NAME} v{APP_VERSION}")
-    print(f"Listening on http://{HOST}:{PORT}")
     data_dir = os.environ.get("PROJECTS_DATA_DIR", "projects_data/")
-    print(f"Data directory: {data_dir}")
+    logger.info("%s v%s — listening on http://%s:%s", APP_NAME, APP_VERSION, HOST, PORT)
+    logger.info("Data directory: %s", data_dir)
     server.serve_forever()
 
 

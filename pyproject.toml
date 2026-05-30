@@ -1,6 +1,6 @@
 [project]
 name = "project-delivery-accelerator"
-version = "3.0.0"
+version = "3.3.0"
 description = "Decision Intelligence System – Context-aware delivery platform with traceability, repeatability, and explainability"
 requires-python = ">=3.9"
 dependencies = [
@@ -36,7 +36,7 @@ include = ["models*", "processors*", "personas*", "ai_backends*", "admin*"]
 exclude = ["tests*", "_archive*", "outputs*"]
 
 [tool.setuptools]
-py-modules = ["project_manager", "server", "cli"]
+py-modules = ["project_manager", "server", "cli", "version"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -48,4 +48,18 @@ line-length = 100
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+# E/F/W = pycodestyle + pyflakes, I = isort, UP = pyupgrade, B = flake8-bugbear
+select = ["E", "F", "W", "I", "UP", "B"]
+# E501 = line too long — enforced by formatter, not linter
+ignore = ["E501", "B006", "B007", "UP007"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "core", "models", "processors", "personas",
+    "db", "admin", "ai_backends", "services",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
