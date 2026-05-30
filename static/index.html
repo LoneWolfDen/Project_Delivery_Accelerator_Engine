@@ -467,13 +467,23 @@ async function render(){
     versions:viewVersions,reviews:viewReviews,diagrams:viewDiagrams,phases:viewPhases,
     presales:viewPresales,settings:viewSettings,admin:viewAdmin
   };
-  main.innerHTML=await(views[state.tab]||viewDashboard)();
+  try{
+    main.innerHTML=await(views[state.tab]||viewDashboard)();
+  }catch(e){
+    console.error('render() error:',e);
+    main.innerHTML='<div class="card"><p style="color:var(--red);font-size:12px">&#9888; Page error: '+escHtml(e.message)+'</p><button class="btn btn-sm btn-ghost mt" onclick="render()">&#8635; Retry</button></div>';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
 // NO PROJECT VIEW
 // ═══════════════════════════════════════════════════════════════
 function viewNoProject(){
+  const _projList=state.projects.length
+    ?'<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">'
+     +'<p class="card-section">Existing Projects</p>'
+     +'<ul class="items">'+state.projects.map(p=>'<li><a href="#" onclick="selectProject(''+p.id+'')">'+escHtml(p.name)+'</a> <span class="tag">'+(p.phase||'–')+'</span></li>').join('')+'</ul>'
+    :'';
   return`<div class="card">
     <div class="empty">
       <div class="empty-icon">📁</div>
@@ -487,9 +497,7 @@ function viewNoProject(){
         <div id="createProjectError" class="mt"></div>
       </div>
     </div>
-    ${state.projects.length?`<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
-      <p class="card-section">Existing Projects</p>
-      <ul class="items">${state.projects.map(p=>`<li><a href="#" onclick="selectProject('${p.id}')">${escHtml(p.name)}</a> <span class="tag">${p.phase||'–'}</span></li>`).join('')}</ul>`:''}</div>`;
+    ${_projList}</div>`;
 }
 </script>
 
@@ -774,7 +782,7 @@ async function viewIngest(){
           <p style="font-size:11px;color:var(--text-dim);margin-bottom:5px">
             ${a.fileName?`File: <strong>${escHtml(a.fileName)}</strong> · `:''}Type: ${a.type}
           </p>
-          ${meta.length?`<div class="flex gap-sm" style="margin-bottom:6px">${meta.map(([k,v])=>`<span class="tag">${k}: ${Array.isArray(v)?v.join(', '):escHtml(String(v))}</span>`).join('')}</div>`:''}
+          ${meta.length?('<div class="flex gap-sm" style="margin-bottom:6px">'+meta.map(([k,v])=>'<span class="tag">'+k+': '+(Array.isArray(v)?v.join(', '):escHtml(String(v)))+'</span>').join('')+'</div>'):''}
           <div class="flex gap-sm">
             <button class="btn btn-sm btn-outline" onclick="processArtifact('${pid}','${a.artifactId}')">Process</button>
             <button class="btn btn-sm btn-red" onclick="deleteArtifact('${pid}','${a.artifactId}')">Remove</button>
@@ -1472,13 +1480,13 @@ async function compareVersions(){
       <div class="diff-cat-body">
         ${added.length?`<div style="margin-bottom:4px">
           <p style="font-size:10px;color:var(--text-muted);margin-bottom:3px">ADDED (${added.length})</p>
-          ${added.slice(0,6).map(i=>`<div class="diff-added">${escHtml(String(i).slice(0,120))}</div>`).join('')}
-          ${added.length>6?`<p style="font-size:10px;color:var(--text-muted);margin-top:2px">… and ${added.length-6} more</p>`:''}
+          ${added.slice(0,6).map(i=>'<div class="diff-added">'+escHtml(String(i).slice(0,120))+'</div>').join('')}
+          ${added.length>6?('<p style="font-size:10px;color:var(--text-muted);margin-top:2px">… and '+(added.length-6)+' more</p>'):''}
         </div>`:''}
         ${removed.length?`<div>
           <p style="font-size:10px;color:var(--text-muted);margin-bottom:3px">REMOVED (${removed.length})</p>
-          ${removed.slice(0,6).map(i=>`<div class="diff-removed">${escHtml(String(i).slice(0,120))}</div>`).join('')}
-          ${removed.length>6?`<p style="font-size:10px;color:var(--text-muted);margin-top:2px">… and ${removed.length-6} more</p>`:''}
+          ${removed.slice(0,6).map(i=>'<div class="diff-removed">'+escHtml(String(i).slice(0,120))+'</div>').join('')}
+          ${removed.length>6?('<p style="font-size:10px;color:var(--text-muted);margin-top:2px">… and '+(removed.length-6)+' more</p>'):''}
         </div>`:''}
         ${!hasChanges?`<p style="font-size:11px;color:var(--text-muted)">No changes in this category.</p>`:''}
       </div>
@@ -1857,7 +1865,7 @@ async function viewReviews(){
                   </div>
                   <span style="font-size:11px;font-weight:600;color:${barColor}">${score}%</span>
                   <span class="tag ${qBadge}" style="font-size:10px">${qLabel}</span>
-                  ${rev.completed_by?`<span style="font-size:10px;color:var(--text-muted)">by ${escHtml(rev.completed_by)}</span>`:''}
+                  ${rev.completed_by?('<span style="font-size:10px;color:var(--text-muted)">by '+escHtml(rev.completed_by)+'</span>'):''}
                 </div>
               </div>`;
             })()}
@@ -2403,9 +2411,9 @@ async function viewPresales(){
     </div>
     <div class="flex gap-sm mt" style="align-items:center;flex-wrap:wrap">
       <strong style="font-size:13px">${escHtml(proposal.proposal_name||'Proposal')}</strong>
-      ${proposal.client?`<span class="tag tag-blue">${escHtml(proposal.client)}</span>`:''}
-      ${curVer?`<span class="tag ${statusColor}">${curVer.status}</span>`:''}
-      ${curVer?`<span style="font-size:11px;color:var(--text-muted)">${escHtml(curVer.label||'')} · ${fmtDateShort(curVer.created_at)}</span>`:''}
+      ${proposal.client?('<span class="tag tag-blue">'+escHtml(proposal.client)+'</span>'):''}
+      ${curVer?('<span class="tag '+statusColor+'">'+curVer.status+'</span>'):''}
+      ${curVer?('<span style="font-size:11px;color:var(--text-muted)">'+escHtml(curVer.label||'')+' · '+fmtDateShort(curVer.created_at)+'</span>'):''}
     </div>`}
   </div>`;
 
@@ -2429,9 +2437,9 @@ async function viewPresales(){
         ${v.notes?`<p style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${escHtml(v.notes)}</p>`:''}
         ${v.changes_from_previous?`<p style="font-size:11px;color:var(--accent);margin-bottom:6px">↳ ${escHtml(v.changes_from_previous)}</p>`:''}
         ${hasFb?`<div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:6px">
-          ${fb.accepted?.length?`<span class="tag tag-green">✓ ${fb.accepted.length} accepted</span>`:''}
-          ${fb.rejected?.length?`<span class="tag tag-red">✗ ${fb.rejected.length} rejected</span>`:''}
-          ${fb.concerns?.length?`<span class="tag tag-yellow">⚠ ${fb.concerns.length} concerns</span>`:''}
+          ${fb.accepted?.length?('<span class="tag tag-green">&#10003; '+fb.accepted.length+' accepted</span>'):''}
+          ${fb.rejected?.length?('<span class="tag tag-red">&#10007; '+fb.rejected.length+' rejected</span>'):''}
+          ${fb.concerns?.length?('<span class="tag tag-yellow">&#9888; '+fb.concerns.length+' concerns</span>'):''}
         </div>`:''}
         <div class="flex gap-sm">
           <button class="btn btn-xs btn-outline" onclick="openCaptureFeedback('${v.version_id}')">+ Capture Feedback</button>
@@ -2487,14 +2495,13 @@ async function viewPresales(){
           <div class="collapse-body"><p style="font-size:12px;color:var(--text-dim)">${escHtml(doc.scope)}</p></div></details>`:''}
         ${phases.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Delivery Phases</strong><span class="tag" style="margin-left:6px">${phases.length}</span></summary>
           <div class="collapse-body">
-            ${phases.map((p,i)=>`<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
-              <div style="width:20px;height:20px;border-radius:50%;background:var(--accent-dim);color:#fff;
-                display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${i+1}</div>
-              <div>
-                <div style="font-size:12px;font-weight:600">${escHtml(p.phase)}</div>
-                <div style="font-size:11px;color:var(--text-dim)">${escHtml(p.description)} · ${p.duration_weeks}w</div>
-              </div>
-            </div>`).join('')}
+            ${phases.map((p,i)=>'<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">'
+              +'<div style="width:20px;height:20px;border-radius:50%;background:var(--accent-dim);color:#fff;'
+              +'display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
+              +'<div>'
+              +'<div style="font-size:12px;font-weight:600">'+escHtml(p.phase)+'</div>'
+              +'<div style="font-size:11px;color:var(--text-dim)">'+escHtml(p.description)+' · '+p.duration_weeks+'w</div>'
+              +'</div></div>').join('')}
           </div></details>`:''}
         ${gantt.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Timeline (Gantt)</strong></summary>
           <div class="collapse-body" style="overflow-x:auto">
@@ -2506,40 +2513,43 @@ async function viewPresales(){
                 <th style="padding:4px 8px">End</th>
                 <th style="padding:4px 8px">Owner</th>
               </tr>
-              ${gantt.map(g=>`<tr style="border-bottom:1px solid var(--border)">
-                <td style="padding:4px 8px;color:var(--text)">${escHtml(g.milestone)}</td>
-                <td style="padding:4px 8px;color:var(--text-dim)">${escHtml(g.phase||'')}</td>
-                <td style="padding:4px 8px;text-align:center">W${g.start_week}</td>
-                <td style="padding:4px 8px;text-align:center">W${g.end_week}</td>
-                <td style="padding:4px 8px;color:var(--text-dim)">${escHtml(g.owner||'')}</td>
-              </tr>`).join('')}
+              ${gantt.map(g=>'<tr style="border-bottom:1px solid var(--border)">'
+                +'<td style="padding:4px 8px;color:var(--text)">'+escHtml(g.milestone)+'</td>'
+                +'<td style="padding:4px 8px;color:var(--text-dim)">'+escHtml(g.phase||'')+'</td>'
+                +'<td style="padding:4px 8px;text-align:center">W'+g.start_week+'</td>'
+                +'<td style="padding:4px 8px;text-align:center">W'+g.end_week+'</td>'
+                +'<td style="padding:4px 8px;color:var(--text-dim)">'+escHtml(g.owner||'')+'</td>'
+                +'</tr>').join('')}
             </table>
           </div></details>`:''}
         ${risks.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Risks</strong><span class="tag tag-red" style="margin-left:6px">${risks.length}</span></summary>
           <div class="collapse-body">
-            ${risks.map(r=>`<div style="padding:5px 0;border-bottom:1px solid var(--border)">
-              <div style="display:flex;gap:6px;align-items:center;margin-bottom:2px">
-                <span style="font-size:12px;color:var(--text)">${escHtml(r.risk)}</span>
-                <span class="tag" style="font-size:9px">${escHtml(r.category||'')}</span>
-                <span class="tag ${r.impact==='high'?'tag-red':r.impact==='medium'?'tag-yellow':''}" style="font-size:9px">I:${r.impact||'?'}</span>
-                <span class="tag ${r.probability==='high'?'tag-red':r.probability==='medium'?'tag-yellow':''}" style="font-size:9px">P:${r.probability||'?'}</span>
-              </div>
-              ${r.mitigation?`<div style="font-size:11px;color:var(--text-dim)">→ ${escHtml(r.mitigation)}</div>`:''}
-            </div>`).join('')}
+            ${risks.map(r=>{
+              const rImpact=r.impact==='high'?'tag-red':r.impact==='medium'?'tag-yellow':'';
+              const rProb=r.probability==='high'?'tag-red':r.probability==='medium'?'tag-yellow':'';
+              const rMit=r.mitigation?('<div style="font-size:11px;color:var(--text-dim)">→ '+escHtml(r.mitigation)+'</div>'):'';
+              return '<div style="padding:5px 0;border-bottom:1px solid var(--border)">'
+                +'<div style="display:flex;gap:6px;align-items:center;margin-bottom:2px">'
+                +'<span style="font-size:12px;color:var(--text)">'+escHtml(r.risk)+'</span>'
+                +'<span class="tag" style="font-size:9px">'+escHtml(r.category||'')+'</span>'
+                +'<span class="tag '+rImpact+'" style="font-size:9px">I:'+(r.impact||'?')+'</span>'
+                +'<span class="tag '+rProb+'" style="font-size:9px">P:'+(r.probability||'?')+'</span>'
+                +'</div>'+rMit+'</div>';
+            }).join('')}
           </div></details>`:''}
         ${assumptions.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Assumptions</strong><span class="tag" style="margin-left:6px">${assumptions.length}</span></summary>
           <div class="collapse-body">
-            ${assumptions.map(a=>`<div style="padding:3px 0;display:flex;gap:8px;border-bottom:1px solid var(--border)">
-              <span class="tag" style="font-size:10px;flex-shrink:0">${escHtml(a.category||'')}</span>
-              <span style="font-size:12px;color:var(--text-dim)">${escHtml(a.assumption)}</span>
-            </div>`).join('')}
+            ${assumptions.map(a=>'<div style="padding:3px 0;display:flex;gap:8px;border-bottom:1px solid var(--border)">'
+              +'<span class="tag" style="font-size:10px;flex-shrink:0">'+escHtml(a.category||'')+'</span>'
+              +'<span style="font-size:12px;color:var(--text-dim)">'+escHtml(a.assumption)+'</span>'
+              +'</div>').join('')}
           </div></details>`:''}
         ${excl.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Exclusions</strong></summary>
-          <div class="collapse-body"><ul class="items">${excl.map(e=>`<li>${escHtml(e)}</li>`).join('')}</ul></div></details>`:''}
-        ${ac.length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Acceptance Criteria</strong></summary>
-          <div class="collapse-body"><ul class="items">${ac.map(a=>`<li>✓ ${escHtml(a)}</li>`).join('')}</ul></div></details>`:''}
-        ${(raci.client_responsibilities||[]).length?`<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Client Responsibilities</strong></summary>
-          <div class="collapse-body"><ul class="items">${(raci.client_responsibilities||[]).map(r=>`<li>● ${escHtml(r)}</li>`).join('')}</ul></div></details>`:''}
+          <div class="collapse-body"><ul class="items">'+excl.map(e=>'<li>'+escHtml(e)+'</li>').join('')+'</ul></div></details>'):''}
+        ${ac.length?('<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Acceptance Criteria</strong></summary>'
+          +'<div class="collapse-body"><ul class="items">'+ac.map(a=>'<li>&#10003; '+escHtml(a)+'</li>').join('')+'</ul></div></details>'):''}
+        ${(raci.client_responsibilities||[]).length?('<details><summary class="collapse-header" style="list-style:none"><span class="chevron">▶</span><strong>Client Responsibilities</strong></summary>'
+          +'<div class="collapse-body"><ul class="items">'+(raci.client_responsibilities||[]).map(r=>'<li>&#9679; '+escHtml(r)+'</li>').join('')+'</ul></div></details>'):''}
       </div>`;
     } else {
       // No doc yet — show generate button if review is available
@@ -2600,15 +2610,15 @@ async function viewPresales(){
         </div>
         ${f.accepted?.length?`<div class="flex gap-sm" style="margin-bottom:3px;flex-wrap:wrap">
           <span style="font-size:10px;color:var(--green);font-weight:600">Accepted:</span>
-          ${f.accepted.map(a=>`<span class="tag tag-green">${escHtml(a)}</span>`).join('')}
+          ${f.accepted.map(a=>'<span class="tag tag-green">'+escHtml(a)+'</span>').join('')}
         </div>`:''}
         ${f.rejected?.length?`<div class="flex gap-sm" style="margin-bottom:3px;flex-wrap:wrap">
           <span style="font-size:10px;color:var(--red);font-weight:600">Rejected:</span>
-          ${f.rejected.map(r=>`<span class="tag tag-red">${escHtml(r)}</span>`).join('')}
+          ${f.rejected.map(r=>'<span class="tag tag-red">'+escHtml(r)+'</span>').join('')}
         </div>`:''}
         ${f.concerns?.length?`<div class="flex gap-sm" style="margin-bottom:3px;flex-wrap:wrap">
           <span style="font-size:10px;color:var(--yellow);font-weight:600">Concerns:</span>
-          ${f.concerns.map(c=>`<span class="tag tag-yellow">${escHtml(c)}</span>`).join('')}
+          ${f.concerns.map(c=>'<span class="tag tag-yellow">'+escHtml(c)+'</span>').join('')}
         </div>`:''}
         ${f.notes?`<p style="font-size:11px;color:var(--text-dim);margin:4px 0">${escHtml(f.notes)}</p>`:''}
         ${f.next_action?`<p style="font-size:11px;color:var(--accent)">→ ${escHtml(f.next_action)}</p>`:''}
@@ -2789,7 +2799,7 @@ async function viewPresales(){
         <span class="tag" style="margin-left:4px">${activeReview.total_findings||0} findings</span>
       </summary>
       <div class="collapse-body">
-        ${activeReview.summary?`<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">${escHtml((activeReview.summary||'').slice(0,300))}${(activeReview.summary||'').length>300?'…':''}</p>`:''}
+        ${activeReview.summary?('<p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">'+escHtml((activeReview.summary||'').slice(0,300))+((activeReview.summary||'').length>300?'&#8230;':'')+'</p>'):''}
         <button class="btn btn-xs btn-ghost" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on this Review</button>
       </div>
     </details>`:''}
@@ -2832,7 +2842,7 @@ async function viewPresales(){
         <div style="padding:5px 8px;background:rgba(248,81,73,.06);border:1px solid var(--red);
           border-radius:var(--radius);margin-bottom:4px;font-size:11px">
           <span class="tag tag-red" style="margin-right:6px">${escHtml(c.category||'?')}</span>
-          ${c.mapped_to?`<span class="tag" style="margin-right:6px">${c.mapped_to}</span>`:''}
+          ${c.mapped_to?('<span class="tag" style="margin-right:6px">'+c.mapped_to+'</span>'):''}
           ${escHtml(c.text)}
           <label style="float:right;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px">
             <input type="checkbox" onchange="overrideCritical('${c.item_id}',this.checked)"
@@ -3296,9 +3306,9 @@ async function viewAdmin(){
           <span class="tag ${lastRun.success?'tag-green':'tag-red'}">${lastRun.success?'Success':'Failed'}</span>
           <strong style="font-size:12px">${escHtml(lastRun.project_name||'')} (${lastRun.version_id||'–'})</strong>
           <span style="color:var(--text-muted);font-size:11px">${fmtDate(lastRun.timestamp)}</span>
-          ${lastRun.duration_ms?`<span class="tag">${Math.round(lastRun.duration_ms)}ms</span>`:''}
+          ${lastRun.duration_ms?('<span class="tag">'+Math.round(lastRun.duration_ms)+'ms</span>'):''}
         </div>
-        ${lastRun.error?`<p style="color:var(--red);font-size:11px;margin-top:4px">${escHtml(lastRun.error)}</p>`:''}`}
+        ${lastRun.error?('<p style="color:var(--red);font-size:11px;margin-top:4px">'+escHtml(lastRun.error)+'</p>'):''}`}
     <p class="card-section">API Connectivity</p>
     <div class="backend-grid">${Object.entries(apiStatus).map(([n,i])=>`<div class="backend-chip ${i.configured?'ok':''}">
       ${i.configured?'●':'○'} <strong>${n}</strong><br><span>${i.configured?'Configured':'Not set'}</span>
@@ -3387,12 +3397,12 @@ async function viewAdmin(){
   const deleted=lifecycle.deleted||[];
   const lifecycleCard=`<div class="card">
     <div class="card-title mb"><span class="icon">📁</span>Project Lifecycle Logs</div>
-    ${archived.length?`<p class="card-section">Archived (${archived.length})</p>
-      <ul class="items">${archived.map(a=>`<li><strong>${escHtml(a.name)}</strong> — ${fmtDateShort(a.archived_at)}
-        ${a.restore_allowed!==false?`<button class="btn btn-xs btn-outline" style="margin-left:8px" onclick="restoreProject('${a.project_id}')">Restore</button>`:'<span class="tag" style="margin-left:6px">Restored</span>'}
-      </li>`).join('')}</ul>`:`<p style="color:var(--text-muted);font-size:12px">No archived projects.</p>`}
-    ${deleted.length?`<p class="card-section">Deleted (${deleted.length})</p>
-      <ul class="items">${deleted.map(d=>`<li><strong>${escHtml(d.name)}</strong> — Deleted ${fmtDateShort(d.deleted_at)}</li>`).join('')}</ul>`:''}
+    ${archived.length?('<p class="card-section">Archived ('+archived.length+')</p>'
+      +'<ul class="items">'+archived.map(a=>'<li><strong>'+escHtml(a.name)+'</strong> — '+fmtDateShort(a.archived_at)
+        +(a.restore_allowed!==false?'<button class="btn btn-xs btn-outline" style="margin-left:8px" onclick="restoreProject(''+a.project_id+'')">Restore</button>':'<span class="tag" style="margin-left:6px">Restored</span>')
+        +'</li>').join('')+'</ul>'):'<p style="color:var(--text-muted);font-size:12px">No archived projects.</p>'}
+    ${deleted.length?('<p class="card-section">Deleted ('+deleted.length+')</p>'
+      +'<ul class="items">'+deleted.map(d=>'<li><strong>'+escHtml(d.name)+'</strong> — Deleted '+fmtDateShort(d.deleted_at)+'</li>').join('')+'</ul>'):''}
   </div>`;
 
   const suggestCard=suggestions.length?`<div class="card">
