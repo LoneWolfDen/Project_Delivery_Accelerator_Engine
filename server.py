@@ -95,6 +95,79 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif clean_path == "/api/admin/auto-archive-suggestions":
             suggestions = project_manager.get_auto_archive_suggestions()
             self._json_response({"suggestions": suggestions})
+        # ── Hierarchy API (Phase→Version→Review) — MUST come before generic /versions, /reviews, /summary ──
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy"):
+            project_id = clean_path.split("/")[3]
+            hierarchy = project_manager.get_hierarchy(project_id)
+            self._json_response(hierarchy)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/phases"):
+            project_id = clean_path.split("/")[3]
+            phases = project_manager.get_hierarchy_phases(project_id)
+            self._json_response({"project_id": project_id, "phases": phases})
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/metrics"):
+            project_id = clean_path.split("/")[3]
+            version_filter = query.get("version_id")
+            review_filter = query.get("review_id")
+            metrics = project_manager.get_hierarchy_metrics(project_id, version_filter, review_filter)
+            self._json_response(metrics)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/versions"):
+            # GET /api/projects/{id}/hierarchy/versions — list; MUST precede /versions/ item check
+            project_id = clean_path.split("/")[3]
+            phase_filter = query.get("phase_id")
+            versions = project_manager.get_hierarchy_versions(project_id, phase_filter)
+            self._json_response({"project_id": project_id, "versions": versions})
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path:
+            # GET /api/projects/{id}/hierarchy/versions/{version_id}
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            version_id = parts[6]
+            detail = project_manager.get_hierarchy_version_detail(project_id, version_id)
+            if detail:
+                self._json_response(detail)
+            else:
+                self._json_response({"error": "Version not found"}, status=404)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/reviews"):
+            # GET /api/projects/{id}/hierarchy/reviews — list; MUST precede /reviews/ item check
+            project_id = clean_path.split("/")[3]
+            version_filter = query.get("version_id")
+            phase_filter = query.get("phase_id")
+            reviews = project_manager.get_hierarchy_reviews(project_id, version_filter, phase_filter)
+            self._json_response({"project_id": project_id, "reviews": reviews})
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path and clean_path.endswith("/quality"):
+            # GET /api/projects/{id}/hierarchy/reviews/{review_id}/quality — MUST precede generic /reviews/ item
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            result = project_manager.get_review_quality(project_id, review_id)
+            self._json_response(result)
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path:
+            # GET /api/projects/{id}/hierarchy/reviews/{review_id}
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            detail = project_manager.get_hierarchy_review_detail(project_id, review_id)
+            if detail:
+                self._json_response(detail)
+            else:
+                self._json_response({"error": "Review not found"}, status=404)
+        # ── P9: Pre-sales GET routes — MUST come before generic /summary ──
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/summary"):
+            project_id = clean_path.split("/")[3]
+            self._handle_get_presales_summary(project_id)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/stop-condition"):
+            project_id = clean_path.split("/")[3]
+            result = project_manager.get_presales_stop_condition(project_id)
+            self._json_response(result)
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback"):
+            project_id = clean_path.split("/")[3]
+            self._handle_list_presales_feedback(project_id)
+        elif clean_path.startswith("/api/projects/") and "/presales/feedback/" in clean_path:
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            feedback_id = parts[6]
+            self._handle_get_presales_feedback_item(project_id, feedback_id)
+        elif clean_path == "/api/feedback/form" and query.get("token"):
+            self._handle_feedback_form(query["token"])
         # ── Project-specific endpoints ──
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/context"):
             project_id = clean_path.split("/")[3]
@@ -114,6 +187,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             summary = project_manager.get_project_summary(project_id)
             self._json_response({"project_id": project_id, "summary": summary})
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/versions"):
+            # GET /api/projects/{id}/versions (legacy non-hierarchy versions list)
             project_id = clean_path.split("/")[3]
             versions = project_manager.get_project_versions(project_id)
             self._json_response({"project_id": project_id, "versions": versions})
@@ -132,7 +206,6 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             history = project_manager.get_run_history_for_project(project_id)
             self._json_response({"project_id": project_id, "run_history": history})
         elif clean_path.startswith("/api/projects/") and "/file-snapshot/" in clean_path:
-            # GET /api/projects/{id}/file-snapshot/{version_id}
             parts = clean_path.split("/")
             project_id = parts[3]
             version_id = parts[5]
@@ -142,27 +215,19 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             else:
                 self._json_response({"error": "Snapshot not found"}, status=404)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/reviews"):
-            # GET /api/projects/{id}/reviews?persona=solution_architect
+            # GET /api/projects/{id}/reviews (legacy review history)
             project_id = clean_path.split("/")[3]
             persona_filter = query.get("persona")
             reviews = project_manager.get_project_review_history(project_id, persona_filter)
             self._json_response({"project_id": project_id, "reviews": reviews})
         elif clean_path.startswith("/api/projects/") and "/evolution/" in clean_path:
-            # GET /api/projects/{id}/evolution/{category}
             parts = clean_path.split("/")
             project_id = parts[3]
             category = parts[5]
             timeline = project_manager.get_project_evolution(project_id, category)
             self._json_response({"project_id": project_id, "category": category, "timeline": timeline})
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal"):
-            project_id = clean_path.split("/")[3]
-            proposal = project_manager.get_proposal_info(project_id)
-            if proposal:
-                self._json_response(proposal)
-            else:
-                self._json_response({"error": "No proposal exists"}, status=404)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal/document"):
-            # GET /api/projects/{id}/proposal/document?proposal_ver_id=prop-v1
+            # MUST precede /proposal to avoid endswith("/proposal") shadowing
             project_id = clean_path.split("/")[3]
             proposal_ver_id = query.get("proposal_ver_id", "")
             doc = project_manager.get_proposal_doc(project_id, proposal_ver_id)
@@ -170,84 +235,18 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response({"document": doc})
             else:
                 self._json_response({"error": "No document generated yet"}, status=404)
-        # ── P9: Pre-sales feedback GET routes ──
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/summary"):
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/proposal"):
             project_id = clean_path.split("/")[3]
-            self._handle_get_presales_summary(project_id)
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/stop-condition"):
-            # GET /api/projects/{id}/presales/stop-condition — DS-08
-            project_id = clean_path.split("/")[3]
-            result = project_manager.get_presales_stop_condition(project_id)
-            self._json_response(result)
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/presales/feedback"):
-            project_id = clean_path.split("/")[3]
-            self._handle_list_presales_feedback(project_id)
-        elif clean_path.startswith("/api/projects/") and "/presales/feedback/" in clean_path:
-            parts = clean_path.split("/")
-            project_id = parts[3]
-            feedback_id = parts[6]
-            self._handle_get_presales_feedback_item(project_id, feedback_id)
-        elif clean_path == "/api/feedback/form" and query.get("token"):
-            self._handle_feedback_form(query["token"])
+            proposal = project_manager.get_proposal_info(project_id)
+            if proposal:
+                self._json_response(proposal)
+            else:
+                self._json_response({"error": "No proposal exists"}, status=404)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/phase-history"):
             project_id = clean_path.split("/")[3]
             history = project_manager.get_phase_history_for_project(project_id)
             self._json_response({"project_id": project_id, "history": history})
-        # ── Hierarchy API (Phase→Version→Review) ──
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy"):
-            project_id = clean_path.split("/")[3]
-            hierarchy = project_manager.get_hierarchy(project_id)
-            self._json_response(hierarchy)
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/phases"):
-            project_id = clean_path.split("/")[3]
-            phases = project_manager.get_hierarchy_phases(project_id)
-            self._json_response({"project_id": project_id, "phases": phases})
-        elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path:
-            # GET /api/projects/{id}/hierarchy/versions/{version_id}
-            parts = clean_path.split("/")
-            project_id = parts[3]
-            version_id = parts[6]
-            detail = project_manager.get_hierarchy_version_detail(project_id, version_id)
-            if detail:
-                self._json_response(detail)
-            else:
-                self._json_response({"error": "Version not found"}, status=404)
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/versions"):
-            project_id = clean_path.split("/")[3]
-            phase_filter = query.get("phase_id")
-            versions = project_manager.get_hierarchy_versions(project_id, phase_filter)
-            self._json_response({"project_id": project_id, "versions": versions})
-        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path:
-            # GET /api/projects/{id}/hierarchy/reviews/{review_id}
-            parts = clean_path.split("/")
-            project_id = parts[3]
-            review_id = parts[6]
-            detail = project_manager.get_hierarchy_review_detail(project_id, review_id)
-            if detail:
-                self._json_response(detail)
-            else:
-                self._json_response({"error": "Review not found"}, status=404)
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/reviews"):
-            project_id = clean_path.split("/")[3]
-            version_filter = query.get("version_id")
-            phase_filter = query.get("phase_id")
-            reviews = project_manager.get_hierarchy_reviews(project_id, version_filter, phase_filter)
-            self._json_response({"project_id": project_id, "reviews": reviews})
-        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/hierarchy/metrics"):
-            project_id = clean_path.split("/")[3]
-            version_filter = query.get("version_id")
-            review_filter = query.get("review_id")
-            metrics = project_manager.get_hierarchy_metrics(project_id, version_filter, review_filter)
-            self._json_response(metrics)
-        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path and clean_path.endswith("/quality"):
-            # GET /api/projects/{id}/hierarchy/reviews/{review_id}/quality
-            parts = clean_path.split("/")
-            project_id = parts[3]
-            review_id = parts[6]
-            result = project_manager.get_review_quality(project_id, review_id)
-            self._json_response(result)
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/decision-log"):
-            # GET /api/projects/{id}/decision-log
             project_id = clean_path.split("/")[3]
             entity_type = query.get("entity_type")
             entity_id = query.get("entity_id")
@@ -256,12 +255,10 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response({"project_id": project_id, "logs": logs, "count": len(logs)})
         # ── Diagram API ──
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/diagrams"):
-            # GET /api/projects/{id}/diagrams  →  list saved diagrams
             project_id = clean_path.split("/")[3]
             result = project_manager.list_diagrams(project_id)
             self._json_response(result)
         elif clean_path.startswith("/api/projects/") and "/diagrams/" in clean_path:
-            # GET /api/projects/{id}/diagrams/{type}  →  return drawio XML
             parts = clean_path.split("/")
             project_id = parts[3]
             diagram_type = parts[5]
@@ -269,7 +266,6 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             if result.get("error"):
                 self._json_response(result, status=404)
             else:
-                # Return as XML download
                 xml = result.get("xml", "")
                 filename = f"{diagram_type}.drawio"
                 self.send_response(200)
