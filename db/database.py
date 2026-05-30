@@ -1,25 +1,7 @@
-"""SQLite Database – connection management and schema.
+"""SQLite database — connection management and schema auto-init.
 
-Design:
-- Single SQLite file at  projects_data/accelerator.db
-  (overridable via PROJECTS_DATA_DIR env var)
-- WAL mode for concurrent reads
-- Thread-local connections (safe for the single-process HTTP server)
-- All tables use TEXT primary keys matching existing JSON IDs
-- JSON blobs used for flexible fields (metadata, findings, etc.)
-- Dual-write mode is controlled by AdminConfig:
-    sqlite_write_enabled  (default: True)
-    file_write_enabled    (default: True)
-
-DS-01 additions:
-- reviews: completeness_score, quality_status, completed_by, completed_at, decided_by
-- proposal_versions: hierarchy_version_id, active_review_id, previous_version_id,
-                     feedback_applied, quality_status, quality_score,
-                     completed_by, completed_at, lock_status, lock_reason
-- presales_feedback: feedback_items (structured), raw_text, change_requested
-  (accepted/rejected/concerns kept for backward-compat queries)
-- NEW: proposal_documents
-- NEW: decision_log
+Dual-write mode controlled by AdminConfig (sqlite_write_enabled / file_write_enabled).
+Migrations applied automatically on startup via _apply_migrations().
 """
 
 import json
