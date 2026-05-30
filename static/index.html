@@ -2835,29 +2835,34 @@ async function viewPresales(){
   </div>`;
 
   // ── Reviews redirect card ────────────────────────────────
-  // Reviews are created from the Reviews tab. This card provides context
-  // and a single clear entry point — no duplicate review runner here.
-  const runReviewCard=`<div class="card" style="border-top:2px solid var(--accent)">
-    <div class="flex-between mb">
-      <div class="card-title"><span class="icon">🔍</span>Run a Review</div>
-      ${activeReview?`<span style="font-size:11px;color:var(--text-muted)">Last: ${escHtml(activeReview.persona||'')} · ${fmtDateShort(activeReview.created_at)}</span>`:''}
-    </div>
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-      Reviews are run from the <strong>Reviews tab</strong>. Once complete, upload client feedback
-      as an artefact and run a follow-up review — captured feedback is automatically injected
-      into the next review prompt.
-    </p>
-    ${activeReview?`<div style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px">
-      <div class="flex gap-sm mb" style="flex-wrap:wrap">
-        <span class="tag tag-blue">${escHtml(activeReview.persona||'')}</span>
-        <span class="tag">${fmtDateShort(activeReview.created_at)}</span>
-        <span class="tag">${activeReview.total_findings||0} findings</span>
-      </div>
-      ${activeReview.summary?`<p style="font-size:11px;color:var(--text-dim)">${escHtml((activeReview.summary||'').slice(0,200))}${(activeReview.summary||'').length>200?'…':''}</p>`:''}
-      <button class="btn btn-xs btn-ghost mt-sm" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on this Review</button>
-    </div>`:'<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No review run yet for this project.</p>'}
-    <button class="btn btn-outline" onclick="switchTab('reviews')">→ Go to Reviews Tab</button>
-  </div>`;
+  // Built with string concat — no nested template literals.
+  let _rrLastSpan='';
+  if(activeReview){_rrLastSpan='<span style="font-size:11px;color:var(--text-muted)">Last: '+escHtml(activeReview.persona||'')+' · '+fmtDateShort(activeReview.created_at)+'</span>';}
+  let _rrBody='<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No review run yet for this project.</p>';
+  if(activeReview){
+    const _rrSummaryP=activeReview.summary?'<p style="font-size:11px;color:var(--text-dim)">'+escHtml((activeReview.summary||'').slice(0,200))+((activeReview.summary||'').length>200?'…':'')+'</p>':'';
+    _rrBody='<div style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px">'
+      +'<div class="flex gap-sm mb" style="flex-wrap:wrap">'
+      +'<span class="tag tag-blue">'+escHtml(activeReview.persona||'')+'</span>'
+      +'<span class="tag">'+fmtDateShort(activeReview.created_at)+'</span>'
+      +'<span class="tag">'+(activeReview.total_findings||0)+' findings</span>'
+      +'</div>'
+      +_rrSummaryP
+      +'<button class="btn btn-xs btn-ghost mt-sm" onclick="openCaptureFeedback(\'\',\''+activeReview.review_id+'\')">+ Log Feedback on this Review</button>'
+      +'</div>';
+  }
+  const runReviewCard='<div class="card" style="border-top:2px solid var(--accent)">'
+    +'<div class="flex-between mb">'
+    +'<div class="card-title"><span class="icon">&#128269;</span>Run a Review</div>'
+    +_rrLastSpan
+    +'</div>'
+    +'<p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">'
+    +'Reviews are run from the <strong>Reviews tab</strong>. Once complete, upload client feedback '
+    +'as an artefact and run a follow-up review — captured feedback is automatically injected into the next review prompt.'
+    +'</p>'
+    +_rrBody
+    +'<button class="btn btn-outline" onclick="switchTab(\'reviews\')">&#8594; Go to Reviews Tab</button>'
+    +'</div>';
 
   // ── Stop Condition + Finalise (DS-12) ─────────────────────
   let stopCard='';
