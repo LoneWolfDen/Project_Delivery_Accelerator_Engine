@@ -611,15 +611,19 @@ def build_project_intelligence(
 
     documents = get_project_context(project_id)
 
-    # ── Merge artifact v1 processed outputs ──────────────────────────────────
-    # Artifacts uploaded via /api/v1/artifacts/* with include=True and
-    # status=processed are the primary input source.  Load their processed
-    # documents from projects_data/{project_id}/processed/{artifactId}.json
-    # and convert them to the IngestedDocument-compatible dict format so they
-    # can pass through context_builder alongside any legacy context/ docs.
+    # ── Merge artifact v1 inputs ──────────────────────────────────────────────
+    # For every include=True artifact:
+    #   1. Prefer the pre-built ProcessedDocument from processed/{aid}.json
+    #      (produced by "Re-process Included" / process_artifact()).
+    #   2. If that file doesn't exist yet (user hasn't clicked Re-process),
+    #      fall back to get_artifact_text_content() which reads the raw text
+    #      directly from SQLite / raw/ without requiring a separate pipeline run.
+    # This means Build Intelligence works immediately after Paste Text / Upload
+    # without any mandatory pre-processing step.
     artifact_docs: List[Dict[str, Any]] = []
     try:
         from db.artifact_store_sql import list_artifacts as _list_artifacts
+        from db.artifact_store_sql import get_artifact_text_content as _get_text
         from processors.pipeline import get_processed_document
         all_artifacts = _list_artifacts(project_id)
         included_artifacts = [a for a in all_artifacts if a.get("include", True)]
@@ -627,21 +631,31 @@ def build_project_intelligence(
             aid = art.get("artifactId") or art.get("artifact_id", "")
             if not aid:
                 continue
+
+            # ── Path A: use already-processed output if available ────────────
             processed = get_processed_document(project_id, aid)
             if processed and processed.get("content", "").strip():
-                # Convert ProcessedDocument → IngestedDocument-compatible dict
-                artifact_docs.append({
-                    "filename": art.get("title") or art.get("fileName") or aid,
-                    "is_valid": True,
-                    "content": processed["content"],
-                    "sections": [{"title": "Content", "content": processed["content"]}],
-                    "metadata": {
-                        "source_type": art.get("category", "project_artefact"),
-                        "filename": art.get("fileName") or aid,
-                        "artifact_id": aid,
-                        "word_count": len(processed["content"].split()),
-                    },
-                })
+                content = processed["content"]
+            else:
+                # ── Path B: read raw text directly (covers 'ingested' status) ─
+                content = _get_text(project_id, aid)
+
+            if not content or not content.strip():
+                continue  # Skip artifacts with no extractable text
+
+            label = art.get("title") or art.get("fileName") or aid
+            artifact_docs.append({
+                "filename": label,
+                "is_valid": True,
+                "content": content,
+                "sections": [{"heading": label, "content": content, "section_type": "body"}],
+                "metadata": {
+                    "source_type": art.get("category", "project_artefact"),
+                    "filename": art.get("fileName") or aid,
+                    "artifact_id": aid,
+                    "word_count": len(content.split()),
+                },
+            })
     except Exception:
         pass  # Degrade gracefully – legacy path still runs
 
