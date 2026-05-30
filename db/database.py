@@ -362,7 +362,8 @@ class Database:
             ("hierarchy_version_id", "TEXT DEFAULT ''"),
             ("active_review_id",     "TEXT DEFAULT ''"),
             ("previous_version_id",  "TEXT DEFAULT ''"),
-            ("feedback_applied",     "INTEGER DEFAULT 0"),
+            ("feedback_applied",     "TEXT DEFAULT '[]'"),   # was INTEGER — corrected
+            ("changes_summary",      "TEXT DEFAULT ''"),     # missing from original migration
             ("quality_status",       "TEXT DEFAULT 'draft'"),
             ("quality_score",        "INTEGER DEFAULT 0"),
             ("completed_by",         "TEXT DEFAULT ''"),
