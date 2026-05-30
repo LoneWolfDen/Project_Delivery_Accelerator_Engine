@@ -333,9 +333,66 @@ class Database:
     # ── Schema ──
 
     def _init(self) -> None:
-        """Create tables if they don't exist."""
+        """Create tables if they don't exist, then apply pending column migrations."""
         conn = self.conn
         conn.executescript(_SCHEMA_SQL)
+        conn.commit()
+        self._apply_migrations()
+
+    def _apply_migrations(self) -> None:
+        """Idempotent column migrations for schema upgrades on existing databases.
+
+        SQLite does not support IF NOT EXISTS on ALTER TABLE ADD COLUMN, so we
+        check PRAGMA table_info() first and skip columns that already exist.
+        Safe to run on every startup against both fresh and upgraded databases.
+        """
+        conn = self.conn
+
+        def _existing_cols(table: str) -> set:
+            rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+            return {r[1] for r in rows}
+
+        # ── reviews: DS-01 quality-gate columns ──────────────────────────────
+        rev_cols = _existing_cols("reviews")
+        for col, definition in [
+            ("completeness_score", "INTEGER DEFAULT 0"),
+            ("quality_status",     "TEXT DEFAULT 'pending'"),
+            ("completed_by",       "TEXT DEFAULT ''"),
+            ("completed_at",       "TEXT DEFAULT ''"),
+            ("decided_by",         "TEXT DEFAULT ''"),
+            ("deep_dive",          "TEXT DEFAULT NULL"),
+            ("feedback",           "TEXT DEFAULT NULL"),
+        ]:
+            if col not in rev_cols:
+                conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {definition}")
+
+        # ── proposal_versions: DS-01 / DS-07 extended columns ────────────────
+        pv_cols = _existing_cols("proposal_versions")
+        for col, definition in [
+            ("hierarchy_version_id", "TEXT DEFAULT ''"),
+            ("active_review_id",     "TEXT DEFAULT ''"),
+            ("previous_version_id",  "TEXT DEFAULT ''"),
+            ("feedback_applied",     "INTEGER DEFAULT 0"),
+            ("quality_status",       "TEXT DEFAULT 'draft'"),
+            ("quality_score",        "INTEGER DEFAULT 0"),
+            ("completed_by",         "TEXT DEFAULT ''"),
+            ("completed_at",         "TEXT DEFAULT ''"),
+            ("lock_status",          "TEXT DEFAULT 'unlocked'"),
+            ("lock_reason",          "TEXT DEFAULT ''"),
+        ]:
+            if col not in pv_cols:
+                conn.execute(f"ALTER TABLE proposal_versions ADD COLUMN {col} {definition}")
+
+        # ── presales_feedback: DS-01 structured feedback ──────────────────────
+        pf_cols = _existing_cols("presales_feedback")
+        for col, definition in [
+            ("feedback_items",   "TEXT DEFAULT '[]'"),
+            ("raw_text",         "TEXT DEFAULT ''"),
+            ("change_requested", "INTEGER DEFAULT 0"),
+        ]:
+            if col not in pf_cols:
+                conn.execute(f"ALTER TABLE presales_feedback ADD COLUMN {col} {definition}")
+
         conn.commit()
 
     # ── Query helpers ──
