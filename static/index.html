@@ -341,7 +341,10 @@ function fmtDateShort(iso){
 }
 function relativeTime(iso){
   if(!iso)return'';
-  const diff=Date.now()-new Date(iso).getTime();
+  // Normalise: if no timezone suffix, treat as UTC (server stores UTC)
+  const norm=(iso.endsWith('Z')||iso.includes('+'))?iso:iso+'Z';
+  const diff=Date.now()-new Date(norm).getTime();
+  if(isNaN(diff))return'';
   const m=Math.floor(diff/60000);
   if(m<1)return'just now';
   if(m<60)return`${m}m ago`;
@@ -586,11 +589,13 @@ async function viewDashboard(){
       <div style="display:flex;gap:10px;align-items:flex-end;padding:6px 0;min-height:56px">
         ${trend.map(t=>{const h=Math.max(8,Math.round((t.stats?.risks||0)/maxR*48));
           return`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;cursor:pointer"
+            title="${escHtml(t.version_id+' · '+fmtDateShort(t.created_at))}"
             onclick="navigateToVersion('${t.version_id}')">
             <span style="font-size:9px;color:var(--text-dim)">${t.stats?.risks||0}</span>
             <div style="width:100%;height:${h}px;background:var(--red);border-radius:3px 3px 0 0;opacity:.7;transition:opacity .2s"
               onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7"></div>
             <span style="font-size:9px;color:var(--text-muted)">${t.version_id}</span>
+            <span style="font-size:8px;color:var(--text-muted)">${fmtDateShort(t.created_at)}</span>
           </div>`;}).join('')}
       </div>
     </div>`;
@@ -1042,69 +1047,86 @@ async function viewIntelligence(){
   if(ps.length)metricsUrl+='?'+ps.join('&');
   let metrics={};
   try{metrics=await api('GET',metricsUrl);}catch(e){}
-  
+
   const ds=metrics.data_source||{};
-  
-  // Try to get data from review first (if selected), then from intelligence
+
+  // Load review findings when a review is scoped
   let revFindings={};
-  let intelligenceData={};
   let versionData=null;
-  
-  // Load review findings if review is selected
+  let intelligenceData={};
+
   if(ds.review){
     try{
       const rd=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${ds.review}`);
       if(rd&&rd.findings)revFindings=rd.findings;
     }catch(e){}
   }
-  
-  // Load version data if version is selected
+
   if(ds.version){
     try{
       const vd=await api('GET',`/api/projects/${pid}/hierarchy/versions/${ds.version}`);
       if(vd)versionData=vd;
     }catch(e){}
   }
-  
-  // Always load intelligence.json as fallback
+
+  // Always load the current intelligence.json (latest build)
   try{
     const data=await api('GET',`/api/projects/${pid}/intelligence`);
     intelligenceData=data.intelligence||data;
   }catch(e){}
-  
-  // Determine which source to use (priority: review findings > version context > intelligence.json)
+
+  // Source priority:
+  // 1. Review findings — when a review is selected, show its findings (most specific)
+  // 2. intelligenceData — the full arrays from the last intelligence build
+  //    (versions don't store item arrays, only stats counts, so we always read intelligenceData
+  //     for the actual lists; version/review selection controls counts on Dashboard)
   const useReview=Object.keys(revFindings).length>0;
-  const useVersion=versionData&&versionData.scope;
-  let src=intelligenceData;
-  
-  if(useReview){
-    src=revFindings;
-  }else if(useVersion){
-    // Use version data, which contains the actual intelligence context that was used
-    src=intelligenceData;  // Version shares same structure as intelligence
-  }
-  
-  // Check if we have any data at all
-  if(!useReview && !useVersion && !intelligenceData.risks && !intelligenceData.constraints && !intelligenceData.scope){
+  const src=useReview?revFindings:intelligenceData;
+
+  if(!useReview && !intelligenceData.risks && !intelligenceData.constraints && !intelligenceData.scope){
     return`<div class="card"><div class="empty"><div class="empty-icon">🧠</div>
       <p>No intelligence built yet. Go to <strong>Ingest</strong> to add artefacts and run Build Intelligence.</p>
       <button class="btn mt" onclick="goToBuildIntelligence()">Go to Build Intelligence</button></div></div>`;
   }
 
+  // Build inline version selector so users can scope without going to Dashboard
+  let versionSelector='';
+  try{
+    const vr=await api('GET',`/api/projects/${pid}/hierarchy/versions`);
+    const allV=vr.versions||[];
+    if(allV.length>1){
+      const vOpts=allV.map(v=>`<option value="${v.version_id}" ${v.version_id===selV?'selected':''}>${escHtml(v.version_id)}${v.label?' – '+escHtml(v.label):''} (${fmtDateShort(v.created_at)})</option>`).join('');
+      versionSelector=`<div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--text-dim)">Scope version:</label>
+        <select style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+          padding:4px 8px;color:var(--text);font-size:11px"
+          onchange="state._dashVersion=this.value;state._dashReview='';render()">
+          <option value="">Latest</option>${vOpts}
+        </select>
+        ${selV?`<button class="btn btn-xs btn-ghost" onclick="state._dashVersion='';state._dashReview='';render()">✕ Clear</button>`:''}
+      </div>`;
+    }
+  }catch(e){}
+
   const cats=['risks','assumptions','dependencies','constraints','action_items'];
   const catIcons={
-    risks:'🔴',
-    assumptions:'💭',
-    dependencies:'🔗',
-    constraints:'⛔',
-    action_items:'✅',
-    design_gaps:'⚠️',
-    recommendations:'💡',
-    gaps:'🔍',
-    findings:'📋',
-    questions:'❓',
-    concerns:'⚡'
+    risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',action_items:'✅',
+    design_gaps:'⚠️',recommendations:'💡',gaps:'🔍',findings:'📋',questions:'❓',concerns:'⚡'
   };
+
+  // Scope label: what are we actually showing?
+  let scopeLabel='';
+  if(useReview){
+    scopeLabel=`<p style="font-size:11px;color:var(--accent);margin-top:4px">
+      Showing review findings: <strong>${escHtml(ds.review_persona||'')} (${escHtml(ds.review||'')})</strong>
+      ${ds.version_label||ds.version?` · version <strong>${escHtml(ds.version_label||ds.version)}</strong>`:''}
+    </p>`;
+  }else if(selV){
+    scopeLabel=`<p style="font-size:11px;color:var(--text-dim);margin-top:4px">
+      Showing intelligence content · version context: <strong>${escHtml(ds.version_label||selV)}</strong>
+      <span style="color:var(--text-muted)"> (run a review on this version to see its specific findings)</span>
+    </p>`;
+  }
 
   const header=`<div class="card">
     <div class="flex-between mb">
@@ -1115,13 +1137,14 @@ async function viewIntelligence(){
         <button class="btn btn-sm btn-outline" onclick="goToBuildIntelligence()">🔨 Rebuild</button>
       </div>
     </div>
-    ${ds.version?`<p style="font-size:11px;color:var(--accent)">
-      Scope: <strong>${escHtml(ds.version_label||ds.version)}</strong>${ds.review?' → <strong>'+escHtml(ds.review_persona?ds.review_persona+' ('+ds.review+')':ds.review)+'</strong>':''}
-    </p>`:''}
+    ${scopeLabel}
+    ${versionSelector}
   </div>`;
 
   let html=header;
-  const allCats=useReview?Object.keys(revFindings).filter(k=>cats.includes(k)||Array.isArray(revFindings[k])):cats;
+  const allCats=useReview
+    ?Object.keys(revFindings).filter(k=>Array.isArray(revFindings[k]))
+    :cats;
   for(const c of allCats){
     const items=src[c]||[];
     if(!items.length)continue;
@@ -1147,7 +1170,6 @@ async function viewIntelligence(){
       <div class="collapse-body"><p style="font-size:12px;white-space:pre-wrap;color:var(--text-dim)">${escHtml(intelligenceData.scope.slice(0,2000))}</p></div>
     </details>`;
   }
-  // Scroll to highlighted category after render
   if(state._intelCategory){
     setTimeout(()=>{
       const el=document.getElementById('intel_'+state._intelCategory);
@@ -1682,7 +1704,8 @@ async function viewReviewDetail(rid){
 async function viewReviews(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
-  const personas=await api('POST','/api/personas');
+  // Use GET; server also accepts POST at /api/personas for backwards-compat
+  const personas=await api('GET','/api/personas');
   const backendOpts=state.backends.map(b=>`<option value="${b.name}">${escHtml(b.display_name||b.name)}${b.available?'':' (not configured)'}</option>`).join('');
 
   let hierarchy={};
@@ -3500,6 +3523,8 @@ async function selectProject(id){
   state.current=state.projects.find(x=>x.id===id)||state.current;
   // Persist selection so page reload restores the same project
   try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
+  // Reset dashboard context so a new project starts clean
+  state._dashVersion='';state._dashReview='';
   state.tab='dashboard';render();
 }
 

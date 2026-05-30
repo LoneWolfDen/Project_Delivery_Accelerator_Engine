@@ -886,6 +886,20 @@ def run_persona_review(
             "Run build-context first."
         )
 
+    # Guard: a version must exist before a review can be stored and tracked.
+    # If no version exists the review would be silently discarded from the UI.
+    try:
+        from models.hierarchy import _make_hierarchy_store as _hs_check
+        if not _hs_check(project_id).list_versions():
+            raise ValueError(
+                "No intelligence version found for this project. "
+                "Run 'Build Intelligence' on the Ingest tab first, then run a review."
+            )
+    except ValueError:
+        raise
+    except Exception:
+        pass  # If hierarchy store is unavailable, proceed and let it fail later
+
     # Guardrail: validate review prerequisites
     try:
         from admin.guardrails import validate_review_prerequisites
@@ -969,8 +983,9 @@ def run_persona_review(
         store = _make_hierarchy_store(project_id)
         versions = store.list_versions()
         if not versions:
-            # No version exists yet — skip hierarchy review creation.
-            # User must run Build Intelligence first to create a version.
+            # No version exists — hierarchy review cannot be linked.
+            # This should have been caught by the upfront guard above,
+            # but handle it defensively here too.
             pass
         else:
             latest_version_id = versions[0]["version_id"]
