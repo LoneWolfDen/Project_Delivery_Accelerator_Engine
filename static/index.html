@@ -468,6 +468,10 @@ async function render(){
   };
   try{
     main.innerHTML=await(views[state.tab]||viewDashboard)();
+    // S2-01: after DOM is written, sync injected-questions chip list on the reviews tab
+    if(state.tab==='reviews'){
+      setTimeout(()=>{ if(typeof _renderInjectedQuestions==='function')_renderInjectedQuestions(); },0);
+    }
   }catch(e){
     console.error('render() view error:',e);
     main.innerHTML='<div class="card"><p style="color:var(--red);font-size:12px">&#9888; Page failed to load: '+escHtml(e.message)+'</p><button class="btn btn-sm btn-ghost mt" onclick="render()">&#8635; Retry</button></div>';
@@ -1723,6 +1727,8 @@ async function viewReviewDetail(rid){
 // REVIEWS VIEW
 async function viewReviews(){
   if(!state.current)return viewNoProject();
+  // S2-01: initialise injected questions state (preserved across re-renders within tab)
+  if(!state._injectedQuestions)state._injectedQuestions=[];
   const pid=state.current.id;
   // Use GET; server also accepts POST at /api/personas for backwards-compat
   const personas=await api('GET','/api/personas');
@@ -1846,11 +1852,6 @@ async function viewReviews(){
     </div>
     <div id="deepDiveResult" class="mt"></div>
     <div id="reviewResult" class="mt"></div>
-    <script>
-      // S2-01: initialise injected questions chip list after DOM is ready
-      if(!state._injectedQuestions)state._injectedQuestions=[];
-      setTimeout(()=>_renderInjectedQuestions(),0);
-    </script>
   </div>`;
 
   let listHtml='';
