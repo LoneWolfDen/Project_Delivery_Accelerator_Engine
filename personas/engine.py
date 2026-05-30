@@ -76,10 +76,20 @@ def list_roles() -> List[Dict[str, str]]:
     """Return all visible roles with their group metadata.
 
     Returns:
-        List of dicts: {role, group_id, group_name, purpose}
+        List of dicts: {id, name, group_id, group_name, purpose, prompt_template}
+        prompt_template reflects any admin override saved in AdminConfig.persona_prompts;
+        falls back to the YAML default when no override exists.
     """
     roles = []
     seen_groups: Dict[str, Dict[str, Any]] = {}
+
+    # Load admin overrides once — graceful fallback if config unavailable
+    admin_prompts: Dict[str, str] = {}
+    try:
+        from admin.config import load_config  # noqa: PLC0415
+        admin_prompts = load_config().persona_prompts or {}
+    except Exception:
+        pass
 
     for role, group_id in ROLE_TO_GROUP.items():
         if group_id not in seen_groups:
@@ -90,12 +100,15 @@ def list_roles() -> List[Dict[str, str]]:
                 seen_groups[group_id] = {}
 
         grp = seen_groups[group_id]
+        # Admin override takes precedence over YAML default
+        prompt_template = admin_prompts.get(group_id) or grp.get("prompt_template", "")
         roles.append({
-            "id":         role,          # used as the value sent from UI
-            "name":       role,          # display label
-            "group_id":   group_id,
-            "group_name": grp.get("name", group_id),
-            "purpose":    grp.get("purpose", ""),
+            "id":              role,
+            "name":            role,
+            "group_id":        group_id,
+            "group_name":      grp.get("name", group_id),
+            "purpose":         grp.get("purpose", ""),
+            "prompt_template": prompt_template,
         })
     return roles
 
@@ -300,14 +313,29 @@ def _build_prompt(
     context: Dict[str, Any],
     custom_prompt: Optional[str],
 ) -> str:
-    """Build the full prompt sent to the LLM."""
+    """Build the full prompt sent to the LLM.
+
+    The persona's prompt_template is resolved with the following priority:
+      1. Admin-saved override in AdminConfig.persona_prompts (keyed by group_id)
+      2. The prompt_template field in the persona YAML
+    """
     from processors.context_builder import build_context_summary  # noqa: PLC0415
 
     context_summary = build_context_summary(context)
     role_str  = " / ".join(contributing_roles)
     focus     = persona.get("focus_areas", [])
     sections  = persona.get("output_format", {}).get("sections", [])
-    template  = persona.get("prompt_template", "").strip()
+
+    # Resolve prompt_template: admin override > YAML default
+    group_id = persona.get("id", "")
+    template = persona.get("prompt_template", "").strip()
+    try:
+        from admin.config import load_config  # noqa: PLC0415
+        override = load_config().persona_prompts.get(group_id, "")
+        if override:
+            template = override.strip()
+    except Exception:
+        pass
 
     parts = [
         f"# Review: {role_str}",

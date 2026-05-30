@@ -1999,6 +1999,11 @@ async function runReview(){
   if(custom)body.custom_prompt=custom;
   const r=await api('POST','/api/review',body);
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
+  // Clear prompt builder state after a successful review submission
+  state._injectedQuestions=[];
+  _renderInjectedQuestions();
+  const notesEl=document.getElementById('userNotes');
+  if(notesEl)notesEl.value='';
 
   const roleTag=`<span class="tag tag-purple">${escHtml((r.roles||[r.persona]).join(' / '))}</span>`;
   let html=`<div class="card">
@@ -2253,23 +2258,33 @@ function _removeInjectedQuestion(idx){
   _renderInjectedQuestions();
 }
 
-// S2-01: Populate baseline prompt preview when a role is selected
+// S2-01: Populate baseline prompt preview when a role is selected.
+// Shows the actual prompt_template (admin override > YAML default) from /api/personas.
 async function _getBaselinePrompt(roles){
   if(!roles||!roles.length)return'Select a role above to preview the baseline prompt.';
   try{
     const personas=await api('GET','/api/personas');
     const allRoles=personas.personas||personas.roles||[];
+    // Collect unique groups for the selected roles (preserving selection order)
+    const seenGroups=new Set();
     const lines=[];
     for(const role of roles){
       const p=allRoles.find(r=>r.id===role||r.name===role);
-      if(p){
-        const label=p.name||role;
-        const purpose=p.purpose||p.description||'';
-        const group=p.group_name||'';
-        lines.push(`[${label}${group?' · '+group:''}]${purpose?' '+purpose:''}`);
+      if(p&&!seenGroups.has(p.group_id)){
+        seenGroups.add(p.group_id);
+        const template=(p.prompt_template||'').trim();
+        if(template){
+          lines.push(template);
+        }else{
+          // Fallback: show purpose line when no prompt_template available
+          const label=p.name||role;
+          const group=p.group_name||'';
+          const purpose=p.purpose||'';
+          lines.push(`[${label}${group?' · '+group:''}]${purpose?' '+purpose:''}`);
+        }
       }
     }
-    return lines.length?lines.join('\n'):'No baseline prompt available for selected roles.';
+    return lines.length?lines.join('\n\n---\n\n'):'No baseline prompt available for selected roles.';
   }catch(e){
     return'Could not load baseline prompt.';
   }
@@ -3569,7 +3584,70 @@ async function viewAdmin(){
       <button class="btn btn-xs btn-yellow" style="margin-left:8px" onclick="archiveProject('${s.project_id}')">Archive</button></li>`).join('')}</ul>
   </div>`:'';
 
-  return healthCard+storageCard+configCard+lifecycleCard+suggestCard;
+  // ── Persona Prompts card ───────────────────────────────────────────────────
+  // Load all roles once; each unique group gets one editable textarea.
+  // Pre-populate from config.persona_prompts (admin override) if set,
+  // otherwise fall back to the YAML prompt_template via /api/personas.
+  let personaPromptsCard='';
+  try{
+    const personasResp=await api('GET','/api/personas');
+    const allRoles=personasResp.personas||personasResp.roles||[];
+    const savedPrompts=config.persona_prompts||{};
+
+    // Collect unique groups preserving first-seen order
+    const seenGroups=new Map();
+    for(const r of allRoles){
+      if(r.group_id&&!seenGroups.has(r.group_id)){
+        seenGroups.set(r.group_id,{
+          group_id:r.group_id,
+          group_name:r.group_name||r.group_id,
+          roles:(allRoles.filter(x=>x.group_id===r.group_id).map(x=>x.name)),
+          prompt_template:r.prompt_template||'',
+        });
+      }
+    }
+
+    const groupRows=[...seenGroups.values()].map(g=>{
+      const hasOverride=!!(savedPrompts[g.group_id]&&savedPrompts[g.group_id].trim());
+      const currentVal=hasOverride?savedPrompts[g.group_id]:g.prompt_template;
+      const taId='pp_'+g.group_id;
+      return `<div style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:600;color:var(--text)">${escHtml(g.group_name)}</span>
+          <span style="font-size:10px;color:var(--text-muted)">(${g.roles.map(escHtml).join(', ')})</span>
+          ${hasOverride?'<span class="tag tag-purple" style="font-size:9px">Custom</span>':'<span class="tag" style="font-size:9px">YAML default</span>'}
+          ${hasOverride?`<button class="btn btn-xs btn-ghost" style="font-size:10px" onclick="resetPersonaPrompt('${g.group_id}')">Reset to default</button>`:''}
+        </div>
+        <textarea id="${taId}" rows="8"
+          style="width:100%;background:var(--surface2);border:1px solid ${hasOverride?'var(--purple)':'var(--border)'};
+            border-radius:var(--radius);color:var(--text);font-size:11px;font-family:monospace;
+            padding:8px;resize:vertical;line-height:1.5"
+          data-group-id="${g.group_id}"
+          data-yaml-default="${escHtml(g.prompt_template)}"
+          placeholder="Enter custom base prompt for this persona group…"
+        >${escHtml(currentVal)}</textarea>
+      </div>`;
+    }).join('');
+
+    personaPromptsCard=`<div class="card">
+      <div class="card-title mb"><span class="icon">✏️</span>Persona Base Prompts
+        <span class="tag tag-blue" style="margin-left:6px;font-size:10px">Admin editable</span>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
+        Edit the base prompt for each persona group. Changes take effect on the next review run.
+        Click <strong>Save Persona Prompts</strong> to persist. Use <em>Reset to default</em> to restore the YAML prompt.
+      </p>
+      ${groupRows}
+      <div class="flex gap-sm mt">
+        <button class="btn" onclick="savePersonaPrompts()">Save Persona Prompts</button>
+      </div>
+      <div id="personaPromptsResult" class="mt"></div>
+    </div>`;
+  }catch(e){
+    personaPromptsCard='';
+  }
+
+  return healthCard+storageCard+configCard+personaPromptsCard+lifecycleCard+suggestCard;
 }
 
 async function saveAdminConfig(){
@@ -3590,6 +3668,46 @@ async function saveAdminConfig(){
   const r=await api('POST','/api/admin/config',up);
   if(r.config){toast('Configuration saved');document.getElementById('configResult').innerHTML=`<p style="color:var(--green)">✓ Saved</p>`;}
   else{toast(r.error||'Save failed','err');}
+}
+
+// Save all persona prompt overrides from the textareas
+async function savePersonaPrompts(){
+  const tas=document.querySelectorAll('textarea[data-group-id]');
+  if(!tas.length){toast('No prompt editors found','err');return;}
+  const persona_prompts={};
+  for(const ta of tas){
+    const gid=ta.dataset.groupId||ta.getAttribute('data-group-id');
+    const yamlDefault=ta.dataset.yamlDefault||ta.getAttribute('data-yaml-default')||'';
+    const val=ta.value;
+    // Only store when the value differs from the YAML default (non-empty override)
+    if(val.trim()&&val.trim()!==yamlDefault.trim()){
+      persona_prompts[gid]=val;
+    }else{
+      // null signals the backend to remove the override (restore YAML default)
+      persona_prompts[gid]=null;
+    }
+  }
+  const r=await api('POST','/api/admin/config',{persona_prompts});
+  const el=document.getElementById('personaPromptsResult');
+  if(r.config){
+    toast('Persona prompts saved');
+    if(el)el.innerHTML='<p style="color:var(--green);font-size:12px">✓ Saved — changes apply on next review run.</p>';
+    // Refresh admin view to update Custom / YAML default badges
+    setTimeout(()=>render(),800);
+  }else{
+    toast(r.error||'Save failed','err');
+    if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px">${escHtml(r.error||'Save failed')}</p>`;
+  }
+}
+
+// Reset a single persona group prompt to its YAML default
+function resetPersonaPrompt(groupId){
+  const ta=document.getElementById('pp_'+groupId);
+  if(!ta)return;
+  const yamlDefault=ta.dataset.yamlDefault||ta.getAttribute('data-yaml-default')||'';
+  ta.value=yamlDefault;
+  ta.style.borderColor='var(--border)';
+  toast('Reset to YAML default — click Save Persona Prompts to persist');
 }
 
 async function restoreProject(pid){
