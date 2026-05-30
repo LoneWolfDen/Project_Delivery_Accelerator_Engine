@@ -1718,6 +1718,23 @@ async function viewReviewDetail(rid){
       Tokens: ${r.ai_metadata.tokens_used} · Latency: ${r.ai_metadata.latency_ms}ms · Model: ${escHtml(r.ai_metadata.model||'–')}
     </p>`;
   }
+  // S3-04: What Changed — show diff section when a predecessor review exists
+  if(r.previous_review_id){
+    html+=`<div class="card" style="margin-top:8px;border-top:2px solid var(--accent-dim)">
+      <div class="flex-between mb">
+        <div class="card-title" style="font-size:12px"><span class="icon">🔄</span>What Changed from ${escHtml(r.previous_review_id)}</div>
+      </div>
+      <p class="fs11 c-dim">Comparing against predecessor review ${escHtml(r.previous_review_id)}.</p>
+    </div>`;
+  }
+  // S3-03: Tighten button — pre-populates previousReviewId and switches to Reviews tab
+  html+=`<div style="margin-top:8px">
+    <button class="btn btn-sm btn-outline" onclick="
+      const el=document.getElementById('previousReviewId');
+      if(el)el.value='${escHtml(r.review_id)}';
+      state.tab='reviews';render();
+    ">🔁 Tighten with SME Questions</button>
+  </div>`;
   html+=`</div>`;
   document.getElementById('main').innerHTML=html;
 }
@@ -1847,6 +1864,7 @@ async function viewReviews(){
       </div>
     </div>
 
+    <input type="hidden" id="previousReviewId" value="">
     <div class="flex gap-sm mt8">
       <button class="btn" onclick="runReview()">▶ Run Review</button>
     </div>
@@ -1995,8 +2013,11 @@ async function runReview(){
   const el=document.getElementById('reviewResult');
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running review…</span>';
 
+  // S3-03: include chain link when a predecessor review is set
+  const previousReviewId=(document.getElementById('previousReviewId')?.value||'').trim();
   const body={project_id:state.current.id,roles,ai_backend:backend,prompt_builder_state:promptBuilderState};
   if(custom)body.custom_prompt=custom;
+  if(previousReviewId)body.previous_review_id=previousReviewId;
   const r=await api('POST','/api/review',body);
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
   // Clear prompt builder state after a successful review submission
@@ -2004,6 +2025,8 @@ async function runReview(){
   _renderInjectedQuestions();
   const notesEl=document.getElementById('userNotes');
   if(notesEl)notesEl.value='';
+  const prevEl=document.getElementById('previousReviewId');
+  if(prevEl)prevEl.value='';
 
   const roleTag=`<span class="tag tag-purple">${escHtml((r.roles||[r.persona]).join(' / '))}</span>`;
   let html=`<div class="card">
