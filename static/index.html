@@ -751,7 +751,7 @@ async function viewIngest(){
           <span class="tag ${statusTag}">${a.status}</span>
           <span style="font-size:10px;color:var(--text-muted)">${fmtDateShort(a.createdAt)}</span>
           <span class="toggle-pill ${a.include?'toggle-on':'toggle-off'}" data-aid="${a.artifactId}"
-            onclick="event.stopPropagation();toggleArtifact('${a.artifactId}',${!a.include})">
+            onclick="event.stopPropagation();toggleArtifact('${pid}','${a.artifactId}',${!a.include})">
             ${a.include?'Included':'Excluded'}</span>
         </div>
         <div class="file-body">
@@ -760,8 +760,8 @@ async function viewIngest(){
           </p>
           ${meta.length?`<div class="flex gap-sm" style="margin-bottom:6px">${meta.map(([k,v])=>`<span class="tag">${k}: ${Array.isArray(v)?v.join(', '):escHtml(String(v))}</span>`).join('')}</div>`:''}
           <div class="flex gap-sm">
-            <button class="btn btn-sm btn-outline" onclick="processArtifact('${a.artifactId}')">Process</button>
-            <button class="btn btn-sm btn-red" onclick="deleteArtifact('${a.artifactId}')">Remove</button>
+            <button class="btn btn-sm btn-outline" onclick="processArtifact('${pid}','${a.artifactId}')">Process</button>
+            <button class="btn btn-sm btn-red" onclick="deleteArtifact('${pid}','${a.artifactId}')">Remove</button>
           </div>
         </div>
       </div>`;
@@ -816,12 +816,12 @@ async function viewIngest(){
       <div class="flex gap-sm" style="align-items:center;flex-wrap:wrap">
         <div style="display:flex;flex-direction:column;gap:3px;min-width:180px">
           <label style="font-size:11px;color:var(--text-dim)">Extraction backend</label>
-          <select id="intelBackendSelect" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px"
-            onchange="state._intelBackend=this.value">
+          <select id="intelBackendSelect" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:6px 8px;color:var(--text);font-size:12px">
             ${backendOpts}
           </select>
         </div>
         <button class="btn" style="margin-top:16px" onclick="buildContext()">🔨 Run Intelligence</button>
+        <button class="btn btn-ghost" style="margin-top:16px" title="Re-run with same backend, no label prompt" onclick="rebuildContext()">🔁 Rebuild</button>
       </div>
       <p style="font-size:10px;color:var(--text-muted);margin-top:8px">
         ✨ When an AI backend is selected, pattern-based extraction runs first, then the
@@ -952,15 +952,19 @@ async function doPasteArtifact(){
   }else{el.innerHTML=`<p style="color:var(--red)">${r.error||r.message||'Save failed'}</p>`;}
 }
 
-async function toggleArtifact(id,inc){
-  const r=await api('POST',`/api/v1/projects/${state.current.id}/artifacts/${id}/toggle`,{include:inc});
-  if(r.error){toast(r.error,'err');return;}
-  // Update the pill in-place without re-rendering the whole tab
+async function toggleArtifact(pid,id,inc){
+  // Prevent double-toggle while request in flight
   const pill=document.querySelector(`.toggle-pill[data-aid="${id}"]`);
+  if(pill&&pill.dataset.busy==='1')return;
+  if(pill)pill.dataset.busy='1';
+  const r=await api('POST',`/api/v1/projects/${pid}/artifacts/${id}/toggle`,{include:inc});
+  if(pill)delete pill.dataset.busy;
+  if(r.error){toast(r.error,'err');return;}
+  // Update only this pill in-place; never re-render the whole tab
   if(pill){
     pill.className='toggle-pill '+(inc?'toggle-on':'toggle-off');
     pill.textContent=inc?'Included':'Excluded';
-    pill.setAttribute('onclick',`event.stopPropagation();toggleArtifact('${id}',${!inc})`);
+    pill.setAttribute('onclick',`event.stopPropagation();toggleArtifact('${pid}','${id}',${!inc})`);
   }
   _updateIngestCounter();
 }
@@ -980,13 +984,13 @@ function _updateIngestCounter(){
     badge.className='tag '+(included===total?'tag-green':included===0?'tag-red':'tag-yellow');
   }
 }
-async function deleteArtifact(id){
+async function deleteArtifact(pid,id){
   if(!confirm('Remove this artefact?'))return;
-  await api('POST',`/api/v1/projects/${state.current.id}/artifacts/${id}/delete`,{});
+  await api('POST',`/api/v1/projects/${pid}/artifacts/${id}/delete`,{});
   toast('Artefact removed');render();
 }
-async function processArtifact(id){
-  const r=await api('POST',`/api/v1/projects/${state.current.id}/artifacts/${id}/process`,{});
+async function processArtifact(pid,id){
+  const r=await api('POST',`/api/v1/projects/${pid}/artifacts/${id}/process`,{});
   if(r.job){toast(`Processing queued (${r.job.jobId})`);setTimeout(()=>render(),500);}
   else toast(r.error||'Processing failed','err');
 }
@@ -3494,6 +3498,8 @@ async function createProject(){
 
 async function selectProject(id){
   state.current=state.projects.find(x=>x.id===id)||state.current;
+  // Persist selection so page reload restores the same project
+  try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
   state.tab='dashboard';render();
 }
 
@@ -3505,14 +3511,13 @@ async function buildContext(){
   if(label===null)return;
   const trimmed=(label||'').trim().slice(0,20);
 
-  // Pick the AI backend: use project setting if configured, otherwise files_only
-  const selectedBackend=(state.current.ai_backend&&state.current.ai_backend!=='files_only')
-    ?state.current.ai_backend
-    :(state._intelBackend||'files_only');
+  // Always read the backend from the dropdown when it exists; fall back to project setting
+  const sel=document.getElementById('intelBackendSelect');
+  const selectedBackend=sel?sel.value:(state.current.ai_backend||'files_only');
 
   const payload={};
   if(trimmed)payload.label=trimmed;
-  if(selectedBackend&&selectedBackend!=='files_only')payload.ai_backend=selectedBackend;
+  payload.ai_backend=selectedBackend;  // always send so server uses exactly what user chose
 
   const r=await api('POST',`/api/projects/${state.current.id}/build-context`,payload);
   if(r._build_metadata){
@@ -3523,10 +3528,31 @@ async function buildContext(){
   }else if(r.error){toast(r.error,'err');}
 }
 
+// Rebuild: reuse the currently selected backend without prompting for a label
+async function rebuildContext(){
+  if(!state.current)return;
+  const sel=document.getElementById('intelBackendSelect');
+  const selectedBackend=sel?sel.value:(state.current.ai_backend||'files_only');
+  const payload={ai_backend:selectedBackend};
+  const r=await api('POST',`/api/projects/${state.current.id}/build-context`,payload);
+  if(r._build_metadata){
+    const meta=r._build_metadata;
+    const aiTag=meta.ai_enriched?` ✨ AI (${meta.ai_backend})`:'';
+    toast(`Rebuilt${aiTag}: ${meta.total_risks||0} risks, ${meta.total_constraints||0} constraints`);
+    render();
+  }else if(r.error){toast(r.error,'err');}
+}
+
 async function loadProjects(){
   const r=await api('GET','/api/projects');
   state.projects=r.projects||[];
-  if(!state.current&&state.projects.length)state.current=state.projects[0];
+  if(!state.current&&state.projects.length){
+    // Restore last selected project from localStorage; fall back to first in list
+    let restoredId=null;
+    try{restoredId=localStorage.getItem('pdae_current_project_id');}catch(e){}
+    const found=restoredId&&state.projects.find(x=>x.id===restoredId);
+    state.current=found||state.projects[0];
+  }
 }
 async function loadBackends(){
   const r=await api('GET','/api/backends');

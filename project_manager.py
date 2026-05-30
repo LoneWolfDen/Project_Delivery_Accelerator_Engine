@@ -611,23 +611,67 @@ def build_project_intelligence(
 
     documents = get_project_context(project_id)
 
+    # ── Merge artifact v1 processed outputs ──────────────────────────────────
+    # Artifacts uploaded via /api/v1/artifacts/* with include=True and
+    # status=processed are the primary input source.  Load their processed
+    # documents from projects_data/{project_id}/processed/{artifactId}.json
+    # and convert them to the IngestedDocument-compatible dict format so they
+    # can pass through context_builder alongside any legacy context/ docs.
+    artifact_docs: List[Dict[str, Any]] = []
+    try:
+        from db.artifact_store_sql import list_artifacts as _list_artifacts
+        from processors.pipeline import get_processed_document
+        all_artifacts = _list_artifacts(project_id)
+        included_artifacts = [a for a in all_artifacts if a.get("include", True)]
+        for art in included_artifacts:
+            aid = art.get("artifactId") or art.get("artifact_id", "")
+            if not aid:
+                continue
+            processed = get_processed_document(project_id, aid)
+            if processed and processed.get("content", "").strip():
+                # Convert ProcessedDocument → IngestedDocument-compatible dict
+                artifact_docs.append({
+                    "filename": art.get("title") or art.get("fileName") or aid,
+                    "is_valid": True,
+                    "content": processed["content"],
+                    "sections": [{"title": "Content", "content": processed["content"]}],
+                    "metadata": {
+                        "source_type": art.get("category", "project_artefact"),
+                        "filename": art.get("fileName") or aid,
+                        "artifact_id": aid,
+                        "word_count": len(processed["content"].split()),
+                    },
+                })
+    except Exception:
+        pass  # Degrade gracefully – legacy path still runs
+
+    # Validate: require at least one processable input across both systems
+    total_inputs = len(documents) + len(artifact_docs)
+
     # Guardrail: validate before running
     try:
         from admin.guardrails import validate_intelligence_run
         valid, errors = validate_intelligence_run(
-            project_id, len(documents), project.get("ai_backend", "files_only")
+            project_id, total_inputs, project.get("ai_backend", "files_only")
         )
         if not valid:
             raise ValueError("; ".join(errors))
     except ImportError:
         # Fallback if guardrails not available
-        if not documents:
+        if total_inputs == 0:
             raise ValueError(f"No documents ingested for project: {project_id}")
 
-    if not documents:
+    if total_inputs == 0:
+        raise ValueError(
+            "No processable inputs found. Upload artefacts via the Ingest tab, "
+            "run 'Re-process Included' to extract text, then retry."
+        )
+
+    # If only artifact docs exist (no legacy docs), skip the empty-docs error
+    if not documents and not artifact_docs:
         raise ValueError(f"No documents ingested for project: {project_id}")
 
-    # Filter by active files (file toggles)
+    # Filter legacy docs by file toggles
     file_toggles = get_file_toggles(project_id)
     active_docs = []
     for doc in documents:
@@ -635,8 +679,14 @@ def build_project_intelligence(
         if file_toggles.get(fname, True):  # Default: included
             active_docs.append(doc)
 
+    # Merge artifact docs (already filtered to include=True above)
+    active_docs.extend(artifact_docs)
+
     if not active_docs:
-        raise ValueError("All files are excluded. Include at least one file.")
+        raise ValueError(
+            "All artefacts are excluded. Mark at least one artefact as Included "
+            "and ensure it has been processed (status: processed)."
+        )
 
     # Determine which AI backend to use for this build
     effective_backend = ai_backend or project.get("ai_backend", "files_only")
@@ -666,6 +716,11 @@ def build_project_intelligence(
             {"filename": d.get("filename", ""), "source_type": d.get("metadata", {}).get("source_type", "")}
             for d in documents
         ]
+        # Include artifact v1 docs in run record
+        file_info += [
+            {"filename": d.get("filename", ""), "source_type": d.get("metadata", {}).get("source_type", "")}
+            for d in artifact_docs
+        ]
         create_run_record(
             project_dir=project_dir,
             project_id=project_id,
@@ -687,10 +742,29 @@ def build_project_intelligence(
             {"filename": d.get("filename", ""), "category": d.get("metadata", {}).get("source_type", "")}
             for d in active_docs
         ]
-        excluded = [
+        # Excluded = legacy docs not in active_docs + artifact v1 docs that were excluded or unprocessed
+        excluded_legacy = [
             {"filename": d.get("filename", ""), "category": d.get("metadata", {}).get("source_type", "")}
             for d in documents if d not in active_docs
         ]
+        excluded_artifacts: List[Dict[str, Any]] = []
+        try:
+            from db.artifact_store_sql import list_artifacts as _la
+            from processors.pipeline import get_processed_document as _gpd
+            for art in _la(project_id):
+                aid = art.get("artifactId") or art.get("artifact_id", "")
+                processed = _gpd(project_id, aid) if aid else None
+                is_active = any(
+                    d.get("metadata", {}).get("artifact_id") == aid for d in artifact_docs
+                )
+                if not is_active:
+                    excluded_artifacts.append({
+                        "filename": art.get("title") or art.get("fileName") or aid,
+                        "category": art.get("category", ""),
+                    })
+        except Exception:
+            pass
+        excluded = excluded_legacy + excluded_artifacts
         store.create_version(
             included_artifacts=included,
             excluded_artifacts=excluded,
