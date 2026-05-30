@@ -32,6 +32,8 @@ def run_deep_dive(
     active_files: List[Dict[str, Any]],
     custom_prompt: str = "",
     ai_backend: str = "files_only",
+    weaknesses: Optional[List[Dict[str, Any]]] = None,
+    missing_categories: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run a Deep Dive for the selected role.
 
@@ -62,11 +64,15 @@ def run_deep_dive(
 
     if ai_mode:
         question_groups = _ai_questions(
-            persona_name, scope, intelligence, active_files, custom_prompt, ai_backend
+            persona_name, scope, intelligence, active_files, custom_prompt, ai_backend,
+            weaknesses=weaknesses, missing_categories=missing_categories,
         )
         source = "ai"
     else:
-        question_groups = _heuristic_questions(persona_name, scope, intelligence, active_files)
+        question_groups = _heuristic_questions(
+            persona_name, scope, intelligence, active_files,
+            weaknesses=weaknesses, missing_categories=missing_categories,
+        )
         source = "heuristic"
 
     # Flat list for easy "Add to Prompt"
@@ -172,6 +178,8 @@ def _ai_questions(
     active_files: List[Dict[str, Any]],
     custom_prompt: str,
     ai_backend: str,
+    weaknesses: Optional[List[Dict[str, Any]]] = None,
+    missing_categories: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Call LLM to generate SME questions. Falls back to heuristic on failure."""
     try:
@@ -189,12 +197,25 @@ def _ai_questions(
             "    Instead focus on what is STILL missing or unclear.\n"
         ) if custom_prompt and custom_prompt.strip() else ""
 
+        # S4-03: prepend gap context when weaknesses or missing categories are present
+        gap_section = ""
+        if weaknesses or missing_categories:
+            lines = ["## Known Gaps from Previous Review"]
+            if weaknesses:
+                lines.append("Weak findings that need clarification:")
+                for w in weaknesses[:5]:
+                    lines.append(f"  - [{w.get('category','')}] {w.get('text','')[:80]}")
+            if missing_categories:
+                lines.append(f"Missing categories (no findings): {', '.join(missing_categories)}")
+            lines.append("Generate questions that specifically address these gaps and weaknesses.")
+            gap_section = "\n".join(lines) + "\n\n"
+
         prompt = _USER_PROMPT.format(
             role=persona_name,
             scope=scope[:800] if scope else "No explicit scope defined.",
             intel_summary=intel_summary,
             file_summary=file_list,
-            custom_context=custom_section,
+            custom_context=gap_section + custom_section,
         )
 
         backend = get_backend(ai_backend)
@@ -214,7 +235,8 @@ def _ai_questions(
         pass
 
     # Graceful fallback
-    return _heuristic_questions(persona_name, scope, intelligence, active_files)
+    return _heuristic_questions(persona_name, scope, intelligence, active_files,
+                                weaknesses=weaknesses, missing_categories=missing_categories)
 
 
 def _parse_question_groups(text: str) -> List[Dict[str, Any]]:
@@ -261,6 +283,8 @@ def _heuristic_questions(
     scope: str,
     intelligence: Dict[str, Any],
     active_files: List[Dict[str, Any]],
+    weaknesses: Optional[List[Dict[str, Any]]] = None,
+    missing_categories: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Keyword-based questions for files_only mode."""
     from personas.engine import _resolve_group  # noqa: PLC0415
@@ -379,6 +403,18 @@ def _heuristic_questions(
         risk_qs = [f"How is '{r[:80]}' being mitigated?" for r in risks[:2]]
         risk_qs.append("Which risk is most likely to delay the project and why?")
         groups.append({"category": "Risk Clarification", "icon": "🔴", "questions": risk_qs[:3]})
+
+    # S4-03: gap-aware questions from weaknesses and missing categories
+    gap_qs = []
+    for w in (weaknesses or [])[:3]:
+        text = w.get("text", "")
+        cat = w.get("category", "")
+        if text:
+            gap_qs.append(f"The finding '{text[:80]}' was flagged as unclear — what additional detail is available?")
+    for mc in (missing_categories or [])[:3]:
+        gap_qs.append(f"No {mc} were identified in this review — are there any that apply?")
+    if gap_qs:
+        groups.append({"category": "Gaps & Weaknesses", "icon": "🔍", "questions": gap_qs[:5]})
 
     return groups or [{"category": "General", "icon": "❓", "questions": [
         "What are the key success criteria for this project?",

@@ -913,6 +913,12 @@ def run_persona_review(
     included_files = list(dict.fromkeys(legacy_included_files + artifact_included_files))
     categories = list(dict.fromkeys(legacy_categories + artifact_categories))
 
+    # S4-01/S4-02: extract weaknesses and missing categories from findings
+    from processors.review_quality import extract_weaknesses, compute_missing_categories
+    review_findings = review.get("findings", {})
+    computed_weaknesses = extract_weaknesses(review_findings)
+    computed_missing = compute_missing_categories(review_findings)
+
     store.create_review(
         version_id=latest_version_id,
         persona=canonical_persona,
@@ -928,7 +934,11 @@ def run_persona_review(
         deep_dive=review.get("deep_dive"),
         previous_review_id=previous_review_id,
         prompt_builder_state=prompt_builder_state,
+        weaknesses=computed_weaknesses,
     )
+
+    review["weaknesses"] = computed_weaknesses
+    review["missing_categories"] = computed_missing
 
     # Update iteration tracking
     _update_iteration_on_review(project_id)
@@ -1312,6 +1322,8 @@ def run_deep_dive_analysis(
     project_id: str,
     persona_name: str = "",
     custom_prompt: str = "",
+    weaknesses: Optional[List[Dict[str, Any]]] = None,
+    missing_categories: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run explicit Deep Dive analysis (standalone, not part of review)."""
 
@@ -1349,6 +1361,8 @@ def run_deep_dive_analysis(
         active_files=active_files,
         custom_prompt=custom_prompt,
         ai_backend=project.get("ai_backend", "files_only"),
+        weaknesses=weaknesses,
+        missing_categories=missing_categories,
     )
 
     # Persist deep dive result so feedback endpoint can find it
