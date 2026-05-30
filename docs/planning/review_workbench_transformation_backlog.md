@@ -1,6 +1,6 @@
 # Review Workbench Transformation Backlog
 
-**Source of truth:** `review_workbench_transformation_backlog.json` (v1.0)
+**Source of truth:** `review_workbench_transformation_backlog.json` (v1.1)
 
 ---
 
@@ -101,12 +101,56 @@ Show a convergence indicator (resolved decisions + weaknesses). Gate proposal ge
 
 ---
 
-## Ambiguities and Open Questions
+## Resolved Decisions
 
-The following items are noted for clarification — no backlog changes have been made:
+Previously flagged ambiguities are now closed. Decisions are stored in full in `ambiguity_resolutions` in the JSON (v1.1).
 
-1. **"Strongest review" for proposal generation** (S7-02, success criteria) — Not yet defined. Is "strongest" the highest convergence score, the most recent validated review, or a manual selection? Needs a decision before S7-02 is implemented.
-2. **Feedback source for S6-03** — "Client feedback" is referenced but the current data model for client feedback is not described in the backlog. Needs clarification on where feedback is stored and how it is linked to review iterations before S6-03 is implemented.
-3. **Convergence computation (S7-01)** — The formula (resolved decisions + weaknesses) is directional but not specified. Weightings, thresholds, and the definition of "sufficiently tightened" for the proposal gate (S7-02) are not defined.
-4. **Persona / scenario context for prompt retrieval (S7-04)** — "Persona" and "scenario" are mentioned as filter dimensions but are not defined in the data model. Clarification needed before S7-04 schema work begins.
-5. **Scope of S1-05 (Demote score)** — The story explicitly says "no major logic changes required." Confirm whether the score can be removed from primary layout without touching scoring logic, or if a UI-only change risks inconsistencies elsewhere.
+### AR-01 — "Strongest Review" for Proposal Generation (S7-02)
+
+**Decision:** The strongest review is the **Active Review explicitly selected by the user**. The system does not choose automatically.
+- User is final authority on which review is active
+- No automatic ranking or selection logic required
+- Future enhancement: recommendation hint can be added later if requested
+
+---
+
+### AR-02 — Client Feedback Data Model (S6-03)
+
+**Decision:** Feedback is treated as **additional artifacts** (documents, transcripts, notes). No complex schema required.
+- Feedback links to `proposal_version_id` if present, otherwise to `version_id`
+- Only recent and relevant feedback is injected into the tightening cycle
+- No deep classification required in this sprint
+
+---
+
+### AR-03 — Convergence Formula (S7-01 / S7-02)
+
+**Decision:** Convergence is **not calculated numerically**. The system shows a **Decision Readiness** indicator: Low / Medium / High.
+
+| Level | Condition |
+|---|---|
+| Low | One or more unresolved decision points present |
+| Medium | Unresolved weaknesses present, no unresolved decision points |
+| High | No unresolved decision points and no unresolved weaknesses |
+
+- No weighting, scoring formula, or numeric thresholds
+- Decision Readiness is **informational only** — it does not block any user action
+
+---
+
+### AR-04 — Persona / Scenario Filter Dimensions (S7-04)
+
+**Decision:** Stored as **lightweight metadata fields** on `review` and `prompt_builder_state`. No new tables.
+- Fields: `persona_name` (string), `scenario_type` (string) — both optional
+- Retrieval in S7-04 uses simple equality matching on these fields
+- Future enhancement: controlled vocabulary can be added later
+
+---
+
+### AR-05 — Score Demotion Scope (S1-05)
+
+**Decision:** Confirmed **UI-only change**. Scoring logic, storage, and computation are not touched.
+- Score moves to a small badge or secondary UI position
+- Score does **not** block any user action (Draft, Final, or any other)
+- Score remains visible as a reference; it does not drive decisions
+- Future enhancement: capturing user reasoning when overriding the score can become a learning input later

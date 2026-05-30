@@ -1,6 +1,6 @@
 {
   "backlog_name": "review_workbench_transformation_backlog",
-  "version": "1.0",
+  "version": "1.1",
   "goal": "Mature the application from an insight tool into a decision assistant. Score remains a light visual cue. Primary value is helping teams tighten solutions and proposals through structured review cycles, guided clarification, visible iteration, decision tracking, and convergence toward proposal readiness.",
   "context": {
     "product_intent": [
@@ -358,5 +358,74 @@
         }
       ]
     }
-  ]
+  ],
+  "ambiguity_resolutions": {
+    "version": "1.1",
+    "resolved_at": "2026-05-30",
+    "resolutions": [
+      {
+        "id": "AR-01",
+        "ambiguity": "Definition of strongest review for proposal generation (S7-02, success criteria)",
+        "decision": "The strongest review is the Active Review explicitly selected by the user. The system does not choose automatically.",
+        "rules": [
+          "User is responsible for selecting the Active Review",
+          "System supports the decision but does not replace it",
+          "No automatic ranking or selection logic required"
+        ],
+        "future_enhancement": "A recommendation hint can be added later, but is out of scope until explicitly requested.",
+        "affects": ["S7-02"]
+      },
+      {
+        "id": "AR-02",
+        "ambiguity": "Client feedback data model and linkage for S6-03",
+        "decision": "Feedback is treated as additional artifacts: documents, transcripts, or notes. No complex schema required.",
+        "rules": [
+          "Feedback belongs to proposal_version_id if it exists, otherwise to version_id",
+          "Only recent and relevant feedback is injected into the next tightening cycle",
+          "No deep classification or tagging required in this sprint"
+        ],
+        "future_enhancement": "Structured feedback classification can be layered in a later sprint if needed.",
+        "affects": ["S6-03"]
+      },
+      {
+        "id": "AR-03",
+        "ambiguity": "Convergence formula and thresholds for S7-01 and S7-02",
+        "decision": "Convergence is not calculated numerically. The system shows a Decision Readiness indicator with three levels: Low, Medium, High.",
+        "rules": [
+          "Low: one or more unresolved decision points present",
+          "Medium: unresolved weaknesses present but no unresolved decision points",
+          "High: no unresolved decision points and no unresolved weaknesses",
+          "No weighting, scoring formula, or numeric thresholds required",
+          "Decision Readiness does not block any user action; it is informational only"
+        ],
+        "future_enhancement": "Weighting or threshold configuration can be introduced later if teams need tighter gates.",
+        "affects": ["S7-01", "S7-02"]
+      },
+      {
+        "id": "AR-04",
+        "ambiguity": "Persona and scenario as filter dimensions for prompt retrieval (S7-04)",
+        "decision": "Persona and scenario are stored as lightweight metadata fields on the review and prompt_builder_state. No new tables or schema changes required.",
+        "rules": [
+          "Fields are: persona_name (string) and scenario_type (string)",
+          "Fields are optional and attached to the existing review and prompt_builder_state structures",
+          "Retrieval filters on these fields in S7-04 use simple equality matching"
+        ],
+        "future_enhancement": "A controlled vocabulary or enum list for persona_name and scenario_type can be added later.",
+        "affects": ["S7-04"]
+      },
+      {
+        "id": "AR-05",
+        "ambiguity": "Scope of score demotion in S1-05 and risk of touching scoring logic",
+        "decision": "S1-05 is confirmed as a UI-only change. Scoring logic is not modified.",
+        "rules": [
+          "Score is moved to a small badge or secondary UI position",
+          "Score does not block any user action including marking Draft or Final",
+          "Scoring logic, storage, and computation remain unchanged",
+          "Score remains available as a visual reference for user decision support"
+        ],
+        "future_enhancement": "Capturing user reasoning when ignoring the score can be added later as a learning input.",
+        "affects": ["S1-05"]
+      }
+    ]
+  }
 }
