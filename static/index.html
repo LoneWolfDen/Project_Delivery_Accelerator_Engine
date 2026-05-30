@@ -324,6 +324,35 @@ details[open] .chevron{transform:rotate(90deg);}
 .no-ls{list-style:none}
 .mb8{margin-bottom:8px}.mb6{margin-bottom:6px}.mt8{margin-top:8px}
 .fx-wrap{flex-wrap:wrap}
+
+/* ─── Flow Diagram ──────────────────────────────────────────── */
+.flow-diagram{display:flex;align-items:center;flex-wrap:wrap;gap:0;
+  padding:10px 14px;overflow-x:auto;min-height:44px;}
+.flow-step{display:inline-flex;align-items:center;justify-content:center;
+  padding:5px 11px;border-radius:20px;font-size:11px;font-weight:600;
+  cursor:pointer;white-space:nowrap;border:1px solid var(--border2);
+  color:var(--text-dim);background:var(--surface2);
+  transition:border-color var(--transition),color var(--transition),background var(--transition);}
+.flow-step:hover{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.07);}
+.flow-step.fs-active{border-color:var(--accent);color:var(--accent);
+  background:rgba(88,166,255,.13);box-shadow:0 0 0 2px rgba(88,166,255,.15);}
+.flow-step.fs-done{border-color:var(--green-dim);color:var(--green);
+  background:rgba(63,185,80,.07);}
+.flow-arrow{color:var(--text-muted);font-size:12px;padding:0 3px;flex-shrink:0;
+  user-select:none;}
+.flow-loop{display:inline-flex;align-items:center;gap:3px;padding:4px 9px;
+  border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;
+  border:1px dashed var(--border2);color:var(--text-muted);
+  background:transparent;white-space:nowrap;
+  transition:border-color var(--transition),color var(--transition);}
+.flow-loop:hover{border-color:var(--yellow);color:var(--yellow);}
+/* ─── Dashboard section headers ─────────────────────────────── */
+.dash-section{font-size:10px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.7px;padding:4px 0 6px;
+  border-bottom:1px solid var(--border);margin-bottom:8px;
+  display:flex;align-items:center;gap:6px;}
+.dash-section-desc{font-size:10px;font-weight:400;color:var(--text-muted);
+  text-transform:none;letter-spacing:0;margin-left:4px;}
 </style>
 
 <div id="toast"></div>
@@ -508,6 +537,75 @@ function viewNoProject(){
 
 <script>
 // DASHBOARD VIEW
+// ── Flow Diagram Component ────────────────────────────────────
+// Renders a horizontal clickable step-flow representing the system loop.
+// activeStep: one of 'ingest'|'intelligence'|'versions'|'reviews'|'proposal'|'feedback'
+// doneSteps: Set of step ids that are considered completed.
+function renderFlowDiagram(activeStep, doneSteps){
+  doneSteps = doneSteps || new Set();
+  // Step definitions: id, label, click handler
+  const steps = [
+    {id:'ingest',      label:'Ingest',           fn:`switchTab('ingest')`},
+    {id:'intelligence',label:'Build Intelligence',fn:`goToBuildIntelligence()`},
+    {id:'versions',    label:'Version (Vn)',      fn:`switchTab('versions')`},
+    {id:'reviews',     label:'Review (Rn)',        fn:`switchTab('reviews')`},
+    {id:'quality',     label:'Draft → Final',     fn:`switchTab('reviews')`},
+    {id:'active',      label:'Active Review',     fn:`switchTab('reviews')`},
+    {id:'proposal',    label:'Proposal',          fn:`switchTab('presales')`},
+    {id:'feedback',    label:'Feedback',          fn:`switchTab('presales')`},
+  ];
+  let html = '<div class="flow-diagram" role="navigation" aria-label="Workflow steps">';
+  steps.forEach((s, i) => {
+    const isActive = s.id === activeStep;
+    const isDone   = doneSteps.has(s.id) && !isActive;
+    const cls = isActive ? 'flow-step fs-active' : isDone ? 'flow-step fs-done' : 'flow-step';
+    const prefix = isDone ? '✓ ' : '';
+    html += `<button class="${cls}" onclick="${s.fn}" title="${s.label}">${prefix}${s.label}</button>`;
+    if(i < steps.length - 1){
+      html += '<span class="flow-arrow" aria-hidden="true">›</span>';
+    }
+  });
+  // Loop indicator appended after the last step
+  html += '<span class="flow-arrow" aria-hidden="true">›</span>';
+  html += `<button class="flow-loop" onclick="switchTab('reviews')" title="Iterate: create new Review or Version">↩ Iterate</button>`;
+  html += '</div>';
+  return html;
+}
+
+// Derive which flow step is currently "active" from project state.
+// Returns a step id string and a Set of completed step ids.
+function _deriveFlowState(versions, metrics, proposal){
+  const done = new Set();
+  const totalV  = versions.length;
+  const totalR  = metrics.total_reviews || 0;
+  const hasArts = (metrics.artifact_count || 0) > 0;
+  const hasProp = !!(proposal && proposal.proposal_name);
+  const hasFb   = !!(proposal && (proposal.versions||[]).some(v=>(v.feedback||[]).length > 0));
+
+  // Mark completed steps progressively
+  if(hasArts || totalV > 0){ done.add('ingest'); }
+  if(totalV > 0){ done.add('ingest'); done.add('intelligence'); done.add('versions'); }
+  if(totalR > 0){ done.add('reviews'); }
+  if(metrics.total_findings > 0){ done.add('quality'); }
+  if((metrics.data_source||{}).review){ done.add('active'); }
+  if(hasProp){ done.add('proposal'); }
+  if(hasFb){   done.add('feedback'); }
+
+  // Active step = the first incomplete step, using the tab as tiebreaker
+  const order = ['ingest','intelligence','versions','reviews','quality','active','proposal','feedback'];
+  let active = 'ingest';
+  // Prefer using current tab to highlight where the user is
+  const tabMap = {ingest:'ingest', intelligence:'intelligence', versions:'versions',
+                  reviews:'reviews', presales:'proposal'};
+  if(state.tab && tabMap[state.tab]){ active = tabMap[state.tab]; }
+  else {
+    for(const s of order){ if(!done.has(s)){ active = s; break; } }
+    // If all done, highlight feedback (loop point)
+    if(order.every(s => done.has(s))) active = 'feedback';
+  }
+  return { active, done };
+}
+
 async function viewDashboard(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
@@ -520,9 +618,10 @@ async function viewDashboard(){
   if(selR)ps.push(`review_id=${selR}`);
   if(ps.length)metricsUrl+='?'+ps.join('&');
 
-  let metrics={},versions=[];
+  let metrics={}, versions=[], proposal={};
   try{[metrics]=await Promise.all([api('GET',metricsUrl)]);}catch(e){}
   try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions`);versions=r.versions||[];}catch(e){}
+  try{const r=await api('GET',`/api/projects/${pid}/proposal`);proposal=r||{};}catch(e){}
 
   const avail=metrics.available_reviews||[];
   const ds=metrics.data_source||{};
@@ -530,13 +629,21 @@ async function viewDashboard(){
   const vOpts=versions.map(v=>`<option value="${v.version_id}" ${v.version_id===selV?'selected':''}>${escHtml(v.version_id)} ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
   const rOpts=avail.map(r=>`<option value="${r.review_id}" ${r.review_id===selR?'selected':''}>${r.review_id} – ${escHtml(r.persona)} (${fmtDateShort(r.created_at)})</option>`).join('');
 
+  // ── Flow diagram ──────────────────────────────────────────
+  const {active:flowActive, done:flowDone} = _deriveFlowState(versions, metrics, proposal);
+  const flowHtml = `<div class="card" style="padding:8px 14px 10px">
+    <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">System Flow</div>
+    ${renderFlowDiagram(flowActive, flowDone)}
+  </div>`;
+
+  // ── Context selector (version / review scope) ─────────────
   const ctxCard=versions.length?`
-    <div class="card">
+    <div class="card" style="padding:12px 16px">
       <div class="flex-between mb">
-        <div class="card-title"><span class="icon">🎯</span>Data Context</div>
+        <div class="card-title" style="margin-bottom:0"><span class="icon">🎯</span>Data Context</div>
         <span class="tag tag-blue">${escHtml(ds.phase||'–')}</span>
       </div>
-      <p class="card-subtitle">Scope all dashboard metrics to a specific version and review.</p>
+      <p class="card-subtitle" style="margin:4px 0 8px">Scope Version Insights to a specific version and review.</p>
       <div class="flex">
         <div style="flex:1;min-width:160px">
           <label class="form-row" style="margin-bottom:0"><span class="fs10 c-dim">Version</span>
@@ -551,11 +658,11 @@ async function viewDashboard(){
           </select></label>
         </div>
       </div>
-      ${ds.version?`<p style="font-size:11px;color:var(--accent);margin-top:8px">
+      ${ds.version?`<p style="font-size:11px;color:var(--accent);margin-top:6px">
         Showing: <strong>${escHtml(ds.version_label||ds.version||'latest')}</strong>
         → <strong>${ds.review_persona?escHtml(ds.review_persona)+' ('+ds.review+')':ds.review||'latest review'}</strong>
       </p>`:''}
-    </div>`:''
+    </div>`:'';
 
   const risks=metrics.risks_identified||0;
   const constraints=metrics.constraints||0;
@@ -567,86 +674,125 @@ async function viewDashboard(){
   const gaps=metrics.gaps_identified||0;
   const findings=metrics.total_findings||0;
   const artifacts=metrics.artifact_count||0;
-  
-  // Get all finding categories dynamically (when review is selected)
   const findingCats=metrics.finding_categories||{};
 
-  // Build standard stats tiles
-  let statsHTML=`
+  // ── SECTION A: Project Overview ───────────────────────────
+  const sectionA=`<div class="card">
+    <div class="dash-section">Project Overview <span class="dash-section-desc">— aggregated across all versions</span></div>
     <div class="stat-grid mb">
-      <div class="stat red" onclick="navigateToIntelligence('risks')"><div class="num">${risks}</div><div class="lbl">Risks</div></div>
-      <div class="stat yellow" onclick="navigateToIntelligence('constraints')"><div class="num">${constraints}</div><div class="lbl">Constraints</div></div>
-      <div class="stat purple" onclick="navigateToIntelligence('dependencies')"><div class="num">${deps}</div><div class="lbl">Dependencies</div></div>
-      <div class="stat" onclick="navigateToIntelligence('assumptions')"><div class="num">${assumptions}</div><div class="lbl">Assumptions</div></div>
-      <div class="stat" onclick="navigateToIntelligence('action_items')"><div class="num">${actions}</div><div class="lbl">Action Items</div></div>
       <div class="stat green" onclick="switchTab('versions')"><div class="num">${totalV}</div><div class="lbl">Versions</div></div>
       <div class="stat green" onclick="switchTab('reviews')"><div class="num">${totalR}</div><div class="lbl">Reviews</div></div>
-      ${artifacts?`<div class="stat" onclick="switchTab('ingest')"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}`;
-  
-  // Add dynamic finding category tiles (excluding standard ones already shown)
-  const standardCats=['risks','constraints','dependencies','assumptions','action_items','gaps'];
-  for(const[cat,count]of Object.entries(findingCats)){
-    if(standardCats.includes(cat))continue;
-    if(count>0){
-      const label=cat.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
-      statsHTML+=`<div class="stat yellow" onclick="navigateToIntelligence('${cat}')"><div class="num">${count}</div><div class="lbl">${escHtml(label)}</div></div>`;
-    }
-  }
-  
-  // Add remaining standard tiles
-  statsHTML+=(findings?`<div class="stat yellow" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:'')
-    +(gaps?`<div class="stat red" onclick="navigateToIntelligence('gaps')"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:'')
-    +'</div>';
-
-  const statsHtml=statsHTML;
-
-  const trend=metrics.trend||[];
-  let trendHtml='';
-  if(trend.length>1){
-    const maxR=Math.max(...trend.map(t=>t.stats?.risks||0),1);
-    trendHtml=`<div class="card">
-      <div class="flex-between mb"><div class="card-title"><span class="icon">📈</span>Risk Trend</div>
-      <span class="fs11 c-dim">Last ${trend.length} versions</span></div>
-      <div style="display:flex;gap:10px;align-items:flex-end;padding:6px 0;min-height:56px">
-        ${trend.map(t=>{const h=Math.max(8,Math.round((t.stats?.risks||0)/maxR*48));
-          return`<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;cursor:pointer"
-            title="${escHtml(t.version_id+' · '+fmtDateShort(t.created_at))}"
-            onclick="navigateToVersion('${t.version_id}')">
-            <span style="font-size:9px;color:var(--text-dim)">${t.stats?.risks||0}</span>
-            <div style="width:100%;height:${h}px;background:var(--red);border-radius:3px 3px 0 0;opacity:.7;transition:opacity .2s"
-              onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7"></div>
-            <span style="font-size:9px;color:var(--text-muted)">${t.version_id}</span>
-            <span style="font-size:8px;color:var(--text-muted)">${fmtDateShort(t.created_at)}</span>
-          </div>`;}).join('')}
-      </div>
-    </div>`;
-  }
-
-  const qa=`<div class="card">
-    <div class="card-title mb"><span class="icon">⚡</span>Quick Actions</div>
-    <div class="flex">
-      <button class="btn" onclick="switchTab('ingest')">📎 Ingest Artefacts</button>
+      ${artifacts?`<div class="stat" onclick="switchTab('ingest')"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}
+    </div>
+    <div class="flex gap-sm" style="flex-wrap:wrap">
+      <button class="btn" onclick="switchTab('ingest')">📎 Ingest</button>
       <button class="btn btn-outline" onclick="goToBuildIntelligence()">🔨 Build Intelligence</button>
       <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Run Review</button>
-      <button class="btn btn-ghost btn-sm" onclick="switchTab('versions')">📋 Browse Versions</button>
-      <button class="btn-icon" title="Toggle debug" onclick="toggleDebug()" class="ml-auto">🐛</button>
+      <button class="btn btn-ghost btn-sm" onclick="switchTab('versions')">📋 Versions</button>
+      <button class="btn-icon" title="Toggle debug" onclick="toggleDebug()">🐛</button>
     </div>
   </div>`;
 
-  const debugHtml=state._debugMode?`<div class="card" style="border-color:var(--yellow)">
-    <div class="card-title" style="color:var(--yellow)">🐛 Debug</div>
-    <code class="fs11 c-dim">
-      project=${pid} | version=${ds.version||'(latest)'} | review=${ds.review||'(active)'} | phase=${ds.phase||'–'}
-    </code></div>`:''
+  // ── SECTION B: Version Insights ──────────────────────────
+  let versionInsightsContent = '';
+  // Standard finding tiles
+  let findTiles = `
+    <div class="stat-grid mb">
+      <div class="stat red"    onclick="navigateToIntelligence('risks')">       <div class="num">${risks}</div>       <div class="lbl">Risks</div></div>
+      <div class="stat yellow" onclick="navigateToIntelligence('constraints')"> <div class="num">${constraints}</div> <div class="lbl">Constraints</div></div>
+      <div class="stat purple" onclick="navigateToIntelligence('dependencies')"><div class="num">${deps}</div>        <div class="lbl">Dependencies</div></div>
+      <div class="stat"        onclick="navigateToIntelligence('assumptions')"> <div class="num">${assumptions}</div> <div class="lbl">Assumptions</div></div>
+      <div class="stat"        onclick="navigateToIntelligence('action_items')"><div class="num">${actions}</div>    <div class="lbl">Action Items</div></div>
+      ${findings?`<div class="stat yellow" onclick="navigateToIntelligence('findings')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
+      ${gaps?    `<div class="stat red"    onclick="navigateToIntelligence('gaps')">    <div class="num">${gaps}</div>    <div class="lbl">Gaps</div></div>`:''}`;
+  const standardCats=['risks','constraints','dependencies','assumptions','action_items','gaps'];
+  for(const[cat,count]of Object.entries(findingCats)){
+    if(standardCats.includes(cat)||!count)continue;
+    const lbl=cat.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
+    findTiles+=`<div class="stat yellow" onclick="navigateToIntelligence('${cat}')"><div class="num">${count}</div><div class="lbl">${escHtml(lbl)}</div></div>`;
+  }
+  findTiles+='</div>';
+  versionInsightsContent += findTiles;
+  // Risk trend bar chart (version-scoped)
+  const trend=metrics.trend||[];
+  if(trend.length>1){
+    const maxR=Math.max(...trend.map(t=>t.stats?.risks||0),1);
+    versionInsightsContent+=`<div style="display:flex;gap:10px;align-items:flex-end;padding:4px 0;min-height:52px">
+      ${trend.map(t=>{const h=Math.max(8,Math.round((t.stats?.risks||0)/maxR*44));
+        return`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;cursor:pointer"
+          title="${escHtml(t.version_id+' · '+fmtDateShort(t.created_at))}"
+          onclick="navigateToVersion('${t.version_id}')">
+          <span style="font-size:9px;color:var(--text-dim)">${t.stats?.risks||0}</span>
+          <div style="width:100%;height:${h}px;background:var(--red);border-radius:3px 3px 0 0;opacity:.7;transition:opacity .15s"
+            onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7"></div>
+          <span style="font-size:9px;color:var(--text-muted)">${t.version_id}</span>
+        </div>`;}).join('')}
+    </div>
+    <p style="font-size:10px;color:var(--text-muted);margin-top:2px">Risk trend · last ${trend.length} versions</p>`;
+  }
+  const versionLabel = ds.version ? escHtml(ds.version_label||ds.version) : 'Latest';
+  const sectionB = `<div class="card">
+    <div class="dash-section">Version Insights (${versionLabel}) <span class="dash-section-desc">— findings for selected version &amp; review</span></div>
+    ${versionInsightsContent}
+  </div>`;
 
-  return ctxCard+statsHtml+trendHtml+qa+debugHtml;
+  // ── SECTION C: Proposal & Outcomes ───────────────────────
+  let sectionC = '';
+  {
+    const propVersions = (proposal.versions||[]).slice().reverse(); // newest first
+    const latestPV = propVersions[0] || null;
+    const propName  = proposal.proposal_name || '';
+    const propClient= proposal.client || '';
+
+    let propBody = '';
+    if(!propName){
+      propBody = `<div class="empty" style="padding:12px 0">
+        <p style="font-size:12px;color:var(--text-dim)">No proposal yet.</p>
+        <button class="btn btn-sm btn-outline mt-sm" onclick="switchTab('presales')">→ Create Proposal</button>
+      </div>`;
+    } else {
+      const pvId     = latestPV ? escHtml(latestPV.version_id||'') : '–';
+      const pvStatus = latestPV ? escHtml(latestPV.status||'draft') : '–';
+      const pvHvid   = latestPV ? escHtml(latestPV.hierarchy_version_id||'') : '–';
+      const pvRid    = latestPV ? escHtml(latestPV.active_review_id||'') : '–';
+      const statusCls= pvStatus==='final'?'tag-green':pvStatus==='complete'?'tag-green':'tag-yellow';
+      const fbCount  = latestPV ? (latestPV.feedback_applied||[]).length : 0;
+      propBody = `
+        <div class="flex gap-sm mb" style="flex-wrap:wrap;align-items:center">
+          <strong style="font-size:13px">${escHtml(propName)}</strong>
+          ${propClient?`<span class="tag tag-blue">${escHtml(propClient)}</span>`:''}
+          <span class="tag ${statusCls}" style="font-size:10px">${pvStatus}</span>
+          <span class="tag" style="font-size:10px">${pvId}</span>
+        </div>
+        <div class="flex gap-sm" style="flex-wrap:wrap;font-size:11px;color:var(--text-dim);margin-bottom:8px">
+          <span>Version: <strong style="color:var(--text)">${pvHvid||'–'}</strong></span>
+          <span>Active Review: <strong style="color:var(--text)">${pvRid||'–'}</strong></span>
+          ${fbCount?`<span>Feedback applied: <strong style="color:var(--text)">${fbCount}</strong></span>`:''}
+          <span>Total versions: <strong style="color:var(--text)">${proposal.total_versions||1}</strong></span>
+        </div>
+        <div class="flex gap-sm" style="flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline" onclick="switchTab('presales')">→ View Proposal</button>
+        </div>`;
+    }
+    sectionC = `<div class="card">
+      <div class="dash-section">Proposal &amp; Outcomes <span class="dash-section-desc">— latest proposal and linked review</span></div>
+      ${propBody}
+    </div>`;
+  }
+
+  // ── Debug ─────────────────────────────────────────────────
+  const debugHtml = state._debugMode ? `<div class="card" style="border-color:var(--yellow)">
+    <div class="card-title" style="color:var(--yellow)">🐛 Debug</div>
+    <code class="fs11 c-dim">project=${pid} | version=${ds.version||'(latest)'} | review=${ds.review||'(active)'} | phase=${ds.phase||'–'}</code>
+  </div>` : '';
+
+  return flowHtml + ctxCard + sectionA + sectionB + sectionC + debugHtml;
 }
 
 function navigateToVersion(vid){state._dashVersion=vid;state._dashReview='';state.tab='dashboard';render();}
 function navigateToIntelligence(cat){
   state._intelCategory=cat;
   switchTab('intelligence');
-  // Scroll to the category section after render
   setTimeout(()=>{
     const el=document.getElementById(`intel_${cat}`);
     if(el){
@@ -3133,13 +3279,15 @@ async function viewPresales(){
     <div class="card" style="border:1px solid var(--purple)">
       <div class="card-title mb"><span class="icon">➕</span>Add Proposal Version</div>
       <div class="form-row"><label>Based on Intelligence Version <span style="color:var(--red)">*</span></label>
-        <select id="verVersionSelect" style="width:100%">
+        <select id="verVersionSelect" onchange="onVerVersionChange()" style="width:100%">
           <option value="">— select version —</option>
         </select></div>
       <div class="form-row"><label>Active Review <span style="color:var(--red)">*</span></label>
         <select id="verReviewSelect" style="width:100%">
           <option value="">— select review —</option>
-        </select></div>
+        </select>
+        <p id="verReviewGateMsg" style="font-size:11px;margin-top:3px"></p>
+      </div>
       <div class="form-row"><label>Label</label>
         <input id="verLabel" placeholder="e.g. Post-feedback revision"></div>
       <div class="form-row"><label>What changed from previous version?</label>
@@ -3448,6 +3596,42 @@ function openAddProposalVersion(){
         +(r.versions||[]).map(v=>`<option value="${v.version_id}">${v.version_id} – ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
     }
   });
+}
+
+async function onVerVersionChange(){
+  const pid=state.current.id;
+  const vid=document.getElementById('verVersionSelect')?.value||'';
+  const reviewSel=document.getElementById('verReviewSelect');
+  const gateMsg=document.getElementById('verReviewGateMsg');
+  if(!reviewSel)return;
+  if(!vid){
+    reviewSel.innerHTML='<option value="">— select review —</option>';
+    if(gateMsg)gateMsg.innerHTML='';
+    return;
+  }
+  reviewSel.innerHTML='<option value="">— loading… —</option>';
+  try{
+    const r=await api('GET',`/api/projects/${pid}/hierarchy/versions/${vid}`);
+    const reviews=r.reviews||[];
+    reviewSel.innerHTML='<option value="">— select review —</option>'
+      +reviews.map(rv=>`<option value="${rv.review_id}">${rv.review_id} – ${escHtml(rv.persona||'')} · ${rv.quality_status||'pending'} (R${rv.iteration_number||'?'})</option>`).join('');
+    // Auto-select active review
+    const activeId=r.version?.active_review_id||r.active_review_id||'';
+    if(activeId)reviewSel.value=activeId;
+    // Gate message
+    if(gateMsg){
+      const selected=reviews.find(rv=>rv.review_id===(activeId||reviewSel.value));
+      if(selected){
+        const qs=selected.quality_status||'pending';
+        gateMsg.innerHTML=qs==='pending'
+          ?`<span style="color:var(--yellow)">⚠ Review is pending — mark it complete/interim in the Reviews tab first, or proceed anyway.</span>`
+          :`<span style="color:var(--green)">✓ Review ${qs}</span>`;
+      }
+    }
+  }catch(e){
+    reviewSel.innerHTML='<option value="">— failed to load reviews —</option>';
+    if(gateMsg)gateMsg.innerHTML=`<span style="color:var(--red)">Could not load reviews for this version.</span>`;
+  }
 }
 
 async function updateProposalStatus(versionId,newStatus){
