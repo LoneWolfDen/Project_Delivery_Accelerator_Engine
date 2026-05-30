@@ -3133,13 +3133,15 @@ async function viewPresales(){
     <div class="card" style="border:1px solid var(--purple)">
       <div class="card-title mb"><span class="icon">➕</span>Add Proposal Version</div>
       <div class="form-row"><label>Based on Intelligence Version <span style="color:var(--red)">*</span></label>
-        <select id="verVersionSelect" style="width:100%">
+        <select id="verVersionSelect" onchange="onVerVersionChange()" style="width:100%">
           <option value="">— select version —</option>
         </select></div>
       <div class="form-row"><label>Active Review <span style="color:var(--red)">*</span></label>
         <select id="verReviewSelect" style="width:100%">
           <option value="">— select review —</option>
-        </select></div>
+        </select>
+        <p id="verReviewGateMsg" style="font-size:11px;margin-top:3px"></p>
+      </div>
       <div class="form-row"><label>Label</label>
         <input id="verLabel" placeholder="e.g. Post-feedback revision"></div>
       <div class="form-row"><label>What changed from previous version?</label>
@@ -3448,6 +3450,42 @@ function openAddProposalVersion(){
         +(r.versions||[]).map(v=>`<option value="${v.version_id}">${v.version_id} – ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
     }
   });
+}
+
+async function onVerVersionChange(){
+  const pid=state.current.id;
+  const vid=document.getElementById('verVersionSelect')?.value||'';
+  const reviewSel=document.getElementById('verReviewSelect');
+  const gateMsg=document.getElementById('verReviewGateMsg');
+  if(!reviewSel)return;
+  if(!vid){
+    reviewSel.innerHTML='<option value="">— select review —</option>';
+    if(gateMsg)gateMsg.innerHTML='';
+    return;
+  }
+  reviewSel.innerHTML='<option value="">— loading… —</option>';
+  try{
+    const r=await api('GET',`/api/projects/${pid}/hierarchy/versions/${vid}`);
+    const reviews=r.reviews||[];
+    reviewSel.innerHTML='<option value="">— select review —</option>'
+      +reviews.map(rv=>`<option value="${rv.review_id}">${rv.review_id} – ${escHtml(rv.persona||'')} · ${rv.quality_status||'pending'} (R${rv.iteration_number||'?'})</option>`).join('');
+    // Auto-select active review
+    const activeId=r.version?.active_review_id||r.active_review_id||'';
+    if(activeId)reviewSel.value=activeId;
+    // Gate message
+    if(gateMsg){
+      const selected=reviews.find(rv=>rv.review_id===(activeId||reviewSel.value));
+      if(selected){
+        const qs=selected.quality_status||'pending';
+        gateMsg.innerHTML=qs==='pending'
+          ?`<span style="color:var(--yellow)">⚠ Review is pending — mark it complete/interim in the Reviews tab first, or proceed anyway.</span>`
+          :`<span style="color:var(--green)">✓ Review ${qs}</span>`;
+      }
+    }
+  }catch(e){
+    reviewSel.innerHTML='<option value="">— failed to load reviews —</option>';
+    if(gateMsg)gateMsg.innerHTML=`<span style="color:var(--red)">Could not load reviews for this version.</span>`;
+  }
 }
 
 async function updateProposalStatus(versionId,newStatus){
