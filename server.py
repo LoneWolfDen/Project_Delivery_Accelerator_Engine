@@ -824,9 +824,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             self._json_response({"error": str(e)}, status=500)
 
     def _handle_generate_diagram(self, project_id: str, diagram_type: str) -> None:
-        """Generate a .drawio diagram from built project intelligence."""
+        """Generate a .drawio diagram from built project intelligence.
+
+        Optional body params: version_id, review_id — when supplied the
+        diagram is enriched with findings from that review context.
+        """
+        body = self._read_body() or {}
+        version_id = body.get("version_id") or None
+        review_id = body.get("review_id") or None
         try:
-            result = project_manager.generate_diagram(project_id, diagram_type)
+            result = project_manager.generate_diagram(
+                project_id, diagram_type,
+                version_id=version_id,
+                review_id=review_id,
+            )
             if result.get("error"):
                 self._json_response(result, status=400)
             else:
