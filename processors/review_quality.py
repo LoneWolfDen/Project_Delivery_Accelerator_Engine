@@ -223,6 +223,52 @@ def extract_decision_points(findings: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 # ──────────────────────────────────────────────────────────────
+# S7-01: Decision Readiness indicator
+# ──────────────────────────────────────────────────────────────
+
+def compute_decision_readiness(review_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Compute a Decision Readiness level from a review dict.
+
+    Rules (AR-03):
+    - Low    — one or more unresolved (open) decision points exist
+    - Medium — no unresolved decision points, but unresolved weaknesses exist
+    - High   — no unresolved decision points AND no unresolved weaknesses
+
+    The indicator is informational only — it does not block any action.
+
+    Args:
+        review_dict: review represented as a plain dict (fields: decision_points, weaknesses).
+
+    Returns:
+        {level: "Low|Medium|High", open_decisions: int, open_weaknesses: int}
+    """
+    decision_points = review_dict.get("decision_points") or []
+    weaknesses = review_dict.get("weaknesses") or []
+
+    open_decisions = sum(
+        1 for dp in decision_points
+        if isinstance(dp, dict) and dp.get("status", "open") == "open"
+    )
+    open_weaknesses = sum(
+        1 for w in weaknesses
+        if isinstance(w, dict) and w.get("status", "open") == "open"
+    )
+
+    if open_decisions > 0:
+        level = "Low"
+    elif open_weaknesses > 0:
+        level = "Medium"
+    else:
+        level = "High"
+
+    return {
+        "level": level,
+        "open_decisions": open_decisions,
+        "open_weaknesses": open_weaknesses,
+    }
+
+
+# ──────────────────────────────────────────────────────────────
 # Gate check
 # ──────────────────────────────────────────────────────────────
 

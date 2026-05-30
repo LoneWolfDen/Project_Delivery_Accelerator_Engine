@@ -511,6 +511,19 @@ def generate_proposal_document(
     # Persist
     saved = save_proposal_document(doc.to_dict())
 
+    # S7-02: annotate generated document with Decision Readiness
+    try:
+        from processors.review_quality import compute_decision_readiness
+        from dataclasses import asdict as _asdict
+        try:
+            review_dict = _asdict(review)
+        except TypeError:
+            review_dict = review.__dict__ if hasattr(review, "__dict__") else {}
+        readiness = compute_decision_readiness(review_dict)
+        saved["readiness"] = readiness
+    except Exception:
+        pass  # readiness annotation is non-blocking
+
     # Log decision
     log_decision(
         project_id=project_id,

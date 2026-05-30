@@ -283,6 +283,26 @@ CREATE TABLE IF NOT EXISTS decision_log (
 );
 CREATE INDEX IF NOT EXISTS idx_declog_project ON decision_log(project_id);
 CREATE INDEX IF NOT EXISTS idx_declog_entity  ON decision_log(entity_id);
+
+-- ── Prompt Log (S7-03) ────────────────────────────────────────
+-- Captures full prompt state and outcome links for every review.
+-- Foundation for future prompt learning and self-improvement.
+CREATE TABLE IF NOT EXISTS prompt_log (
+    log_id               TEXT PRIMARY KEY,
+    project_id           TEXT NOT NULL DEFAULT '',
+    review_id            TEXT NOT NULL DEFAULT '',
+    persona_name         TEXT DEFAULT '',
+    scenario_type        TEXT DEFAULT '',
+    baseline_prompt      TEXT DEFAULT '',
+    injected_questions   TEXT DEFAULT '',
+    user_notes           TEXT DEFAULT '',
+    final_prompt         TEXT DEFAULT '',
+    outcome_review_id    TEXT DEFAULT '',
+    outcome_proposal_ver_id TEXT DEFAULT '',
+    created_at           TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_promptlog_project ON prompt_log(project_id);
+CREATE INDEX IF NOT EXISTS idx_promptlog_review  ON prompt_log(review_id);
 """
 
 
@@ -388,7 +408,28 @@ class Database:
             if col not in pf_cols:
                 conn.execute(f"ALTER TABLE presales_feedback ADD COLUMN {col} {definition}")
 
+        # ── prompt_log: S7-03 — create table for fresh installs that already have
+        #    a DB file (the CREATE TABLE IF NOT EXISTS in _SCHEMA_SQL handles
+        #    brand-new databases; this handles upgrades from S6 and earlier). ──
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prompt_log (
+                log_id               TEXT PRIMARY KEY,
+                project_id           TEXT NOT NULL DEFAULT '',
+                review_id            TEXT NOT NULL DEFAULT '',
+                persona_name         TEXT DEFAULT '',
+                scenario_type        TEXT DEFAULT '',
+                baseline_prompt      TEXT DEFAULT '',
+                injected_questions   TEXT DEFAULT '',
+                user_notes           TEXT DEFAULT '',
+                final_prompt         TEXT DEFAULT '',
+                outcome_review_id    TEXT DEFAULT '',
+                outcome_proposal_ver_id TEXT DEFAULT '',
+                created_at           TEXT NOT NULL DEFAULT ''
+            )
+        """)
+
         conn.commit()
+
 
     # ── Query helpers ──
 

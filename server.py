@@ -263,6 +263,28 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(result, status=404)
             else:
                 self._json_response(result)
+        # S7-01: Decision Readiness indicator
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path and clean_path.endswith("/readiness"):
+            # GET /api/projects/{id}/hierarchy/versions/{version_id}/readiness
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            version_id = parts[6]
+            result = project_manager.get_version_readiness(project_id, version_id)
+            if result.get("error"):
+                self._json_response(result, status=404)
+            else:
+                self._json_response(result)
+        # S7-04: Learning-ready prompt history retrieval
+        elif clean_path.startswith("/api/projects/") and clean_path.endswith("/prompt-history"):
+            # GET /api/projects/{id}/prompt-history?persona_name=...&scenario_type=...
+            project_id = clean_path.split("/")[3]
+            result = project_manager.get_prompt_history(
+                project_id,
+                persona_name=query.get("persona_name") or None,
+                scenario_type=query.get("scenario_type") or None,
+            )
+            self._json_response(result)
+
         # ── Diagram API ──
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/diagrams"):
             project_id = clean_path.split("/")[3]
