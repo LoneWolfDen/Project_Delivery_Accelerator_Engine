@@ -1,0 +1,431 @@
+{
+  "backlog_name": "review_workbench_transformation_backlog",
+  "version": "1.1",
+  "goal": "Mature the application from an insight tool into a decision assistant. Score remains a light visual cue. Primary value is helping teams tighten solutions and proposals through structured review cycles, guided clarification, visible iteration, decision tracking, and convergence toward proposal readiness.",
+  "context": {
+    "product_intent": [
+      "Move from one-shot reviews to guided tightening loops",
+      "Help users understand what is unresolved and what decision is needed next",
+      "Reduce free-text effort and improve review quality with targeted SME-style guidance",
+      "Support pre-sales first, then extend to SDLC and operations",
+      "Prepare the foundation for future self-learning through prompt and outcome logging"
+    ],
+    "lenses_used": [
+      "Product Owner",
+      "Systems Architect",
+      "AI Specialist",
+      "Solution Architect",
+      "Delivery Manager",
+      "Solution Executive"
+    ],
+    "design_principles": [
+      "Traceability over opacity",
+      "Decision quality over review volume",
+      "Structured guidance over free-text prompting",
+      "Iteration visibility over static outputs",
+      "Minimal user input, high-value output",
+      "Backward-compatible and low-risk changes first"
+    ]
+  },
+  "global_rules": {
+    "implementation_mode": "incremental",
+    "work_style": [
+      "Do not redesign architecture unless explicitly requested",
+      "Implement sprint by sprint",
+      "Prefer additive changes",
+      "Keep UI simple for non-technical users",
+      "Stop after each sprint and validate"
+    ],
+    "success_criteria": [
+      "Users can improve review quality across iterations",
+      "The system can explain what changed and why",
+      "Proposal generation uses the strongest review, not just the latest review",
+      "The system identifies unresolved decisions, not only missing categories",
+      "Foundations exist for future prompt learning and self-improvement"
+    ]
+  },
+  "sprints": [
+    {
+      "id": "S1",
+      "name": "Foundation and Review Chain Stability",
+      "goal": "Make reviews version-scoped, explicitly chained, and visible as iterations.",
+      "priority": "high",
+      "dependencies": [],
+      "stories": [
+        {
+          "id": "S1-01",
+          "title": "Version-scoped review list",
+          "description": "Ensure reviews are displayed and managed only within the selected version context.",
+          "acceptance_criteria": [
+            "Selecting a version shows only reviews belonging to that version",
+            "No cross-version reviews appear in the Reviews workspace",
+            "Review counts reflect version-scoped data"
+          ]
+        },
+        {
+          "id": "S1-02",
+          "title": "Explicit review chaining",
+          "description": "Add previous_review_id so review iterations are traceable and not inferred only by time.",
+          "acceptance_criteria": [
+            "Each new review can optionally reference previous_review_id",
+            "Review lineage can be reconstructed reliably",
+            "Existing reviews remain backward-compatible"
+          ]
+        },
+        {
+          "id": "S1-03",
+          "title": "Iteration visibility",
+          "description": "Show review iteration number and progression clearly in the UI.",
+          "acceptance_criteria": [
+            "Each review displays iteration label such as R1, R2, R3",
+            "Review detail shows previous review reference when present",
+            "Users can understand sequence without opening every item"
+          ]
+        },
+        {
+          "id": "S1-04",
+          "title": "Move Ask SME before next review",
+          "description": "Remove deep dive from the end of review execution and reposition it as a tightening step before the next review.",
+          "acceptance_criteria": [
+            "Ask SME is no longer triggered only after review completion",
+            "Users can trigger Ask SME before starting the next review iteration",
+            "Current review output is not silently modified by Ask SME"
+          ]
+        },
+        {
+          "id": "S1-05",
+          "title": "Demote completeness score",
+          "description": "Reduce visual emphasis of quality score so it does not train the wrong user behaviour.",
+          "acceptance_criteria": [
+            "Score appears as a small badge or secondary UI element",
+            "Score is not the dominant visual element in the review workspace",
+            "No major logic changes required for this sprint"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "name": "Prompt Builder Foundation",
+      "goal": "Replace blank custom prompting with structured prompt assembly.",
+      "priority": "high",
+      "dependencies": ["S1"],
+      "stories": [
+        {
+          "id": "S2-01",
+          "title": "Prompt builder sections",
+          "description": "Introduce a structured prompt builder using baseline persona prompt, suggested questions, and user additions.",
+          "acceptance_criteria": [
+            "Prompt builder shows baseline persona prompt",
+            "Prompt builder supports injected suggested questions",
+            "Prompt builder supports user-added custom notes",
+            "Final assembled prompt is visible before running review"
+          ]
+        },
+        {
+          "id": "S2-02",
+          "title": "Persist prompt builder state",
+          "description": "Save prompt builder selections and custom notes per review iteration.",
+          "acceptance_criteria": [
+            "Review stores prompt_builder_state",
+            "Users can reopen and inspect the prompt used",
+            "Prompt builder state is available for the next iteration"
+          ]
+        },
+        {
+          "id": "S2-03",
+          "title": "Baseline vs customised indicator",
+          "description": "Show whether a review used the baseline prompt only or a customised tightened prompt.",
+          "acceptance_criteria": [
+            "UI indicates baseline review vs customised review",
+            "Indicator is visible in review list and review details"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "name": "Guided Tightening Loop",
+      "goal": "Turn Ask SME into a structured mechanism for tightening the next review.",
+      "priority": "high",
+      "dependencies": ["S2"],
+      "stories": [
+        {
+          "id": "S3-01",
+          "title": "SME question generator",
+          "description": "Generate clarification questions instead of generic recommendations.",
+          "acceptance_criteria": [
+            "Ask SME returns targeted clarification questions",
+            "Questions are tied to weaknesses, gaps, or unresolved areas",
+            "Questions are concise and review-improving, not generic advice"
+          ]
+        },
+        {
+          "id": "S3-02",
+          "title": "Question selection flow",
+          "description": "Allow users to choose which suggested questions should tighten the next review.",
+          "acceptance_criteria": [
+            "Users can select or deselect suggested questions",
+            "Selected questions are inserted into prompt builder",
+            "Unselected questions do not affect the next review"
+          ]
+        },
+        {
+          "id": "S3-03",
+          "title": "Run tightened review",
+          "description": "Create the next review using the improved prompt assembled from baseline plus selected questions.",
+          "acceptance_criteria": [
+            "Review uses prompt builder content",
+            "Prompt changes are traceable",
+            "Next review reflects the tightening inputs"
+          ]
+        },
+        {
+          "id": "S3-04",
+          "title": "What changed summary",
+          "description": "Show a concise comparison between current review and previous review.",
+          "acceptance_criteria": [
+            "Review details include new, resolved, and unchanged findings",
+            "Users can quickly see how the review evolved",
+            "Comparison is tied to previous_review_id"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "name": "Weakness and Gap Intelligence",
+      "goal": "Identify where the current review is weak, unclear, or incomplete.",
+      "priority": "high",
+      "dependencies": ["S3"],
+      "stories": [
+        {
+          "id": "S4-01",
+          "title": "Weakness extraction",
+          "description": "Extract unclear areas, weak assumptions, low-confidence areas, and missing clarity from reviews.",
+          "acceptance_criteria": [
+            "System generates a structured weaknesses section",
+            "Weaknesses are visible in review details",
+            "Weaknesses can be used by Ask SME"
+          ]
+        },
+        {
+          "id": "S4-02",
+          "title": "Missing category visibility",
+          "description": "Make missing content areas explicit and visible to the user.",
+          "acceptance_criteria": [
+            "UI shows missing categories clearly",
+            "Missing categories can be used to drive suggested questions",
+            "Users can distinguish missing content from low-confidence content"
+          ]
+        },
+        {
+          "id": "S4-03",
+          "title": "Gap-aware SME",
+          "description": "Use previous review findings and weaknesses to generate better tightening questions.",
+          "acceptance_criteria": [
+            "Ask SME considers previous review findings",
+            "Ask SME considers weaknesses and missing categories",
+            "Question quality is more targeted than baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S5",
+      "name": "Decision Intelligence",
+      "goal": "Move from finding issues to identifying decisions that must be made next.",
+      "priority": "high",
+      "dependencies": ["S4"],
+      "stories": [
+        {
+          "id": "S5-01",
+          "title": "Decision point extraction",
+          "description": "Extract explicit decision points such as platform choice, DR inclusion, phasing approach, or cost trade-offs.",
+          "acceptance_criteria": [
+            "System generates a structured decision_points section",
+            "Decision points are visible in review details",
+            "Decision points can be linked to review findings"
+          ]
+        },
+        {
+          "id": "S5-02",
+          "title": "Decision-question mapping",
+          "description": "Map suggested SME questions to decision points.",
+          "acceptance_criteria": [
+            "Each suggested question can reference a decision point",
+            "Users can understand why a question matters",
+            "Prompt builder retains decision relevance"
+          ]
+        },
+        {
+          "id": "S5-03",
+          "title": "Decision status tracking",
+          "description": "Track decisions as open, addressed, validated, or rejected across iterations.",
+          "acceptance_criteria": [
+            "Decision status exists and can be updated by iteration logic",
+            "Decision status is visible in review details",
+            "Decision status can be compared across iterations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S6",
+      "name": "Resolution and Iteration Intelligence",
+      "goal": "Track whether weaknesses and decisions are actually being resolved review by review.",
+      "priority": "medium",
+      "dependencies": ["S5"],
+      "stories": [
+        {
+          "id": "S6-01",
+          "title": "Weakness resolution tracking",
+          "description": "Track whether identified weaknesses have been addressed across iterations.",
+          "acceptance_criteria": [
+            "Each weakness can be marked open, addressed, validated, or rejected",
+            "Resolution status is visible in the latest review",
+            "Latest review shows whether prior weaknesses remain unresolved"
+          ]
+        },
+        {
+          "id": "S6-02",
+          "title": "Iteration diff engine",
+          "description": "Compare review N and review N-1 in a structured way.",
+          "acceptance_criteria": [
+            "System shows resolved, new, and unchanged items",
+            "Diff includes decisions and weaknesses, not only risks",
+            "Users can understand why review quality improved or stagnated"
+          ]
+        },
+        {
+          "id": "S6-03",
+          "title": "Feedback integration into tightening loop",
+          "description": "Feed unresolved client feedback into the next review tightening cycle.",
+          "acceptance_criteria": [
+            "Only unresolved relevant feedback is injected",
+            "Feedback is visible in the next review context",
+            "Old resolved feedback does not pollute new review iterations"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S7",
+      "name": "Convergence and Learning Foundation",
+      "goal": "Measure proposal readiness and prepare the ground for future self-learning from prompts and outcomes.",
+      "priority": "medium",
+      "dependencies": ["S6"],
+      "stories": [
+        {
+          "id": "S7-01",
+          "title": "Convergence indicator",
+          "description": "Show how close the current review chain is to decision readiness.",
+          "acceptance_criteria": [
+            "System computes convergence based on resolved decisions and weaknesses",
+            "Convergence is visible as a secondary readiness indicator",
+            "Convergence is more important than completeness score"
+          ]
+        },
+        {
+          "id": "S7-02",
+          "title": "Proposal readiness gate",
+          "description": "Only allow proposal generation when the review chain is sufficiently tightened.",
+          "acceptance_criteria": [
+            "Proposal generation checks active review and convergence readiness",
+            "Critical unresolved decision points block proposal promotion when configured",
+            "Validation message explains what still needs attention"
+          ]
+        },
+        {
+          "id": "S7-03",
+          "title": "Prompt logging foundation",
+          "description": "Capture prompt inputs and outcomes so the system can learn later.",
+          "acceptance_criteria": [
+            "System stores baseline prompt, selected questions, user additions, and final prompt",
+            "System stores outcome links such as review result and proposal linkage",
+            "Prompt logging is retrievable for future analytics"
+          ]
+        },
+        {
+          "id": "S7-04",
+          "title": "Learning-ready retrieval",
+          "description": "Prepare a simple retrieval pattern for future self-learning without implementing autonomous learning yet.",
+          "acceptance_criteria": [
+            "Past successful prompts can be queried or listed",
+            "Prompt history can be filtered by persona, scenario, or project context",
+            "No autonomous retraining or optimisation is required in this sprint"
+          ]
+        }
+      ]
+    }
+  ],
+  "ambiguity_resolutions": {
+    "version": "1.1",
+    "resolved_at": "2026-05-30",
+    "resolutions": [
+      {
+        "id": "AR-01",
+        "ambiguity": "Definition of strongest review for proposal generation (S7-02, success criteria)",
+        "decision": "The strongest review is the Active Review explicitly selected by the user. The system does not choose automatically.",
+        "rules": [
+          "User is responsible for selecting the Active Review",
+          "System supports the decision but does not replace it",
+          "No automatic ranking or selection logic required"
+        ],
+        "future_enhancement": "A recommendation hint can be added later, but is out of scope until explicitly requested.",
+        "affects": ["S7-02"]
+      },
+      {
+        "id": "AR-02",
+        "ambiguity": "Client feedback data model and linkage for S6-03",
+        "decision": "Feedback is treated as additional artifacts: documents, transcripts, or notes. No complex schema required.",
+        "rules": [
+          "Feedback belongs to proposal_version_id if it exists, otherwise to version_id",
+          "Only recent and relevant feedback is injected into the next tightening cycle",
+          "No deep classification or tagging required in this sprint"
+        ],
+        "future_enhancement": "Structured feedback classification can be layered in a later sprint if needed.",
+        "affects": ["S6-03"]
+      },
+      {
+        "id": "AR-03",
+        "ambiguity": "Convergence formula and thresholds for S7-01 and S7-02",
+        "decision": "Convergence is not calculated numerically. The system shows a Decision Readiness indicator with three levels: Low, Medium, High.",
+        "rules": [
+          "Low: one or more unresolved decision points present",
+          "Medium: unresolved weaknesses present but no unresolved decision points",
+          "High: no unresolved decision points and no unresolved weaknesses",
+          "No weighting, scoring formula, or numeric thresholds required",
+          "Decision Readiness does not block any user action; it is informational only"
+        ],
+        "future_enhancement": "Weighting or threshold configuration can be introduced later if teams need tighter gates.",
+        "affects": ["S7-01", "S7-02"]
+      },
+      {
+        "id": "AR-04",
+        "ambiguity": "Persona and scenario as filter dimensions for prompt retrieval (S7-04)",
+        "decision": "Persona and scenario are stored as lightweight metadata fields on the review and prompt_builder_state. No new tables or schema changes required.",
+        "rules": [
+          "Fields are: persona_name (string) and scenario_type (string)",
+          "Fields are optional and attached to the existing review and prompt_builder_state structures",
+          "Retrieval filters on these fields in S7-04 use simple equality matching"
+        ],
+        "future_enhancement": "A controlled vocabulary or enum list for persona_name and scenario_type can be added later.",
+        "affects": ["S7-04"]
+      },
+      {
+        "id": "AR-05",
+        "ambiguity": "Scope of score demotion in S1-05 and risk of touching scoring logic",
+        "decision": "S1-05 is confirmed as a UI-only change. Scoring logic is not modified.",
+        "rules": [
+          "Score is moved to a small badge or secondary UI position",
+          "Score does not block any user action including marking Draft or Final",
+          "Scoring logic, storage, and computation remain unchanged",
+          "Score remains available as a visual reference for user decision support"
+        ],
+        "future_enhancement": "Capturing user reasoning when ignoring the score can be added later as a learning input.",
+        "affects": ["S1-05"]
+      }
+    ]
+  }
+}
