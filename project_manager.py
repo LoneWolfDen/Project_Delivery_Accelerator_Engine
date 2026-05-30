@@ -1613,8 +1613,17 @@ def finalise_presales(
 DIAGRAM_TYPES = ["dependency_map", "risk_heatmap", "scope_overview"]
 
 
-def generate_diagram(project_id: str, diagram_type: str) -> Dict[str, Any]:
+def generate_diagram(
+    project_id: str,
+    diagram_type: str,
+    version_id: Optional[str] = None,
+    review_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Generate a .drawio diagram from the project's built intelligence.
+
+    When ``version_id`` and/or ``review_id`` are supplied the diagram is
+    enriched with findings from that specific review so the output reflects
+    what was actually found, not just the latest intelligence build.
 
     Saves the XML to ``projects_data/{id}/diagrams/{type}.drawio`` and
     returns a summary dict."""
@@ -1634,6 +1643,51 @@ def generate_diagram(project_id: str, diagram_type: str) -> Dict[str, Any]:
             f"No intelligence built for project '{project_id}'. "
             "Run Intelligence first."
         )
+
+    # Merge review findings when a review context is supplied.
+    # Review findings are additive – they extend the base intelligence lists
+    # so the diagrams reflect what the selected review actually identified.
+    if review_id or version_id:
+        try:
+            from models.hierarchy import _make_hierarchy_store
+            store = _make_hierarchy_store(project_id)
+
+            # Resolve review: explicit review_id takes priority; fall back to
+            # active review on the requested version.
+            target_review = None
+            if review_id:
+                target_review = store.get_review(review_id)
+            elif version_id:
+                target_review = store.get_active_review_for_version(version_id)
+
+            if target_review and target_review.findings:
+                findings = target_review.findings
+                # Merge each finding category into intelligence lists.
+                for cat in ("risks", "assumptions", "dependencies", "constraints", "action_items"):
+                    base: List[Any] = list(intelligence.get(cat) or [])
+                    extra = findings.get(cat) or []
+                    # Deduplicate by lower-case string representation.
+                    seen = {str(x).lower() for x in base}
+                    for item in extra:
+                        if str(item).lower() not in seen:
+                            base.append(item)
+                            seen.add(str(item).lower())
+                    intelligence[cat] = base
+
+                # Use version scope if available and base scope is empty.
+                if version_id and not intelligence.get("scope"):
+                    ver = store.get_version(version_id)
+                    if ver and ver.scope:
+                        intelligence["scope"] = ver.scope
+
+                # Annotate so diagram title shows context.
+                intelligence["_review_context"] = {
+                    "version_id": version_id or target_review.version_id,
+                    "review_id": target_review.review_id,
+                    "persona": target_review.persona,
+                }
+        except Exception:
+            pass  # Degrade silently – use base intelligence unchanged
 
     xml = generate(diagram_type, intelligence)
 

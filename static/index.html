@@ -387,6 +387,7 @@ let state={
   backends:[],adminConfig:{},appName:'Contexta',
   lastDeepDive:null,_ddAllItems:[],
   _dashVersion:'',_dashReview:'',
+  _diagVersion:'',_diagReview:'',
   _intelCategory:null,
   _versionSort:'newest',
   _reviewSort:'newest',
@@ -2124,9 +2125,22 @@ async function viewDiagrams(){
   let existing=[];
   try{const r=await api('GET',`/api/projects/${pid}/diagrams`);existing=r.diagrams||[];}catch(e){}
 
+  // Load versions + reviews for context selector
+  let allVersions=[];
+  try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions`);allVersions=r.versions||[];}catch(e){}
+
+  const selDV=state._diagVersion||'';
+  const selDR=state._diagReview||'';
+
+  // Reviews available for selected version
+  let diagReviews=[];
+  if(selDV){
+    try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions/${selDV}`);diagReviews=r.reviews||[];}catch(e){}
+  }
+
   const TYPES=[
     {key:'dependency_map',   label:'Dependency Map',   icon:'🔗',
-     desc:'Nodes for each intelligence item grouped by category (risks, dependencies, assumptions, constraints, action items).'},
+     desc:'Dependency nodes with edges to related risks and constraints. Relationships drawn from shared keywords.'},
     {key:'risk_heatmap',     label:'Risk Heatmap',     icon:'🔴',
      desc:'Risks plotted on a 3×3 Impact vs Likelihood grid, colour-coded by severity.'},
     {key:'scope_overview',   label:'Scope Overview',   icon:'📄',
@@ -2143,16 +2157,41 @@ async function viewDiagrams(){
     </div></div>`;
   }
 
-  let html=`<div class="card">
+  // Context selector card
+  const vOpts=allVersions.map(v=>`<option value="${v.version_id}" ${v.version_id===selDV?'selected':''}>${escHtml(v.version_id)}${v.label?' – '+escHtml(v.label):''} (${fmtDateShort(v.created_at)})</option>`).join('');
+  const rOpts=diagReviews.map(r=>`<option value="${r.review_id}" ${r.review_id===selDR?'selected':''}>${r.review_id} – ${escHtml(r.persona||'')} (${fmtDateShort(r.created_at)})</option>`).join('');
+
+  let ctxNote='';
+  if(selDR){ctxNote=`<p style="font-size:11px;color:var(--accent);margin-top:6px">⬡ Diagrams include findings from review <strong>${escHtml(selDR)}</strong> merged with base intelligence.</p>`;}
+  else if(selDV){ctxNote=`<p style="font-size:11px;color:var(--text-dim);margin-top:6px">Showing base intelligence scoped to version <strong>${escHtml(selDV)}</strong>. Select a review to include its findings.</p>`;}
+
+  const ctxCard=`<div class="card">
     <div class="flex-between mb">
       <div class="card-title"><span class="icon">📐</span>Diagram Generator</div>
       <button class="btn btn-sm btn-outline" onclick="generateAllDiagrams()">⚡ Generate All</button>
     </div>
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:0">
-      Auto-generates .drawio diagrams from built project intelligence.
-      Open in <a href="https://app.diagrams.net" target="_blank" style="color:var(--accent)">diagrams.net</a> or VS Code Draw.io extension.
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
+      Diagrams are scoped to a version + review. Select context below then generate or refresh each diagram.
+      Open in <a href="https://app.diagrams.net" target="_blank" style="color:var(--accent)">diagrams.net</a>.
     </p>
+    ${allVersions.length?`<div class="flex" style="flex-wrap:wrap;gap:10px;align-items:flex-end">
+      <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:160px">
+        <label style="font-size:11px;color:var(--text-dim)">Version</label>
+        <select onchange="onDiagVersionChange(this.value)" style="width:100%">
+          <option value="">Latest (base intelligence)</option>${vOpts}
+        </select>
+      </div>
+      ${selDV?`<div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:180px">
+        <label style="font-size:11px;color:var(--text-dim)">Review</label>
+        <select onchange="onDiagReviewChange(this.value)" style="width:100%">
+          <option value="">No review (base only)</option>${rOpts}
+        </select>
+      </div>`:''}
+    </div>`:''}
+    ${ctxNote}
   </div>`;
+
+  let html=ctxCard;
 
   for(const t of TYPES){
     const isReady=existingKeys.has(t.key);
@@ -2181,6 +2220,18 @@ async function viewDiagrams(){
   return html;
 }
 
+function onDiagVersionChange(vid){
+  state._diagVersion=vid;
+  state._diagReview='';
+  render();
+}
+
+function onDiagReviewChange(rid){
+  state._diagReview=rid;
+  // Auto-select the version that owns this review if unset (shouldn't happen, but guard)
+  render();
+}
+
 async function generateDiagram(dtype){
   if(!state.current)return;
   const pid=state.current.id;
@@ -2188,13 +2239,17 @@ async function generateDiagram(dtype){
   const status=document.getElementById(`diag-status-${dtype}`);
   if(btn){btn.disabled=true;btn.textContent='⏳ Generating…';}
   if(status)status.textContent='';
+  // Pass version/review context so backend merges review findings
+  const body={};
+  if(state._diagVersion)body.version_id=state._diagVersion;
+  if(state._diagReview)body.review_id=state._diagReview;
   try{
-    const r=await api('POST',`/api/projects/${pid}/diagrams/${dtype}/generate`,{});
+    const r=await api('POST',`/api/projects/${pid}/diagrams/${dtype}/generate`,body);
     if(r.error){
       if(status)status.textContent=`Error: ${r.error}`;
-      if(btn){btn.disabled=false;btn.textContent='⚡ Generate';}
+      if(btn){btn.disabled=false;btn.textContent=btn.textContent.includes('Regenerate')?'🔄 Regenerate':'⚡ Generate';}
     }else{
-      toast(`${dtype.replace(/_/g,' ')} diagram generated (${(r.size_bytes/1024).toFixed(1)} KB)`);
+      toast(`${dtype.replace(/_/g,' ')} generated (${(r.size_bytes/1024).toFixed(1)} KB)`);
       render();
     }
   }catch(e){
@@ -2727,19 +2782,18 @@ async function viewPresales(){
     </div>
   </div>`;
 
-  // ── Run Review card (pre-sales context-aware) ─────────────
-  // Loaded backends for selector
-  const backendOpts=(state.backends||[]).map(b=>`<option value="${b.name}">${escHtml(b.display_name||b.name)}${b.available?'':' (unavailable)'}</option>`).join('');
-  const presalesRoles=['Solution Architect','Delivery Manager','Product Owner'];
-  const roleOpts=presalesRoles.map(r=>`<option value="${r}">${r}</option>`).join('');
+  // ── Reviews redirect card ────────────────────────────────
+  // Reviews are created from the Reviews tab. This card provides context
+  // and a single clear entry point — no duplicate review runner here.
   const runReviewCard=`<div class="card" style="border-top:2px solid var(--accent)">
     <div class="flex-between mb">
       <div class="card-title"><span class="icon">▶</span>Run Pre-Sales Review</div>
       ${activeReview?`<span class="fs11 c-muted">Last: ${escHtml(activeReview.persona||'')} · ${fmtDateShort(activeReview.created_at)}</span>`:''}
     </div>
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-      Runs a review scoped to the pre-sales phase. Any captured client feedback will be
-      automatically injected into the prompt so the analysis is aware of prior client responses.
+      Reviews are run from the <strong>Reviews tab</strong>. Once complete, upload client feedback
+      as an artefact and run a follow-up review — captured feedback is automatically injected
+      into the next review prompt.
     </p>
     ${activeReview?`<details style="margin-bottom:10px">
       <summary class="collapse-header" style="list-style:none;margin:0 0 0 0;border-radius:var(--radius)">
@@ -2762,10 +2816,10 @@ async function viewPresales(){
         <label class="fs11 c-dim">Backend</label>
         <select id="presalesBackendSelect" style="min-width:130px">${backendOpts}</select>
       </div>
-      <button class="btn" onclick="runPresalesReview()">▶ Run Review</button>
-      <button class="btn btn-ghost btn-sm" onclick="switchTab('reviews')">View all reviews →</button>
-    </div>
-    <div id="presalesReviewResult" class="mt"></div>
+      ${activeReview.summary?`<p style="font-size:11px;color:var(--text-dim)">${escHtml((activeReview.summary||'').slice(0,200))}${(activeReview.summary||'').length>200?'…':''}</p>`:''}
+      <button class="btn btn-xs btn-ghost mt-sm" onclick="openCaptureFeedback('','${activeReview.review_id}')">+ Log Feedback on this Review</button>
+    </div>`:'<p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">No review run yet for this project.</p>'}
+    <button class="btn btn-outline" onclick="switchTab('reviews')">→ Go to Reviews Tab</button>
   </div>`;
 
   // ── Stop Condition + Finalise (DS-12) ─────────────────────
@@ -2986,36 +3040,6 @@ async function updateProposalStatus(versionId,newStatus){
   if(!r.error)toast(`Status → ${newStatus.replace(/_/g,' ')}`);
   else toast(r.error,'err');
   setTimeout(()=>render(),400);
-}
-
-async function runPresalesReview(){
-  if(!state.current)return;
-  const pid=state.current.id;
-  const persona=document.getElementById('presalesRoleSelect')?.value||'Solution Architect';
-  const backend=document.getElementById('presalesBackendSelect')?.value||'files_only';
-  const el=document.getElementById('presalesReviewResult');
-  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running pre-sales review…</span>';
-
-  // Ensure we are in pre-sales phase before running
-  await api('POST',`/api/projects/${pid}/hierarchy/phase`,{phase_id:'pre-sales',reason:'Pre-sales review from Pre-Sales tab'});
-
-  const r=await api('POST','/api/review',{project_id:pid,persona,ai_backend:backend});
-  if(r.error){
-    el.innerHTML=`<p style="color:var(--red);font-size:12px">${escHtml(r.error)}</p>`;
-    return;
-  }
-  const findings=r.findings||{};
-  const total=Object.values(findings).reduce((s,v)=>s+(Array.isArray(v)?v.length:0),0);
-  el.innerHTML=`<div style="margin-top:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--green-dim);border-radius:var(--radius)">
-    <p style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:4px">✓ Review complete — ${total} findings</p>
-    ${r.summary?`<p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${escHtml((r.summary||'').slice(0,200))}${(r.summary||'').length>200?'…':''}</p>`:''}
-    <div class="flex gap-sm">
-      <button class="btn btn-xs btn-outline" onclick="switchTab('reviews')">View Full Review</button>
-      <button class="btn btn-xs btn-ghost" onclick="openCaptureFeedback('')">+ Log Client Response</button>
-    </div>
-  </div>`;
-  // Refresh presales summary after short delay
-  setTimeout(()=>render(),1200);
 }
 
 function openCaptureFeedback(proposalVerId='',reviewId=''){
