@@ -176,6 +176,10 @@ class Review:
     previous_review_id: str = ""      # explicit link to predecessor review
     iteration_number: int = 0         # 1-based iteration within a version (R1, R2 …)
 
+    # S2: structured prompt builder state
+    # Schema: {injected_questions: [str], user_notes: str}
+    prompt_builder_state: Optional[Dict[str, Any]] = None
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -204,6 +208,7 @@ class Review:
             "completed_by":       self.completed_by,
             "previous_review_id": self.previous_review_id,
             "iteration_number":   self.iteration_number,
+            "prompt_builder_state": self.prompt_builder_state,
         }
 
 

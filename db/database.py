@@ -339,15 +339,17 @@ class Database:
         # ── reviews: DS-01 quality-gate columns ──────────────────────────────
         rev_cols = _existing_cols("reviews")
         for col, definition in [
-            ("completeness_score", "INTEGER DEFAULT 0"),
-            ("quality_status",     "TEXT DEFAULT 'pending'"),
-            ("completed_by",       "TEXT DEFAULT ''"),
-            ("completed_at",       "TEXT DEFAULT ''"),
-            ("decided_by",         "TEXT DEFAULT ''"),
-            ("deep_dive",          "TEXT DEFAULT NULL"),
-            ("feedback",           "TEXT DEFAULT NULL"),
+            ("completeness_score",  "INTEGER DEFAULT 0"),
+            ("quality_status",      "TEXT DEFAULT 'pending'"),
+            ("completed_by",        "TEXT DEFAULT ''"),
+            ("completed_at",        "TEXT DEFAULT ''"),
+            ("decided_by",          "TEXT DEFAULT ''"),
+            ("deep_dive",           "TEXT DEFAULT NULL"),
+            ("feedback",            "TEXT DEFAULT NULL"),
             # S1: review chaining
-            ("previous_review_id", "TEXT DEFAULT ''"),
+            ("previous_review_id",  "TEXT DEFAULT ''"),
+            # S2: prompt builder state
+            ("prompt_builder_state", "TEXT DEFAULT NULL"),
         ]:
             if col not in rev_cols:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {definition}")
