@@ -1589,6 +1589,12 @@ async function viewReviewDetail(rid){
   if(r.error){toast(r.error,'err');return;}
 
   const vc=r.version_context||{};
+  // S2-03: Baseline vs Customised badge for detail view
+  const detPbs=r.prompt_builder_state;
+  const detIsCustomised=detPbs&&((detPbs.injected_questions||[]).length>0||(detPbs.user_notes||'').trim().length>0);
+  const detPromptBadge=detIsCustomised
+    ?`<span class="tag tag-purple" style="font-size:10px">Customised</span>`
+    :`<span class="tag" style="font-size:10px">Baseline</span>`;
   let html=`<div class="card">
     <div class="flex-between mb">
       <div class="card-title"><span class="icon">🔍</span>Review ${escHtml(r.review_id)}</div>
@@ -1601,6 +1607,7 @@ async function viewReviewDetail(rid){
       <span class="tag">${escHtml(r.ai_backend||'files_only')}</span>
       ${r.iteration_number?`<span class="tag" style="font-weight:700">R${r.iteration_number}</span>`:''}
       ${r.previous_review_id?`<span class="tag" style="color:var(--text-dim)">Follows: ${escHtml(r.previous_review_id)}</span>`:''}
+      ${detPromptBadge}
       <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${fmtDate(r.created_at)}</span>
     </div>`;
 
@@ -1682,6 +1689,26 @@ async function viewReviewDetail(rid){
       <div class="prompt-box" style="margin-top:6px">${escHtml(r.custom_prompt)}</div>
     </details>`;
   }
+  // S2-02: show prompt builder state breakdown when present
+  if(r.prompt_builder_state){
+    const pbs=r.prompt_builder_state;
+    const qs=pbs.injected_questions||[];
+    const notes=(pbs.user_notes||'').trim();
+    if(qs.length||notes){
+      html+=`<details style="margin-top:6px">
+        <summary class="collapse-header" style="list-style:none;margin-bottom:0">
+          <span class="chevron">▶</span> <span class="fs12 c-accent">Prompt Builder State</span>
+          ${qs.length?`<span class="tag tag-purple" style="font-size:9px;margin-left:6px">${qs.length} injected</span>`:''}
+        </summary>
+        <div style="padding:8px 10px;background:var(--surface2);border-radius:var(--radius);margin-top:4px">
+          ${qs.length?`<p class="fs10 c-dim" style="margin-bottom:4px;font-weight:600">Injected Questions:</p>
+            ${qs.map(q=>`<div class="findings-item" style="font-size:11px">❓ ${escHtml(q)}</div>`).join('')}`:''}
+          ${notes?`<p class="fs10 c-dim" style="margin-top:6px;margin-bottom:2px;font-weight:600">User Notes:</p>
+            <p style="font-size:11px;white-space:pre-wrap">${escHtml(notes)}</p>`:''}
+        </div>
+      </details>`;
+    }
+  }
   if(r.ai_metadata?.tokens_used){
     html+=`<p style="font-size:11px;color:var(--text-muted);margin-top:10px">
       Tokens: ${r.ai_metadata.tokens_used} · Latency: ${r.ai_metadata.latency_ms}ms · Model: ${escHtml(r.ai_metadata.model||'–')}
@@ -1762,26 +1789,68 @@ async function viewReviews(){
         color:var(--text);font-size:12px">${backendOpts}</select>
     </div>
 
-    <div class="form-row" style="margin-top:10px">
-      <label>Custom Prompt
-        <span class="fs10 c-muted"> (optional — add constraints, context, or selected SME questions)</span>
-      </label>
-      <textarea id="customPrompt" rows="3"
-        placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available.&#10;Selected SME questions will be added here automatically."></textarea>
-    </div>
-
-    <div class="flex gap-sm" class="mt8">
-      <button class="btn btn-outline" onclick="runDeepDive()" title="Generate targeted SME questions before running the review">
+    <div class="mt8">
+      <button class="btn btn-outline" onclick="runDeepDive()" title="Generate targeted SME questions before running the review" style="margin-bottom:8px">
         🔬 Ask SME Questions
       </button>
+      <p style="font-size:10px;color:var(--text-muted);margin-bottom:10px">
+        💡 Workflow: Select role(s) → <strong>Ask SME Questions</strong> → tick questions →
+        <strong>Add to Prompt</strong> → add notes → <strong>Run Review</strong>
+      </p>
+    </div>
+
+    <!-- S2-01: Three-section prompt builder -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:4px">
+      <!-- Section 1: Baseline prompt (collapsed read-only preview) -->
+      <details id="baselinePromptSection" style="border-bottom:1px solid var(--border)">
+        <summary style="list-style:none;cursor:pointer;padding:7px 10px;background:var(--surface2);
+          display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-dim)">
+          <span class="chevron">▶</span>
+          <span>① Baseline Persona Prompt</span>
+          <span class="tag" style="font-size:9px;margin-left:auto">read-only</span>
+        </summary>
+        <div id="baselinePromptPreview" style="padding:8px 10px;font-size:11px;color:var(--text-muted);
+          font-family:monospace;white-space:pre-wrap;background:var(--bg);max-height:120px;overflow-y:auto">
+          Select a role above to preview the baseline prompt.
+        </div>
+      </details>
+
+      <!-- Section 2: Injected SME questions -->
+      <div style="border-bottom:1px solid var(--border);padding:8px 10px;background:var(--surface)">
+        <div style="font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:6px">
+          ② Injected Questions
+          <span id="injectedCount" class="tag" style="font-size:9px;margin-left:4px">0</span>
+        </div>
+        <div id="injectedQuestions" style="display:flex;flex-wrap:wrap;gap:5px;min-height:24px">
+          <span style="font-size:11px;color:var(--text-muted);font-style:italic">
+            No questions added yet — use Ask SME Questions above.
+          </span>
+        </div>
+      </div>
+
+      <!-- Section 3: User notes (free text) -->
+      <div style="padding:8px 10px;background:var(--surface)">
+        <label style="font-size:11px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:4px">
+          ③ Additional Notes <span class="fs10 c-muted">(optional constraints, context)</span>
+        </label>
+        <textarea id="userNotes" rows="2"
+          placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available."
+          style="width:100%;background:var(--surface2);border:1px solid var(--border);
+            border-radius:var(--radius);color:var(--text);font-size:12px;padding:6px 8px;
+            resize:vertical"></textarea>
+      </div>
+    </div>
+
+    <div class="flex gap-sm mt8">
       <button class="btn" onclick="runReview()">▶ Run Review</button>
     </div>
-    <p style="font-size:10px;color:var(--text-muted);margin-top:6px">
-      💡 Workflow: Select role(s) → <strong>Ask SME Questions</strong> → tick relevant questions →
-      <strong>Add to Prompt</strong> → <strong>Run Review</strong>
-    </p>
     <div id="deepDiveResult" class="mt"></div>
     <div id="reviewResult" class="mt"></div>
+    <script>
+      // S2-01: initialise injected questions chip list after DOM is ready
+      if(!state._injectedQuestions)state._injectedQuestions=[];
+      setTimeout(()=>_renderInjectedQuestions(),0);
+    </script>
   </div>`;
 
   let listHtml='';
@@ -1818,6 +1887,12 @@ async function viewReviews(){
       for(const rev of revs){
         const rid=rev.review_id||'';if(!rid)continue;
         const isActive=rid===activeId;
+        // S2-03: Baseline vs Customised badge
+        const pbs=rev.prompt_builder_state;
+        const isCustomised=pbs&&((pbs.injected_questions||[]).length>0||(pbs.user_notes||'').trim().length>0);
+        const promptBadge=isCustomised
+          ?`<span class="tag tag-purple" style="font-size:9px">Customised</span>`
+          :`<span class="tag" style="font-size:9px">Baseline</span>`;
         listHtml+=`<details style="margin:4px 0;background:var(--bg);border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:var(--radius);overflow:hidden">
           <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:7px 10px"
             onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
@@ -1827,6 +1902,7 @@ async function viewReviews(){
             ${isActive?'<span class="tag tag-green">active</span>':''}
             <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
             <span class="tag">${escHtml(rev.ai_backend||'files_only')}</span>
+            ${promptBadge}
             ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
             <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${relativeTime(rev.created_at)} · ${fmtDateShort(rev.created_at)}</span>
           </summary>
@@ -1887,6 +1963,12 @@ function _onRoleCheck(chk){
   const badge=document.getElementById('roleCountBadge');
   if(checked.length>3){chk.checked=false;toast('Maximum 3 roles per review','err');return;}
   if(badge)badge.textContent=`(${checked.length} selected — max 3)`;
+  // S2-01: update baseline prompt preview
+  const roles=checked.map(c=>c.value);
+  _getBaselinePrompt(roles).then(text=>{
+    const el=document.getElementById('baselinePromptPreview');
+    if(el)el.textContent=text;
+  });
 }
 
 // ── Review runner ─────────────────────────────────────────────────────────
@@ -1894,11 +1976,25 @@ async function runReview(){
   const roles=_getSelectedRoles();
   if(!roles.length){toast('Select at least one role','err');return;}
   const backend=document.getElementById('backendSelect')?.value||'files_only';
-  const custom=document.getElementById('customPrompt')?.value.trim()||'';
+
+  // S2-01: assemble prompt from builder state
+  const injected=state._injectedQuestions||[];
+  const userNotes=(document.getElementById('userNotes')?.value||'').trim();
+  const parts=[];
+  if(injected.length)parts.push(injected.join('\n'));
+  if(userNotes)parts.push(userNotes);
+  const custom=parts.join('\n\n');
+
+  // S2-02: structured prompt builder state for persistence
+  const promptBuilderState={
+    injected_questions:[...injected],
+    user_notes:userNotes,
+  };
+
   const el=document.getElementById('reviewResult');
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running review…</span>';
 
-  const body={project_id:state.current.id,roles,ai_backend:backend};
+  const body={project_id:state.current.id,roles,ai_backend:backend,prompt_builder_state:promptBuilderState};
   if(custom)body.custom_prompt=custom;
   const r=await api('POST','/api/review',body);
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
@@ -1991,7 +2087,7 @@ async function runDeepDive(){
     return;
   }
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Generating SME questions…</span>';
-  const custom=document.getElementById('customPrompt')?.value||'';
+  const custom=document.getElementById('userNotes')?.value||'';
   const backend=document.getElementById('backendSelect')?.value||'files_only';
   const allRoles=roles;
   let mergedGroups=[],mergedQuestions=[],mergedPct=0;
@@ -2113,14 +2209,70 @@ function _getSelectedDDItems(){
 async function addSelectedToPrompt(){
   const items=_getSelectedDDItems();
   if(!items.length){toast('No questions selected','err');return;}
+  // S2-01: strip role prefix tags and push into state._injectedQuestions (not textarea)
   const cleaned=items.map(q=>q.replace(/^\[[^\]]+\]\s*/,''));
-  const ta=document.getElementById('customPrompt');
-  if(ta){ta.value=(ta.value?ta.value+'\n\n':'')+cleaned.join('\n');}
+  if(!state._injectedQuestions)state._injectedQuestions=[];
+  for(const q of cleaned){
+    if(!state._injectedQuestions.includes(q))state._injectedQuestions.push(q);
+  }
+  _renderInjectedQuestions();
   toast(`Added ${cleaned.length} question(s) to prompt — now click Run Review`);
   document.getElementById('ddFeedbackResult').innerHTML=
     `<p style="color:var(--green);font-size:12px">✓ Added ${cleaned.length} question(s). Click <strong>Run Review</strong>.</p>`;
 }
 async function acceptAllSuggestions(){await addSelectedToPrompt();}
+
+// S2-01: Render injected question chips and update counter badge
+function _renderInjectedQuestions(){
+  const container=document.getElementById('injectedQuestions');
+  const countEl=document.getElementById('injectedCount');
+  const qs=state._injectedQuestions||[];
+  if(countEl)countEl.textContent=qs.length;
+  if(!container)return;
+  if(!qs.length){
+    container.innerHTML='<span style="font-size:11px;color:var(--text-muted);font-style:italic">No questions added yet — use Ask SME Questions above.</span>';
+    return;
+  }
+  container.innerHTML=qs.map((q,i)=>`
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;
+      padding:3px 8px;border:1px solid var(--accent-dim);border-radius:20px;
+      background:var(--surface2);max-width:340px">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px"
+        title="${escHtml(q)}">${escHtml(q.slice(0,80))}${q.length>80?'…':''}</span>
+      <button onclick="_removeInjectedQuestion(${i})" style="background:none;border:none;
+        color:var(--text-muted);cursor:pointer;padding:0;font-size:12px;line-height:1"
+        title="Remove">✕</button>
+    </span>`).join('');
+}
+
+// S2-01: Remove a single injected question chip
+function _removeInjectedQuestion(idx){
+  if(!state._injectedQuestions)return;
+  state._injectedQuestions.splice(idx,1);
+  _renderInjectedQuestions();
+}
+
+// S2-01: Populate baseline prompt preview when a role is selected
+async function _getBaselinePrompt(roles){
+  if(!roles||!roles.length)return'Select a role above to preview the baseline prompt.';
+  try{
+    const personas=await api('GET','/api/personas');
+    const allRoles=personas.personas||personas.roles||[];
+    const lines=[];
+    for(const role of roles){
+      const p=allRoles.find(r=>r.id===role||r.name===role);
+      if(p){
+        const label=p.name||role;
+        const purpose=p.purpose||p.description||'';
+        const group=p.group_name||'';
+        lines.push(`[${label}${group?' · '+group:''}]${purpose?' '+purpose:''}`);
+      }
+    }
+    return lines.length?lines.join('\n'):'No baseline prompt available for selected roles.';
+  }catch(e){
+    return'Could not load baseline prompt.';
+  }
+}
 </script>
 
 <script>

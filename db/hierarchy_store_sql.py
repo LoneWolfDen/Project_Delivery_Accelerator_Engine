@@ -264,6 +264,7 @@ class HierarchyStoreSQLite:
         ai_metadata: Optional[Dict[str, Any]] = None,
         deep_dive: Optional[Dict[str, Any]] = None,
         previous_review_id: str = "",
+        prompt_builder_state: Optional[Dict[str, Any]] = None,
     ):
         from models.hierarchy import Review  # noqa: PLC0415
         db = self._db
@@ -289,8 +290,9 @@ class HierarchyStoreSQLite:
                 prompt_used, custom_prompt, output, findings, questions, summary,
                 included_files, categories, ai_metadata,
                 deep_dive, feedback, completeness_score, quality_status,
-                completed_by, completed_at, decided_by, previous_review_id, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                completed_by, completed_at, decided_by, previous_review_id,
+                prompt_builder_state, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 review_id, self.project_id, version_id, phase_id, persona, ai_backend,
                 prompt_used, custom_prompt,
@@ -305,6 +307,7 @@ class HierarchyStoreSQLite:
                 None,  # feedback – empty initially
                 0, "pending", "", "", "",  # DS-02 quality gate defaults
                 previous_review_id,
+                Database.jdump(prompt_builder_state) if prompt_builder_state is not None else None,
                 now,
             ),
         )
@@ -332,6 +335,7 @@ class HierarchyStoreSQLite:
             deep_dive=deep_dive,
             previous_review_id=previous_review_id,
             iteration_number=iteration_number,
+            prompt_builder_state=prompt_builder_state,
         )
         self._file_save_review(review)
         if version:
@@ -570,6 +574,7 @@ class HierarchyStoreSQLite:
             previous_review_id=row.get("previous_review_id", ""),
             # iteration_number is computed by list_reviews; default 0 here
             iteration_number=row.get("iteration_number", 0),
+            prompt_builder_state=Database.jload(row.get("prompt_builder_state"), None),
         )
 
     # ── File dual-write helpers ───────────────────────────────

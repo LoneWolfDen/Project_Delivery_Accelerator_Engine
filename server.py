@@ -777,6 +777,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         ai_backend = body.get("ai_backend", "files_only")
         custom_prompt = body.get("custom_prompt")
         previous_review_id = body.get("previous_review_id", "")
+        prompt_builder_state = body.get("prompt_builder_state")  # S2: structured builder state
 
         if not project_id:
             self._json_response({"error": "project_id required"}, status=400)
@@ -792,6 +793,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 ai_backend=ai_backend,
                 custom_prompt=custom_prompt,
                 previous_review_id=previous_review_id,
+                prompt_builder_state=prompt_builder_state,
             )
             self._json_response(result)
         except ValueError as e:

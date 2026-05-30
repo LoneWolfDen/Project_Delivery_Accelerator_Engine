@@ -751,6 +751,7 @@ def run_persona_review(
     ai_backend: str = "files_only",
     custom_prompt: Optional[str] = None,
     previous_review_id: str = "",
+    prompt_builder_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Run a persona-driven review for a project.
 
@@ -926,6 +927,7 @@ def run_persona_review(
         ai_metadata=review.get("ai_metadata", {}),
         deep_dive=review.get("deep_dive"),
         previous_review_id=previous_review_id,
+        prompt_builder_state=prompt_builder_state,
     )
 
     # Update iteration tracking
