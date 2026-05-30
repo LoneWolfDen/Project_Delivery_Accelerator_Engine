@@ -404,6 +404,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(result)
             except ValueError as e:
                 self._json_response({"error": str(e)}, status=400)
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/decision/" in self.path and self.path.endswith("/status"):
+            # POST /api/projects/{id}/hierarchy/reviews/{review_id}/decision/{decision_id}/status
+            parts = self.path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            decision_id = parts[8]
+            body = self._read_body() or {}
+            result = project_manager.update_decision_status(
+                project_id, review_id, decision_id, body.get("status", "")
+            )
+            if result.get("error"):
+                self._json_response(result, status=400)
+            else:
+                self._json_response(result)
         elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path and self.path.endswith("/set-active-review-gated"):
             # POST /api/projects/{id}/hierarchy/versions/{version_id}/set-active-review-gated
             parts = self.path.split("/")
@@ -1087,6 +1101,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         review_id = body.get("review_id", "")
         weaknesses = []
         missing_categories = []
+        decision_points = []
         if review_id:
             try:
                 from models.hierarchy import _make_hierarchy_store
@@ -1096,12 +1111,18 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 if review:
                     weaknesses = extract_weaknesses(review.findings)
                     missing_categories = compute_missing_categories(review.findings)
+                    decision_points = [
+                        dp for dp in (review.decision_points or [])
+                        if dp.get("status", "open") == "open"
+                    ]
             except Exception:
                 pass
         try:
             result = project_manager.run_deep_dive_analysis(
                 project_id, persona, custom_prompt,
-                weaknesses=weaknesses, missing_categories=missing_categories,
+                weaknesses=weaknesses,
+                missing_categories=missing_categories,
+                decision_points=decision_points,
             )
             self._json_response(result)
         except ValueError as e:

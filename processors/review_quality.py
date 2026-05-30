@@ -41,6 +41,18 @@ _WEAKNESS_SIGNALS = [
 # S4-01: minimum word count — short findings are flagged as weak
 _WEAK_ITEM_MIN_WORDS = 8
 
+# S5-01: phrases that signal a decision must be made
+_DECISION_SIGNALS = [
+    "choose between", "decide", "which approach", "platform choice",
+    "dr vs", "phasing", "cost trade-off", "in scope or out",
+    "option a", "option b", "we need to decide", "decision required",
+    "trade-off", "tradeoff", "versus", " vs ", "either", "or both",
+    "make a decision", "needs a decision", "decision needed",
+]
+
+# Valid status values for a decision point (S5-03)
+DECISION_STATUSES = ("open", "addressed", "validated", "rejected")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -156,6 +168,58 @@ def compute_missing_categories(findings: Dict[str, Any]) -> List[str]:
         cat for cat in STANDARD_CATEGORIES
         if not (isinstance(findings.get(cat), list) and len(findings.get(cat, [])) > 0)
     ]
+
+
+# ──────────────────────────────────────────────────────────────
+# S5-01: Decision point extraction
+# ──────────────────────────────────────────────────────────────
+
+def extract_decision_points(findings: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Derive structured decision points from review findings.
+
+    A decision point is a finding item that contains one or more
+    decision-signal phrases (choose between, decide, which approach, …).
+
+    Returns a list of dicts:
+        [{id, text, category, status, linked_finding}]
+    where status defaults to "open" and linked_finding is the
+    original finding text (same as text for traceability).
+
+    Rules:
+    - Only inspects existing findings — never invents data.
+    - Deterministic: same findings always produce same decision points.
+    - Backward-compatible: returns [] for empty or None findings.
+    """
+    if not findings or not isinstance(findings, dict):
+        return []
+
+    decision_points: List[Dict[str, Any]] = []
+    seen: set = set()  # deduplicate by normalised text
+
+    for category, items in findings.items():
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if not text:
+                continue
+
+            norm = text.lower()
+            is_decision = any(signal in norm for signal in _DECISION_SIGNALS)
+
+            if is_decision and norm not in seen:
+                seen.add(norm)
+                decision_points.append({
+                    "id":             f"d{len(decision_points) + 1}",
+                    "text":           text,
+                    "category":       category,
+                    "status":         "open",
+                    "linked_finding": text,
+                })
+
+    return decision_points
 
 
 # ──────────────────────────────────────────────────────────────

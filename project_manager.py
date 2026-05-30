@@ -914,10 +914,35 @@ def run_persona_review(
     categories = list(dict.fromkeys(legacy_categories + artifact_categories))
 
     # S4-01/S4-02: extract weaknesses and missing categories from findings
-    from processors.review_quality import extract_weaknesses, compute_missing_categories
+    # S5-01: extract decision points from findings
+    from processors.review_quality import (
+        extract_weaknesses, compute_missing_categories, extract_decision_points,
+    )
     review_findings = review.get("findings", {})
     computed_weaknesses = extract_weaknesses(review_findings)
     computed_missing = compute_missing_categories(review_findings)
+    computed_decision_points = extract_decision_points(review_findings)
+
+    # S5-03: inherit open decision points from predecessor review
+    if previous_review_id:
+        try:
+            pred = store.get_review(previous_review_id)
+            if pred:
+                inherited = [
+                    dp for dp in (pred.decision_points or [])
+                    if dp.get("status") == "open"
+                ]
+                # Only add those whose text isn't already in the new set
+                existing_texts = {dp["text"] for dp in computed_decision_points}
+                for dp in inherited:
+                    if dp["text"] not in existing_texts:
+                        # Re-id to avoid collision
+                        new_dp = dict(dp)
+                        new_dp["id"] = f"d{len(computed_decision_points) + 1}"
+                        computed_decision_points.append(new_dp)
+                        existing_texts.add(dp["text"])
+        except Exception:
+            pass
 
     store.create_review(
         version_id=latest_version_id,
@@ -935,10 +960,12 @@ def run_persona_review(
         previous_review_id=previous_review_id,
         prompt_builder_state=prompt_builder_state,
         weaknesses=computed_weaknesses,
+        decision_points=computed_decision_points,
     )
 
     review["weaknesses"] = computed_weaknesses
     review["missing_categories"] = computed_missing
+    review["decision_points"] = computed_decision_points
 
     # Update iteration tracking
     _update_iteration_on_review(project_id)
@@ -1324,6 +1351,7 @@ def run_deep_dive_analysis(
     custom_prompt: str = "",
     weaknesses: Optional[List[Dict[str, Any]]] = None,
     missing_categories: Optional[List[str]] = None,
+    decision_points: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Run explicit Deep Dive analysis (standalone, not part of review)."""
 
@@ -1363,6 +1391,7 @@ def run_deep_dive_analysis(
         ai_backend=project.get("ai_backend", "files_only"),
         weaknesses=weaknesses,
         missing_categories=missing_categories,
+        decision_points=decision_points,
     )
 
     # Persist deep dive result so feedback endpoint can find it
@@ -1575,6 +1604,46 @@ def set_active_review_gated(
     return set_active_review_with_gate(
         project_id, version_id, review_id, decided_by, force
     )
+
+
+# ──────────────────────────────────────────────────────────────
+# S5-03: Decision status tracking
+# ──────────────────────────────────────────────────────────────
+
+def update_decision_status(
+    project_id: str,
+    review_id: str,
+    decision_id: str,
+    status: str,
+) -> Dict[str, Any]:
+    """Update the status of a single decision point on a review.
+
+    Loads the review, finds the decision point by id, updates its status,
+    persists back to DB and file mirror.
+
+    Valid statuses: open | addressed | validated | rejected
+    Returns the updated decision point dict, or an error dict.
+    """
+    from processors.review_quality import DECISION_STATUSES
+    from models.hierarchy import _make_hierarchy_store
+
+    if status not in DECISION_STATUSES:
+        return {"error": f"Invalid status '{status}'. Must be one of: {', '.join(DECISION_STATUSES)}"}
+
+    store = _make_hierarchy_store(project_id)
+    review = store.get_review(review_id)
+    if review is None:
+        return {"error": f"Review not found: {review_id}"}
+
+    dps = list(review.decision_points or [])
+    target = next((dp for dp in dps if dp.get("id") == decision_id), None)
+    if target is None:
+        return {"error": f"Decision point '{decision_id}' not found in review {review_id}"}
+
+    target["status"] = status
+    store.update_review_decision_points(review_id, dps)
+
+    return {"review_id": review_id, "decision_id": decision_id, "status": status, "updated": True}
 
 
 # ──────────────────────────────────────────────────────────────

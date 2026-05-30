@@ -184,6 +184,9 @@ class Review:
     weaknesses: List[Dict[str, Any]] = field(default_factory=list)
     missing_categories: List[str] = field(default_factory=list)
 
+    # S5: decision intelligence
+    decision_points: List[Dict[str, Any]] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -215,6 +218,7 @@ class Review:
             "prompt_builder_state": self.prompt_builder_state,
             "weaknesses":         self.weaknesses,
             "missing_categories": self.missing_categories,
+            "decision_points":    self.decision_points,
         }
 
 
