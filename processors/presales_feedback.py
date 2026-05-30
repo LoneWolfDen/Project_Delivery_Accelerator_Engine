@@ -134,6 +134,7 @@ def attach_feedback_to_context(project_id: str, feedback_record: Dict[str, Any])
 
     DS-06: only items with status='new' are injected — addressed/deferred
     items are excluded to prevent noise in repeated reviews.
+    S6-03: records linked to a version_id (no proposal yet) are also cached.
     """
     path = _cache_path(project_id)
     cache: List[Dict[str, Any]] = []
@@ -155,6 +156,8 @@ def attach_feedback_to_context(project_id: str, feedback_record: Dict[str, Any])
             cache.append({
                 **feedback_record,
                 "feedback_items": new_items,  # strip non-new items from cache
+                # S6-03: preserve version_id alongside proposal_ver_id for scoped eviction
+                "version_id": feedback_record.get("version_id", ""),
             })
 
     with open(path, "w") as f:
@@ -173,6 +176,7 @@ def clear_feedback_cache_for_version(
 ) -> None:
     """Remove feedback items linked to a specific proposal version from the cache.
 
+    S6-03: also evicts records linked by version_id when proposal_ver_id matches.
     Called when a new proposal version is created — prior version's
     feedback becomes historical, not active injection context.
     """
@@ -188,6 +192,7 @@ def clear_feedback_cache_for_version(
     updated = [
         e for e in cache
         if e.get("proposal_ver_id") != proposal_ver_id
+        and e.get("version_id") != proposal_ver_id
     ]
     with open(path, "w") as f:
         json.dump(updated, f, indent=2)

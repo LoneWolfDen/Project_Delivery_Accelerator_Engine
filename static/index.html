@@ -1725,10 +1725,12 @@ async function viewReviewDetail(rid){
       <div class="flex-between mb">
         <div class="card-title" style="font-size:12px"><span class="icon">⚠️</span>Weaknesses <span class="tag" style="background:var(--yellow);color:#000">${weaknesses.length}</span></div>
       </div>
-      ${weaknesses.map(w => `<div class="findings-item" style="font-size:12px">
+      ${weaknesses.map(w => `<div class="findings-item" style="font-size:12px;display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
         <span class="tag" style="font-size:9px">${escHtml(w.category||'')}</span>
-        <span class="tag tag-yellow" style="font-size:9px">${escHtml(w.status||'open')}</span>
-        ${escHtml(w.text||'')}
+        <select style="font-size:9px;padding:1px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text)" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value)">
+          ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${w.status===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+        <span style="flex:1">${escHtml(w.text||'')}</span>
       </div>`).join('')}
     </div>`;
   }
@@ -1762,13 +1764,46 @@ async function viewReviewDetail(rid){
       <p class="fs11 c-dim" style="margin-top:6px">Decisions that must be made before this review can be finalised.</p>
     </div>`;
   }
-  // S3-04: What Changed — show diff section when a predecessor review exists
+  // S6-02: What Changed — fetch real diff when predecessor exists
   if(r.previous_review_id){
-    html+=`<div class="card" style="margin-top:8px;border-top:2px solid var(--accent-dim)">
+    let diffHtml = '';
+    try {
+      const diff = await api('GET', `/api/projects/${pid}/hierarchy/reviews/${r.review_id}/diff`);
+      if (diff && !diff.error) {
+        function _diffSection(label, icon, data) {
+          if (!data) return '';
+          const newItems = data.new || [];
+          const resolved = data.resolved || [];
+          const unchanged = data.unchanged || 0;
+          if (!newItems.length && !resolved.length && !unchanged) return '';
+          const rows = [
+            ...newItems.map(i => `<div class="diff-added">${escHtml((i.text||i.category||String(i)).slice(0,120))}</div>`),
+            ...resolved.map(i => `<div class="diff-removed">${escHtml((i.text||i.category||String(i)).slice(0,120))}</div>`),
+          ].join('') || `<p class="fs11 c-dim" style="padding:2px 0">No changes</p>`;
+          const badge = newItems.length
+            ? `<span class="diff-trend up">+${newItems.length}</span>`
+            : resolved.length
+              ? `<span class="diff-trend down">−${resolved.length}</span>`
+              : `<span class="diff-trend same">~</span>`;
+          return `<details class="mb8">
+            <summary class="diff-cat-header">
+              <span>${icon}</span><strong style="font-size:12px">${label}</strong>
+              ${badge}
+              <span class="diff-count" style="margin-left:auto">${unchanged} unchanged</span>
+            </summary>
+            <div class="diff-cat-body">${rows}</div>
+          </details>`;
+        }
+        diffHtml = _diffSection('Findings', '📋', diff.findings)
+                 + _diffSection('Weaknesses', '⚠️', diff.weaknesses)
+                 + _diffSection('Decision Points', '🎯', diff.decision_points);
+      }
+    } catch(e) {}
+    html+=`<div class="card diff-card" style="margin-top:8px">
       <div class="flex-between mb">
         <div class="card-title" style="font-size:12px"><span class="icon">🔄</span>What Changed from ${escHtml(r.previous_review_id)}</div>
       </div>
-      <p class="fs11 c-dim">Comparing against predecessor review ${escHtml(r.previous_review_id)}.</p>
+      ${diffHtml || '<p class="fs11 c-dim">Diff unavailable.</p>'}
     </div>`;
   }
   // S3-03: Tighten button — pre-populates previousReviewId and switches to Reviews tab
@@ -1791,6 +1826,17 @@ async function updateDecisionStatus(reviewId, decisionId, status) {
     await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/decision/${decisionId}/status`, { status });
   } catch(e) {
     console.error('Failed to update decision status', e);
+  }
+}
+
+// S6-01: Update weakness status via API
+async function updateWeaknessStatus(reviewId, weaknessId, status) {
+  if (!state.current) return;
+  const pid = state.current.id;
+  try {
+    await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`, { status });
+  } catch(e) {
+    console.error('Failed to update weakness status', e);
   }
 }
 </script>
@@ -2947,6 +2993,7 @@ async function viewPresales(){
         <span class="tag tag-blue" style="margin-left:6px">DS-11 Hybrid Tagger</span></div>
       <input type="hidden" id="fbProposalVerId">
       <input type="hidden" id="fbReviewId">
+      <input type="hidden" id="fbVersionId">
       <div class="form-row"><label>Responder Name</label><input id="fbName" placeholder="e.g. Sarah Chen"></div>
       <div class="form-row"><label>Email (optional)</label><input id="fbEmail" type="email" placeholder="s.chen@client.com"></div>
       <div class="form-row"><label>Source</label>
@@ -3349,6 +3396,9 @@ async function updateProposalStatus(versionId,newStatus){
 function openCaptureFeedback(proposalVerId='',reviewId=''){
   document.getElementById('fbProposalVerId').value=proposalVerId;
   document.getElementById('fbReviewId').value=reviewId;
+  // S6-03: populate version_id from current dashboard scope
+  const versionIdEl=document.getElementById('fbVersionId');
+  if(versionIdEl) versionIdEl.value=state._dashVersion||'';
   document.getElementById('captureFbForm').style.display='';
   document.getElementById('captureFbForm').scrollIntoView({behavior:'smooth',block:'center'});
 }
@@ -3361,6 +3411,7 @@ async function submitCaptureFeedback(){
   const body={
     proposal_ver_id:document.getElementById('fbProposalVerId').value,
     review_id:document.getElementById('fbReviewId').value,
+    version_id:document.getElementById('fbVersionId')?.value||'',
     source:document.getElementById('fbSource').value,
     responder_name:document.getElementById('fbName').value,
     responder_email:document.getElementById('fbEmail').value,
