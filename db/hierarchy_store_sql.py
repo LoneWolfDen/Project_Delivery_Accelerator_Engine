@@ -263,6 +263,7 @@ class HierarchyStoreSQLite:
         categories: Optional[List[str]] = None,
         ai_metadata: Optional[Dict[str, Any]] = None,
         deep_dive: Optional[Dict[str, Any]] = None,
+        previous_review_id: str = "",
     ):
         from models.hierarchy import Review  # noqa: PLC0415
         db = self._db
@@ -275,14 +276,21 @@ class HierarchyStoreSQLite:
         review_id = f"r{review_num}"
         now = _now_iso()
 
+        # 1-based iteration number within this version
+        v_count = db.fetchone(
+            "SELECT COUNT(*) as cnt FROM reviews WHERE project_id=? AND version_id=?",
+            (self.project_id, version_id),
+        )
+        iteration_number = (v_count["cnt"] if v_count else 0) + 1
+
         db.execute(
             """INSERT OR REPLACE INTO reviews
                (review_id, project_id, version_id, phase_id, persona, ai_backend,
                 prompt_used, custom_prompt, output, findings, questions, summary,
                 included_files, categories, ai_metadata,
                 deep_dive, feedback, completeness_score, quality_status,
-                completed_by, completed_at, decided_by, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                completed_by, completed_at, decided_by, previous_review_id, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 review_id, self.project_id, version_id, phase_id, persona, ai_backend,
                 prompt_used, custom_prompt,
@@ -296,6 +304,7 @@ class HierarchyStoreSQLite:
                 Database.jdump(deep_dive) if deep_dive is not None else None,
                 None,  # feedback – empty initially
                 0, "pending", "", "", "",  # DS-02 quality gate defaults
+                previous_review_id,
                 now,
             ),
         )
@@ -321,6 +330,8 @@ class HierarchyStoreSQLite:
             summary=summary, included_files=included_files or [],
             categories=categories or [], ai_metadata=ai_metadata or {},
             deep_dive=deep_dive,
+            previous_review_id=previous_review_id,
+            iteration_number=iteration_number,
         )
         self._file_save_review(review)
         if version:
@@ -349,7 +360,24 @@ class HierarchyStoreSQLite:
             params.append(phase_id)
         sql += " ORDER BY created_at DESC"
         rows = self._db.fetchall(sql, tuple(params))
-        return [self._row_to_review(r).to_summary() for r in rows]
+        summaries = [self._row_to_review(r).to_summary() for r in rows]
+
+        # Compute iteration_number per version (ascending order = R1, R2, R3…)
+        # Sort by created_at ascending per version to assign iteration numbers, then
+        # restore the caller's descending order.
+        from collections import defaultdict
+        ver_asc: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for s in sorted(summaries, key=lambda x: x.get("created_at", "")):
+            ver_asc[s["version_id"]].append(s)
+        ver_counter: Dict[str, int] = defaultdict(int)
+        iteration_map: Dict[str, int] = {}
+        for vid, items in ver_asc.items():
+            for item in items:
+                ver_counter[vid] += 1
+                iteration_map[item["review_id"]] = ver_counter[vid]
+        for s in summaries:
+            s["iteration_number"] = iteration_map.get(s["review_id"], 0)
+        return summaries
 
     def set_active_review(self, version_id: str, review_id: str) -> Dict[str, Any]:
         version = self.get_version(version_id)
@@ -539,6 +567,9 @@ class HierarchyStoreSQLite:
             completed_by=row.get("completed_by", ""),
             completed_at=row.get("completed_at", ""),
             decided_by=row.get("decided_by", ""),
+            previous_review_id=row.get("previous_review_id", ""),
+            # iteration_number is computed by list_reviews; default 0 here
+            iteration_number=row.get("iteration_number", 0),
         )
 
     # ── File dual-write helpers ───────────────────────────────

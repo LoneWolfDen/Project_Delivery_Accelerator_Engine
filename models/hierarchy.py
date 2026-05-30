@@ -172,6 +172,10 @@ class Review:
     completed_at: str = ""
     decided_by: str = ""              # who set this as active review
 
+    # S1: review chaining and iteration visibility
+    previous_review_id: str = ""      # explicit link to predecessor review
+    iteration_number: int = 0         # 1-based iteration within a version (R1, R2 …)
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -198,6 +202,8 @@ class Review:
             "completeness_score": self.completeness_score,
             "quality_status":     self.quality_status,
             "completed_by":       self.completed_by,
+            "previous_review_id": self.previous_review_id,
+            "iteration_number":   self.iteration_number,
         }
 
 
@@ -446,12 +452,17 @@ class HierarchyStore:
         categories: Optional[List[str]] = None,
         ai_metadata: Optional[Dict[str, Any]] = None,
         deep_dive: Optional[Dict[str, Any]] = None,
+        previous_review_id: str = "",
     ) -> Review:
         """Create a new review (execution on a version)."""
         phase_id = self.get_current_phase()
         reviews = self._load_review_index()
         review_num = len(reviews) + 1
         review_id = f"r{review_num}"
+
+        # Compute 1-based iteration number within this version
+        version_reviews = [r for r in reviews if r.get("version_id") == version_id]
+        iteration_number = len(version_reviews) + 1
 
         review = Review(
             review_id=review_id,
@@ -471,6 +482,8 @@ class HierarchyStore:
             categories=categories or [],
             ai_metadata=ai_metadata or {},
             deep_dive=deep_dive,
+            previous_review_id=previous_review_id,
+            iteration_number=iteration_number,
         )
 
         # Save review
@@ -523,7 +536,20 @@ class HierarchyStore:
             index = [r for r in index if r.get("version_id") == version_id]
         if phase_id:
             index = [r for r in index if r.get("phase_id") == phase_id]
-        return sorted(index, key=lambda r: r.get("created_at", ""), reverse=True)
+        sorted_desc = sorted(index, key=lambda r: r.get("created_at", ""), reverse=True)
+
+        # Inject iteration_number per version (R1, R2, R3… ascending by created_at)
+        from collections import defaultdict
+        ver_asc = defaultdict(list)
+        for r in sorted(sorted_desc, key=lambda x: x.get("created_at", "")):
+            ver_asc[r.get("version_id", "")].append(r)
+        iteration_map: Dict[str, int] = {}
+        for vid, items in ver_asc.items():
+            for i, item in enumerate(items, start=1):
+                iteration_map[item["review_id"]] = i
+        for r in sorted_desc:
+            r["iteration_number"] = iteration_map.get(r.get("review_id", ""), 0)
+        return sorted_desc
 
     def _load_review_index(self) -> List[Dict[str, Any]]:
         index_file = self.base_dir / "reviews" / "index.json"

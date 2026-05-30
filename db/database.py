@@ -120,6 +120,8 @@ CREATE TABLE IF NOT EXISTS reviews (
     completed_by       TEXT DEFAULT '',
     completed_at       TEXT DEFAULT '',
     decided_by         TEXT DEFAULT '',         -- who set this as active review
+    -- S1: review chaining
+    previous_review_id TEXT DEFAULT '',
     created_at         TEXT NOT NULL,
     PRIMARY KEY (project_id, review_id)
 );
@@ -344,6 +346,8 @@ class Database:
             ("decided_by",         "TEXT DEFAULT ''"),
             ("deep_dive",          "TEXT DEFAULT NULL"),
             ("feedback",           "TEXT DEFAULT NULL"),
+            # S1: review chaining
+            ("previous_review_id", "TEXT DEFAULT ''"),
         ]:
             if col not in rev_cols:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {definition}")
