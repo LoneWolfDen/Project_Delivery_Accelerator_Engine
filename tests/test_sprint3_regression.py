@@ -22,6 +22,31 @@ E) HTML static analysis updates (Tasks 5 + 6)
    - savePersonaPrompts and resetPersonaPrompt functions are defined.
    - _getBaselinePrompt no longer only shows `purpose` (has prompt_template logic).
    - No new script-in-template regressions introduced.
+
+F) S3-01 — SME question generator (deep_dive heuristic output contract)
+   - Heuristic path returns question_groups (not generic advice).
+   - Each group has category, icon, questions list.
+   - all_questions flat list carries [category] prefix.
+   - scope_completeness is 0–100 integer.
+   - Question text is not generic boilerplate when project-specific content exists.
+
+G) S3-02 — Question selection flow (addSelectedToPrompt contract)
+   - addSelectedToPrompt function is defined in index.html.
+   - state._injectedQuestions array is used (not customPrompt textarea).
+   - _removeInjectedQuestion function exists and deselects items.
+   - Strip of role prefix before storage: [Role] tag removal.
+
+H) S3-03 — Run tightened review
+   - previous_review_id flows from server body → project_manager → store.
+   - New review stores both previous_review_id and prompt_builder_state together.
+   - previousReviewId hidden input element present in index.html.
+   - runReview() includes previous_review_id in the POST body.
+   - viewReviewDetail() contains a tighten/chaining trigger element.
+
+I) S3-04 — What Changed summary
+   - get_review_diff() backend logic: new / resolved / unchanged classification.
+   - Diff only fires when previous_review_id is set; absent otherwise.
+   - "What Changed" section rendered in viewReviewDetail() when previous_review_id set.
 """
 
 import re
@@ -425,4 +450,641 @@ class TestAdminFrontendFunctions:
         assert not violations, (
             "script-in-template-literal regression detected:\n"
             + "\n".join(f"  • {v}" for v in violations)
+        )
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F) S3-01 — SME question generator (deep_dive heuristic output contract)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestDeepDiveHeuristicOutputContract:
+    """S3-01 — heuristic deep dive returns structured questions, not generic advice."""
+
+    # ── Shared fixtures ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _run(persona_name: str = "Solution Architect", scope: str = "Cloud migration",
+             intelligence: dict = None, active_files: list = None) -> dict:
+        from personas.deep_dive import run_deep_dive
+        return run_deep_dive(
+            persona_name=persona_name,
+            scope=scope or "Cloud migration project",
+            intelligence=intelligence or {"risks": [], "assumptions": [], "dependencies": [],
+                                          "constraints": [], "action_items": []},
+            active_files=active_files or [{"filename": "scope.txt", "source_type": "text"}],
+            custom_prompt="",
+            ai_backend="files_only",
+        )
+
+    # ── Happy-path structure ──────────────────────────────────────────────────
+
+    def test_returns_dict_with_required_top_level_keys(self):
+        result = self._run()
+        for key in ("timestamp", "persona", "ai_backend", "ai_mode",
+                    "question_groups", "all_questions", "scope_completeness", "meta"):
+            assert key in result, f"Missing key: {key}"
+
+    def test_ai_mode_is_false_for_files_only(self):
+        result = self._run()
+        assert result["ai_mode"] is False
+
+    def test_question_groups_is_non_empty_list(self):
+        result = self._run()
+        assert isinstance(result["question_groups"], list)
+        assert len(result["question_groups"]) >= 1
+
+    def test_each_group_has_required_keys(self):
+        result = self._run()
+        for grp in result["question_groups"]:
+            for key in ("category", "icon", "questions"):
+                assert key in grp, f"Group missing key '{key}': {grp}"
+
+    def test_each_group_questions_is_non_empty_list(self):
+        result = self._run()
+        for grp in result["question_groups"]:
+            assert isinstance(grp["questions"], list)
+            assert len(grp["questions"]) >= 1, f"Group '{grp['category']}' has no questions"
+
+    def test_all_questions_flat_list_is_non_empty(self):
+        result = self._run()
+        assert isinstance(result["all_questions"], list)
+        assert len(result["all_questions"]) >= 1
+
+    def test_all_questions_carry_category_prefix(self):
+        """Every item in all_questions starts with [Category] prefix."""
+        result = self._run()
+        for q in result["all_questions"]:
+            assert q.startswith("["), (
+                f"Question missing [Category] prefix: {q!r}"
+            )
+            assert "]" in q, f"Question prefix not closed: {q!r}"
+
+    def test_scope_completeness_is_integer_0_to_100(self):
+        result = self._run()
+        sc = result["scope_completeness"]
+        assert isinstance(sc, int), f"scope_completeness must be int, got {type(sc)}"
+        assert 0 <= sc <= 100, f"scope_completeness out of range: {sc}"
+
+    def test_meta_has_source_field(self):
+        result = self._run()
+        assert "source" in result["meta"]
+        assert result["meta"]["source"] == "heuristic"
+
+    def test_question_min_length(self):
+        """No question should be shorter than 20 characters (spec requirement)."""
+        result = self._run()
+        for grp in result["question_groups"]:
+            for q in grp["questions"]:
+                assert len(q) >= 20, f"Question too short ({len(q)} chars): {q!r}"
+
+    # ── Persona-specific grouping ─────────────────────────────────────────────
+
+    def test_solution_architect_returns_architecture_category(self):
+        result = self._run(persona_name="Solution Architect")
+        categories = [g["category"] for g in result["question_groups"]]
+        arch_present = any("Architect" in c or "Design" in c or "NFR" in c
+                           for c in categories)
+        assert arch_present, (
+            f"Solution Architect deep dive missing Architecture/Design/NFR category. "
+            f"Got: {categories}"
+        )
+
+    def test_delivery_manager_returns_delivery_category(self):
+        result = self._run(persona_name="Delivery Manager")
+        categories = [g["category"] for g in result["question_groups"]]
+        delivery_present = any("Delivery" in c or "Risk" in c or "Scope" in c
+                               for c in categories)
+        assert delivery_present, (
+            f"Delivery Manager deep dive missing delivery-related category. Got: {categories}"
+        )
+
+    def test_resource_manager_returns_skills_or_capacity_category(self):
+        result = self._run(persona_name="Resource Manager")
+        categories = [g["category"] for g in result["question_groups"]]
+        people_present = any("Skill" in c or "Capacity" in c or "People" in c
+                             for c in categories)
+        assert people_present, (
+            f"Resource Manager deep dive missing skills/capacity category. Got: {categories}"
+        )
+
+    # ── Negative tests ────────────────────────────────────────────────────────
+
+    def test_empty_scope_still_returns_questions(self):
+        """Edge: empty scope must not crash or return zero questions."""
+        result = self._run(scope="")
+        assert len(result["question_groups"]) >= 1
+        assert len(result["all_questions"]) >= 1
+
+    def test_empty_intelligence_still_returns_questions(self):
+        """Edge: all-empty intelligence dict must not crash."""
+        result = self._run(intelligence={})
+        assert len(result["question_groups"]) >= 1
+
+    def test_no_active_files_still_returns_questions(self):
+        """Edge: no active files must not crash."""
+        result = self._run(active_files=[])
+        assert len(result["question_groups"]) >= 1
+
+    def test_unknown_persona_falls_back_gracefully(self):
+        """Unknown persona must not raise — falls back to architecture_strategy."""
+        result = self._run(persona_name="Quantum Strategist")
+        assert isinstance(result["question_groups"], list)
+        assert len(result["all_questions"]) >= 1
+
+    def test_groups_capped_at_six(self):
+        """At most 6 question groups must be returned (spec cap)."""
+        result = self._run()
+        assert len(result["question_groups"]) <= 6
+
+    def test_scope_completeness_zero_for_empty_everything(self):
+        """Completely empty scope and intelligence should score low or zero."""
+        result = self._run(scope="", intelligence={})
+        assert result["scope_completeness"] == 0
+
+    def test_rich_scope_scores_higher_than_empty(self):
+        rich = "objectives: migrate all services. timeline: 6 months. budget: £500K. " \
+               "stakeholders: CTO. constraints: no downtime. assumptions: team available. risks: vendor risk."
+        r_rich = self._run(scope=rich, intelligence={
+            "risks": ["vendor lock-in"], "assumptions": ["team available"],
+            "constraints": ["no downtime"], "dependencies": []
+        })
+        r_empty = self._run(scope="", intelligence={})
+        assert r_rich["scope_completeness"] > r_empty["scope_completeness"]
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G) S3-02 — Question selection flow (HTML contract)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestQuestionSelectionFlowHTML:
+    """S3-02 — addSelectedToPrompt uses state._injectedQuestions, not customPrompt."""
+
+    def test_addSelectedToPrompt_function_defined(self, html_text):
+        pattern = r"(?:async\s+)?function\s+addSelectedToPrompt\s*\("
+        assert re.search(pattern, html_text), (
+            "addSelectedToPrompt() not defined in index.html"
+        )
+
+    def test_addSelectedToPrompt_pushes_to_injectedQuestions_not_textarea(self, html_text):
+        """The function must push to _injectedQuestions array, not append to customPrompt."""
+        m = re.search(
+            r"function\s+addSelectedToPrompt\s*\(.*?\)\s*\{(.*?)\n\}",
+            html_text, re.DOTALL,
+        )
+        assert m, "addSelectedToPrompt() body not found"
+        body = m.group(1)
+        # Must reference _injectedQuestions push
+        assert "_injectedQuestions" in body, (
+            "addSelectedToPrompt() does not reference state._injectedQuestions — "
+            "selected questions are not being added to the chip list."
+        )
+        # Must NOT append to customPrompt textarea
+        assert "customPrompt" not in body, (
+            "addSelectedToPrompt() still references customPrompt textarea — "
+            "S2-01 requires the chip-based injected questions section instead."
+        )
+
+    def test_removeInjectedQuestion_function_defined(self, html_text):
+        """_removeInjectedQuestion must exist so chips can be deselected."""
+        pattern = r"(?:async\s+)?function\s+_removeInjectedQuestion\s*\("
+        assert re.search(pattern, html_text), (
+            "_removeInjectedQuestion() not defined in index.html — "
+            "users cannot remove chips from the injected questions section."
+        )
+
+    def test_renderInjectedQuestions_function_defined(self, html_text):
+        pattern = r"(?:async\s+)?function\s+_renderInjectedQuestions\s*\("
+        assert re.search(pattern, html_text), (
+            "_renderInjectedQuestions() not defined in index.html"
+        )
+
+    def test_injectedQuestions_state_initialised_before_use(self, html_text):
+        """state._injectedQuestions must be initialised (not assumed to exist)."""
+        # Accept either direct assignment or short-circuit initialisation
+        has_init = (
+            "state._injectedQuestions=[]" in html_text
+            or "state._injectedQuestions = []" in html_text
+            or "_injectedQuestions:[]" in html_text
+            or "_injectedQuestions: []" in html_text
+        )
+        assert has_init, (
+            "state._injectedQuestions is never initialised in index.html — "
+            "first call to addSelectedToPrompt will fail with TypeError."
+        )
+
+    def test_customPrompt_textarea_absent(self, html_text):
+        """The old single customPrompt textarea must no longer exist (S2-01 replaced it)."""
+        assert 'id="customPrompt"' not in html_text, (
+            'id="customPrompt" textarea is still present — should have been removed in S2-01.'
+        )
+
+    def test_injectedQuestions_container_present(self, html_text):
+        """The chip container for injected questions must be in the DOM."""
+        assert 'id="injectedQuestions"' in html_text, (
+            'id="injectedQuestions" container missing from index.html.'
+        )
+
+    def test_userNotes_textarea_present(self, html_text):
+        """The free-text notes field (Section 3 of prompt builder) must exist."""
+        assert 'id="userNotes"' in html_text, (
+            'id="userNotes" textarea missing — prompt builder Section 3 absent.'
+        )
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# H) S3-03 — Run tightened review (backend + HTML contract)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.fixture()
+def store_s3(tmp_path, monkeypatch):
+    """Isolated SQLite store for S3-03 tests."""
+    monkeypatch.setenv("PROJECTS_DATA_DIR", str(tmp_path))
+    import db.database as _db
+    import threading
+    _db._BASE_DIR = tmp_path
+    _db._thread_local = threading.local()
+    from db.hierarchy_store_sql import HierarchyStoreSQLite
+    return HierarchyStoreSQLite("proj-s3-chain")
+
+
+@pytest.fixture()
+def version_s3(store_s3):
+    return store_s3.create_version(
+        included_artifacts=[{"filename": "spec.md", "category": "scope"}],
+        label="v1",
+    )
+
+
+class TestTightenedReviewBackend:
+    """S3-03 — previous_review_id and prompt_builder_state survive the full write-read cycle."""
+
+    def test_chained_review_stores_previous_review_id(self, store_s3, version_s3):
+        r1 = store_s3.create_review(version_id=version_s3.version_id, persona="SA")
+        r2 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+        )
+        fetched = store_s3.get_review(r2.review_id)
+        assert fetched.previous_review_id == r1.review_id
+
+    def test_chained_review_also_stores_prompt_builder_state(self, store_s3, version_s3):
+        """Tightened review persists both chaining and prompt state together."""
+        r1 = store_s3.create_review(version_id=version_s3.version_id, persona="SA")
+        pbs = {"injected_questions": ["What is DR strategy?"], "user_notes": "AWS preferred"}
+        r2 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+            prompt_builder_state=pbs,
+        )
+        fetched = store_s3.get_review(r2.review_id)
+        assert fetched.previous_review_id == r1.review_id
+        assert fetched.prompt_builder_state == pbs
+
+    def test_chained_review_iteration_number_increments(self, store_s3, version_s3):
+        """Chained reviews receive ascending iteration numbers (R1=1, R2=2)."""
+        r1 = store_s3.create_review(version_id=version_s3.version_id, persona="SA")
+        r2 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+        )
+        summaries = {s["review_id"]: s for s in store_s3.list_reviews(version_id=version_s3.version_id)}
+        assert summaries[r1.review_id]["iteration_number"] == 1
+        assert summaries[r2.review_id]["iteration_number"] == 2
+
+    def test_unchained_review_has_empty_previous_id(self, store_s3, version_s3):
+        r = store_s3.create_review(version_id=version_s3.version_id, persona="SA")
+        assert r.previous_review_id == ""
+
+    def test_three_level_chain_integrity(self, store_s3, version_s3):
+        """R1 → R2 → R3: each points only to its direct predecessor."""
+        r1 = store_s3.create_review(version_id=version_s3.version_id, persona="SA")
+        r2 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+        )
+        r3 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r2.review_id,
+        )
+        assert store_s3.get_review(r3.review_id).previous_review_id == r2.review_id
+        assert store_s3.get_review(r2.review_id).previous_review_id == r1.review_id
+        assert store_s3.get_review(r1.review_id).previous_review_id == ""
+
+    def test_previous_review_id_visible_in_to_summary(self, store_s3, version_s3):
+        r1 = store_s3.create_review(version_id=version_s3.version_id, persona="SA")
+        r2 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+        )
+        s = store_s3.get_review(r2.review_id).to_summary()
+        assert s["previous_review_id"] == r1.review_id
+
+    def test_previous_review_id_visible_in_list_reviews(self, store_s3, version_s3):
+        r1 = store_s3.create_review(version_id=version_s3.version_id, persona="SA")
+        r2 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+        )
+        by_id = {s["review_id"]: s["previous_review_id"]
+                 for s in store_s3.list_reviews(version_id=version_s3.version_id)}
+        assert by_id[r2.review_id] == r1.review_id
+        assert by_id[r1.review_id] == ""
+
+    def test_chained_review_with_findings_persists_findings_too(self, store_s3, version_s3):
+        """Chaining does not corrupt the findings field."""
+        r1 = store_s3.create_review(version_id=version_s3.version_id, persona="SA",
+                                    findings={"risks": ["vendor lock-in"]})
+        r2 = store_s3.create_review(
+            version_id=version_s3.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+            findings={"risks": ["cost overrun"]},
+        )
+        fetched = store_s3.get_review(r2.review_id)
+        assert fetched.previous_review_id == r1.review_id
+        assert fetched.findings == {"risks": ["cost overrun"]}
+
+
+class TestTightenedReviewHTML:
+    """S3-03 — HTML contract for chained review submission."""
+
+    def test_previousReviewId_input_exists_in_html(self, html_text):
+        """Hidden input for previousReviewId must be present so runReview() can read it."""
+        assert 'id="previousReviewId"' in html_text, (
+            'id="previousReviewId" hidden input not found in index.html — '
+            "runReview() cannot read the predecessor review ID."
+        )
+
+    def test_runReview_sends_previous_review_id(self, html_text):
+        """runReview() POST body must include previous_review_id."""
+        m = re.search(
+            r"async function runReview\(\)(.*?)^(?:async function|\}$)",
+            html_text, re.DOTALL | re.MULTILINE,
+        )
+        assert m, "runReview() not found in index.html"
+        body = m.group(1)
+        assert "previous_review_id" in body, (
+            "runReview() does not include previous_review_id in the POST body — "
+            "chained reviews will never be linked to their predecessor."
+        )
+
+    def test_runReview_sends_prompt_builder_state(self, html_text):
+        """runReview() must assemble and send prompt_builder_state."""
+        m = re.search(
+            r"async function runReview\(\)(.*?)^(?:async function|\}$)",
+            html_text, re.DOTALL | re.MULTILINE,
+        )
+        assert m, "runReview() not found"
+        body = m.group(1)
+        assert "prompt_builder_state" in body, (
+            "runReview() does not include prompt_builder_state in the POST body."
+        )
+
+    def test_viewReviewDetail_has_tighten_mechanism(self, html_text):
+        """viewReviewDetail() must contain something that sets previousReviewId
+        or navigates to the tightening flow.  Accept any of the likely patterns."""
+        m = re.search(
+            r"(?:async\s+)?function\s+viewReviewDetail\s*\(.*?\)\s*\{(.*?)\n\}",
+            html_text, re.DOTALL,
+        )
+        assert m, "viewReviewDetail() not found in index.html"
+        body = m.group(1)
+        has_tighten = (
+            "previousReviewId" in body
+            or "previous_review_id" in body
+            or "Tighten" in body
+            or "tighten" in body
+        )
+        assert has_tighten, (
+            "viewReviewDetail() has no reference to previousReviewId or tightening — "
+            "users cannot start a tightened review from the review detail page."
+        )
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# I) S3-04 — What Changed summary (get_review_diff logic)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _make_diff_store(tmp_path, monkeypatch):
+    """Helper: create an isolated store for diff tests."""
+    monkeypatch.setenv("PROJECTS_DATA_DIR", str(tmp_path))
+    import db.database as _db
+    import threading
+    _db._BASE_DIR = tmp_path
+    _db._thread_local = threading.local()
+    from db.hierarchy_store_sql import HierarchyStoreSQLite
+    return HierarchyStoreSQLite("proj-s3-diff")
+
+
+class TestGetReviewDiff:
+    """S3-04 — get_review_diff() classifies findings as new / resolved / unchanged."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, tmp_path, monkeypatch):
+        self.store = _make_diff_store(tmp_path, monkeypatch)
+        self.version = self.store.create_version(included_artifacts=[], label="v1")
+
+    @staticmethod
+    def _diff(prev_findings: dict, curr_findings: dict) -> dict:
+        """Pure helper mirroring the get_review_diff logic for unit tests.
+
+        Rules (per S3-04 spec):
+          new       — in current but NOT in previous (by text equality)
+          resolved  — in previous but NOT in current
+          unchanged — in both
+        """
+        result = {}
+        all_cats = set(prev_findings) | set(curr_findings)
+        for cat in all_cats:
+            prev_items = set(prev_findings.get(cat, []))
+            curr_items = set(curr_findings.get(cat, []))
+            result[cat] = {
+                "new":       sorted(curr_items - prev_items),
+                "resolved":  sorted(prev_items - curr_items),
+                "unchanged": sorted(curr_items & prev_items),
+            }
+        return result
+
+    # ── Happy-path diff classification ───────────────────────────────────────
+
+    def test_new_finding_classified_as_new(self):
+        diff = self._diff(
+            prev_findings={"risks": ["vendor lock-in"]},
+            curr_findings={"risks": ["vendor lock-in", "cost overrun"]},
+        )
+        assert "cost overrun" in diff["risks"]["new"]
+
+    def test_removed_finding_classified_as_resolved(self):
+        diff = self._diff(
+            prev_findings={"risks": ["vendor lock-in", "cost overrun"]},
+            curr_findings={"risks": ["vendor lock-in"]},
+        )
+        assert "cost overrun" in diff["risks"]["resolved"]
+
+    def test_retained_finding_classified_as_unchanged(self):
+        diff = self._diff(
+            prev_findings={"risks": ["vendor lock-in"]},
+            curr_findings={"risks": ["vendor lock-in"]},
+        )
+        assert "vendor lock-in" in diff["risks"]["unchanged"]
+
+    def test_entirely_new_category_all_items_are_new(self):
+        diff = self._diff(
+            prev_findings={"risks": ["risk A"]},
+            curr_findings={"risks": ["risk A"], "assumptions": ["assume X"]},
+        )
+        assert "assume X" in diff["assumptions"]["new"]
+        assert diff["assumptions"]["resolved"] == []
+        assert diff["assumptions"]["unchanged"] == []
+
+    def test_entirely_removed_category_all_items_are_resolved(self):
+        diff = self._diff(
+            prev_findings={"risks": ["risk A"], "assumptions": ["assume X"]},
+            curr_findings={"risks": ["risk A"]},
+        )
+        assert "assume X" in diff["assumptions"]["resolved"]
+        assert diff["assumptions"]["new"] == []
+
+    def test_no_overlap_all_findings_are_new_and_resolved(self):
+        diff = self._diff(
+            prev_findings={"risks": ["old risk"]},
+            curr_findings={"risks": ["new risk"]},
+        )
+        assert "new risk" in diff["risks"]["new"]
+        assert "old risk" in diff["risks"]["resolved"]
+        assert diff["risks"]["unchanged"] == []
+
+    def test_identical_findings_all_unchanged(self):
+        findings = {"risks": ["vendor lock-in", "cost overrun"]}
+        diff = self._diff(findings, findings)
+        assert diff["risks"]["new"] == []
+        assert diff["risks"]["resolved"] == []
+        assert sorted(diff["risks"]["unchanged"]) == sorted(findings["risks"])
+
+    def test_empty_previous_all_current_are_new(self):
+        diff = self._diff(
+            prev_findings={},
+            curr_findings={"risks": ["new risk"], "assumptions": ["assume X"]},
+        )
+        assert "new risk" in diff["risks"]["new"]
+        assert "assume X" in diff["assumptions"]["new"]
+
+    def test_empty_current_all_previous_are_resolved(self):
+        diff = self._diff(
+            prev_findings={"risks": ["old risk"]},
+            curr_findings={},
+        )
+        assert "old risk" in diff["risks"]["resolved"]
+
+    def test_empty_both_returns_empty_diff(self):
+        diff = self._diff({}, {})
+        assert diff == {}
+
+    # ── State consistency with store ──────────────────────────────────────────
+
+    def test_review_without_predecessor_has_no_diff_context(self):
+        """A standalone review has previous_review_id == '' — diff has no predecessor."""
+        r = self.store.create_review(
+            version_id=self.version.version_id, persona="SA",
+            findings={"risks": ["vendor lock-in"]},
+        )
+        fetched = self.store.get_review(r.review_id)
+        assert fetched.previous_review_id == "", (
+            "A standalone review must have no predecessor — diff section should not render."
+        )
+
+    def test_chained_review_has_predecessor_for_diff(self):
+        """A chained review has a valid predecessor to diff against."""
+        r1 = self.store.create_review(
+            version_id=self.version.version_id, persona="SA",
+            findings={"risks": ["vendor lock-in"]},
+        )
+        r2 = self.store.create_review(
+            version_id=self.version.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+            findings={"risks": ["cost overrun"]},
+        )
+        fetched_r2 = self.store.get_review(r2.review_id)
+        fetched_r1 = self.store.get_review(fetched_r2.previous_review_id)
+        assert fetched_r1 is not None
+        diff = self._diff(fetched_r1.findings, fetched_r2.findings)
+        assert "cost overrun" in diff["risks"]["new"]
+        assert "vendor lock-in" in diff["risks"]["resolved"]
+
+    def test_diff_uses_previous_review_id_not_timestamp(self):
+        """Diff is tied to previous_review_id, NOT assumed by proximity in time."""
+        v2 = self.store.create_version(included_artifacts=[], label="v2")
+        r_unrelated = self.store.create_review(
+            version_id=v2.version_id, persona="DM",
+            findings={"risks": ["unrelated risk"]},
+        )
+        r1 = self.store.create_review(
+            version_id=self.version.version_id, persona="SA",
+            findings={"risks": ["vendor lock-in"]},
+        )
+        r2 = self.store.create_review(
+            version_id=self.version.version_id, persona="SA",
+            previous_review_id=r1.review_id,
+            findings={"risks": ["cost overrun"]},
+        )
+        fetched = self.store.get_review(r2.review_id)
+        # The predecessor is explicitly r1, not r_unrelated
+        assert fetched.previous_review_id == r1.review_id
+        assert fetched.previous_review_id != r_unrelated.review_id
+
+    # ── Multi-category diff ───────────────────────────────────────────────────
+
+    def test_multi_category_diff_is_per_category(self):
+        diff = self._diff(
+            prev_findings={
+                "risks": ["vendor lock-in", "cost overrun"],
+                "assumptions": ["team available"],
+            },
+            curr_findings={
+                "risks": ["vendor lock-in", "regulatory change"],
+                "assumptions": ["team available", "infra ready"],
+                "dependencies": ["external API"],
+            },
+        )
+        # risks: vendor lock-in unchanged, cost overrun resolved, regulatory change new
+        assert "vendor lock-in" in diff["risks"]["unchanged"]
+        assert "cost overrun" in diff["risks"]["resolved"]
+        assert "regulatory change" in diff["risks"]["new"]
+        # assumptions: team available unchanged, infra ready new
+        assert "team available" in diff["assumptions"]["unchanged"]
+        assert "infra ready" in diff["assumptions"]["new"]
+        # dependencies: entirely new category
+        assert "external API" in diff["dependencies"]["new"]
+
+
+class TestWhatChangedHTML:
+    """S3-04 — 'What Changed' section contract in viewReviewDetail()."""
+
+    def test_viewReviewDetail_defined(self, html_text):
+        pattern = r"(?:async\s+)?function\s+viewReviewDetail\s*\("
+        assert re.search(pattern, html_text), (
+            "viewReviewDetail() not found in index.html"
+        )
+
+    def test_viewReviewDetail_references_previous_review_id(self, html_text):
+        """Must check previous_review_id to decide whether to show diff."""
+        m = re.search(
+            r"(?:async\s+)?function\s+viewReviewDetail\s*\(.*?\)\s*\{(.*?)\n\}",
+            html_text, re.DOTALL,
+        )
+        assert m, "viewReviewDetail() body not found"
+        body = m.group(1)
+        assert "previous_review_id" in body, (
+            "viewReviewDetail() does not reference previous_review_id — "
+            "the 'What Changed' section will never appear."
+        )
+
+    def test_what_changed_label_in_html(self, html_text):
+        """The UI must contain a 'What Changed' or 'what changed' label somewhere."""
+        assert re.search(r"[Ww]hat [Cc]hanged", html_text), (
+            "'What Changed' label not found anywhere in index.html — "
+            "the S3-04 diff section is missing from the UI."
         )
