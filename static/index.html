@@ -472,6 +472,10 @@ async function render(){
     if(state.tab==='reviews'){
       setTimeout(()=>{ if(typeof _renderInjectedQuestions==='function')_renderInjectedQuestions(); },0);
     }
+    // S7-01: after DOM is written, populate Decision Readiness badges on versions tab
+    if(state.tab==='versions'){
+      setTimeout(()=>_populateReadinessBadges(state.current?.id),0);
+    }
   }catch(e){
     console.error('render() view error:',e);
     main.innerHTML='<div class="card"><p style="color:var(--red);font-size:12px">&#9888; Page failed to load: '+escHtml(e.message)+'</p><button class="btn btn-sm btn-ghost mt" onclick="render()">&#8635; Retry</button></div>';
@@ -1291,6 +1295,7 @@ async function viewVersions(){
             <span class="fs10 c-muted">${fmtDateShort(ver.created_at)}</span>
             <span class="tag ${verRevs.length?'tag-blue':''}" class="ml-auto">${verRevs.length} review${verRevs.length===1?'':'s'}</span>
             ${activeRid?'<span class="tag tag-green" style="font-size:9px">active set</span>':''}
+            <span id="readiness-badge-${ver.version_id}" class="tag" style="font-size:9px" title="Decision Readiness">…</span>
           </summary>
           <div style="padding:6px 0 4px 14px">
             <div class="flex gap-sm mb" style="flex-wrap:wrap">
@@ -1390,6 +1395,22 @@ async function setActiveReview(vid,rid){
 }
 // setActiveReviewGated kept as alias so any existing inline calls still work
 const setActiveReviewGated=setActiveReview;
+
+// S7-01: Populate Decision Readiness badges for all rendered version rows
+async function _populateReadinessBadges(pid){
+  if(!pid)return;
+  const badges=document.querySelectorAll('[id^="readiness-badge-"]');
+  for(const badge of badges){
+    const vid=badge.id.replace('readiness-badge-','');
+    try{
+      const r=await api('GET',`/api/projects/${pid}/hierarchy/versions/${vid}/readiness`);
+      const level=r.level||'';
+      const icon=level==='High'?'🟢':level==='Medium'?'🟡':'🔴';
+      badge.textContent=`${icon} ${level}`;
+      badge.title=`Decision Readiness: ${level} | Open decisions: ${r.open_decisions} | Open weaknesses: ${r.open_weaknesses}`;
+    }catch(e){badge.textContent='';}
+  }
+}
 function openMarkComplete(rid,suggestedStatus){
   const el=document.getElementById('markComplete_'+rid);
   if(el){el.style.display='';el.scrollIntoView({behavior:'smooth',block:'nearest'});}
@@ -1613,6 +1634,11 @@ async function viewReviewDetail(rid){
       ${r.previous_review_id?`<span class="tag" style="color:var(--text-dim)">Follows: ${escHtml(r.previous_review_id)}</span>`:''}
       ${detPromptBadge}
       <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${fmtDate(r.created_at)}</span>
+    </div>
+    <div class="flex gap-sm mb" style="flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--text-dim);font-weight:600">Decision Readiness:</span>
+      <span id="detailReadinessBadge" class="tag" style="font-size:11px">…</span>
+      <span id="detailReadinessDetail" style="font-size:11px;color:var(--text-dim)"></span>
     </div>`;
 
   // Files included (Bug #2 fix result: now shows both artifact v1 + legacy files)
@@ -1816,6 +1842,20 @@ async function viewReviewDetail(rid){
   </div>`;
   html+=`</div>`;
   document.getElementById('main').innerHTML=html;
+  // S7-01: populate Decision Readiness badge in review detail
+  api('GET',`/api/projects/${pid}/hierarchy/versions/${r.version_id}/readiness`)
+    .then(rd=>{
+      const badge=document.getElementById('detailReadinessBadge');
+      const detail=document.getElementById('detailReadinessDetail');
+      if(!badge)return;
+      const level=rd.level||'';
+      const icon=level==='High'?'🟢':level==='Medium'?'🟡':'🔴';
+      badge.textContent=`${icon} ${level}`;
+      if(detail)detail.textContent=level?`(${rd.open_decisions} open decisions · ${rd.open_weaknesses} open weaknesses)`:'';
+    }).catch(()=>{
+      const badge=document.getElementById('detailReadinessBadge');
+      if(badge)badge.textContent='–';
+    });
 }
 
 // S5-03: Update decision point status via API
@@ -3067,6 +3107,8 @@ async function viewPresales(){
         </select>
         <p id="propReviewGateMsg" style="font-size:11px;margin-top:3px"></p>
       </div>
+      <!-- S7-02: Decision Readiness indicator for selected version -->
+      <div class="form-row" id="propReadinessRow" style="font-size:12px;color:var(--text-dim);min-height:20px"></div>
       <!-- Step 2: Metadata -->
       <p class="card-section">Step 2 — Proposal Details</p>
       <div class="form-row"><label>Proposal Name <span style="color:var(--red)">*</span></label>
@@ -3264,7 +3306,6 @@ function showCreateProposal(){
     }
   });
 }
-
 async function submitCreateProposal(){
   const pid=state.current.id;
   const name=document.getElementById('propName').value.trim();
@@ -3277,6 +3318,18 @@ async function submitCreateProposal(){
   if(!name){el.innerHTML='<p style="color:var(--red)">Name required</p>';return;}
   if(!hierarchy_version_id){el.innerHTML='<p style="color:var(--red)">Select an Intelligence Version</p>';return;}
   if(!active_review_id){el.innerHTML='<p style="color:var(--red)">Select an Active Review</p>';return;}
+  // S7-02: non-blocking confirmation when Decision Readiness is Low
+  const readinessEl=document.getElementById('propReadinessRow');
+  const readinessLevel=readinessEl?.dataset?.level||'';
+  if(readinessLevel==='Low'){
+    const rd=readinessEl?.textContent||'';
+    const proceed=confirm(
+      'This version has unresolved decision points.\n\n'
+      +rd.replace(/[🟢🟡🔴]/g,'').trim()
+      +'\n\nProceed with proposal creation anyway?'
+    );
+    if(!proceed)return;
+  }
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Creating + generating document…</span>';
   // Step 1: Create proposal
   const r=await api('POST',`/api/projects/${pid}/proposal`,
@@ -3312,6 +3365,19 @@ async function onPropVersionChange(){
     if(activeId&&reviewSel)reviewSel.value=activeId;
     if(reviewSel)_onPropReviewChange(reviewSel.value,reviews,gateMsg);
   }catch(e){}
+  // S7-02: fetch and display Decision Readiness for the selected version
+  const readinessEl=document.getElementById('propReadinessRow');
+  if(readinessEl){
+    readinessEl.innerHTML='<span class="loading-inline"><span class="spin">⟳</span></span>';
+    try{
+      const rd=await api('GET',`/api/projects/${pid}/hierarchy/versions/${vid}/readiness`);
+      const level=rd.level||'';
+      const icon=level==='High'?'🟢':level==='Medium'?'🟡':'🔴';
+      readinessEl.innerHTML=`<strong>Decision Readiness:</strong> <span class="tag">${icon} ${level}</span>`
+        +(level?` <span style="font-size:11px;color:var(--text-dim)">${rd.open_decisions} open decisions · ${rd.open_weaknesses} open weaknesses</span>`:'');
+      readinessEl.dataset.level=level;
+    }catch(e){readinessEl.innerHTML='';}
+  }
 }
 
 function _onPropReviewChange(rid,reviews,gateMsg){

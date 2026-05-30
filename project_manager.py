@@ -963,6 +963,23 @@ def run_persona_review(
         decision_points=computed_decision_points,
     )
 
+    # S7-03: log prompt inputs and outcome link for future learning
+    try:
+        from processors.prompt_logger import log_prompt as _log_prompt
+        # Get the newly created review's ID (most recent review for this version)
+        created_reviews = store.list_reviews(version_filter=latest_version_id)
+        created_review_id = created_reviews[0]["review_id"] if created_reviews else ""
+        _log_prompt(
+            project_id=project_id,
+            review_id=created_review_id,
+            prompt_builder_state=prompt_builder_state or {},
+            final_prompt=review.get("prompt_used", ""),
+            persona_name=canonical_persona,
+            scenario_type=(prompt_builder_state or {}).get("scenario_type", ""),
+        )
+    except Exception:
+        pass  # logging is non-blocking
+
     review["weaknesses"] = computed_weaknesses
     review["missing_categories"] = computed_missing
     review["decision_points"] = computed_decision_points
@@ -1165,7 +1182,19 @@ def create_proposal(
     sql_on, _ = _flags()
     if sql_on:
         save_proposal_sql(project_id, tracker)
+
+    # S7-03: link proposal version outcome to the prompt log for the active review
+    if active_review_id:
+        try:
+            from processors.prompt_logger import link_outcome as _link_outcome
+            proposal_ver_id = tracker.get("current_version", "")
+            if proposal_ver_id:
+                _link_outcome(active_review_id, "proposal_version", proposal_ver_id)
+        except Exception:
+            pass  # logging is non-blocking
+
     return tracker
+
 
 
 def add_proposal_version(
@@ -1609,6 +1638,68 @@ def set_active_review_gated(
 # ──────────────────────────────────────────────────────────────
 # S5-03: Decision status tracking
 # ──────────────────────────────────────────────────────────────
+
+def get_prompt_history(
+    project_id: str,
+    persona_name: Optional[str] = None,
+    scenario_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return logged prompt entries for a project (S7-04).
+
+    Thin wrapper around prompt_logger.query_prompts().
+    Supports optional filtering by persona_name and/or scenario_type.
+    """
+    from processors.prompt_logger import query_prompts
+    prompts = query_prompts(project_id, persona_name=persona_name, scenario_type=scenario_type)
+    return {"prompts": prompts, "count": len(prompts)}
+
+
+def get_version_readiness(project_id: str, version_id: str) -> Dict[str, Any]:
+    """Return Decision Readiness for a version's active review (S7-01).
+
+    Loads the active review for the version and calls
+    compute_decision_readiness().  Returns an error dict if the version
+    or its active review cannot be loaded.
+
+    Returns:
+        {version_id, review_id, level, open_decisions, open_weaknesses}
+    """
+    from processors.review_quality import compute_decision_readiness
+    from models.hierarchy import _make_hierarchy_store
+
+    store = _make_hierarchy_store(project_id)
+    version = store.get_version(version_id)
+    if version is None:
+        return {"error": f"Version not found: {version_id}"}
+
+    if not version.active_review_id:
+        # No active review — treat as all-open, i.e. Low
+        return {
+            "version_id": version_id,
+            "review_id": "",
+            "level": "Low",
+            "open_decisions": 0,
+            "open_weaknesses": 0,
+            "note": "No active review set for this version",
+        }
+
+    review = store.get_review(version.active_review_id)
+    if review is None:
+        return {"error": f"Active review not found: {version.active_review_id}"}
+
+    from dataclasses import asdict as _asdict
+    try:
+        review_dict = _asdict(review)
+    except TypeError:
+        review_dict = review.__dict__ if hasattr(review, "__dict__") else {}
+
+    readiness = compute_decision_readiness(review_dict)
+    return {
+        "version_id": version_id,
+        "review_id": version.active_review_id,
+        **readiness,
+    }
+
 
 def update_weakness_status(
     project_id: str,
