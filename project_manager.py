@@ -83,18 +83,8 @@ def save_projects(projects: List[Dict[str, Any]]) -> None:
 
 
 def create_project(name: str, description: str = "") -> Dict[str, Any]:
-    """Create a new project.
+    """Create a new project."""
 
-    Args:
-        name: Project name.
-        description: Optional project description.
-
-    Returns:
-        Project dict with id, name, and metadata.
-
-    Raises:
-        ValueError: If max active projects reached.
-    """
     projects = load_projects()
     max_projects = _get_max_active_projects()
     active_count = len([p for p in projects if p.get("status", "active") == "active"])
@@ -189,11 +179,8 @@ ADMIN_PIN = _os.environ.get("ADMIN_PIN", "")
 
 
 def _validate_pin(pin: str) -> None:
-    """Validate admin PIN against config or ADMIN_PIN env var.
+    """Validate admin PIN against config or ADMIN_PIN env var."""
 
-    Raises:
-        ValueError: If PIN is wrong, empty, or no PIN is configured.
-    """
     try:
         from admin.config import load_config
         configured_pin = load_config().admin_pin
@@ -213,18 +200,8 @@ def archive_project(project_id: str, pin: str) -> Dict[str, Any]:
     """Archive a project (soft-delete, recoverable).
 
     Enforces FIFO limit of MAX_ARCHIVED (5).
-    Records event in lifecycle log.
+    Records event in lifecycle log."""
 
-    Args:
-        project_id: Project ID.
-        pin: Admin PIN for authorization.
-
-    Returns:
-        Dict with status confirmation.
-
-    Raises:
-        ValueError: If PIN is wrong or project not found.
-    """
     _validate_pin(pin)
 
     projects = load_projects()
@@ -278,18 +255,8 @@ def archive_project(project_id: str, pin: str) -> Dict[str, Any]:
 def delete_project(project_id: str, pin: str) -> Dict[str, Any]:
     """Permanently delete a project and all its data.
 
-    Records metadata in lifecycle log (NO files kept).
+    Records metadata in lifecycle log (NO files kept)."""
 
-    Args:
-        project_id: Project ID.
-        pin: Admin PIN for authorization.
-
-    Returns:
-        Dict with deletion confirmation.
-
-    Raises:
-        ValueError: If PIN is wrong or project not found.
-    """
     _validate_pin(pin)
 
     projects = load_projects()
@@ -338,19 +305,8 @@ def delete_project(project_id: str, pin: str) -> Dict[str, Any]:
 
 
 def toggle_file_active(project_id: str, filename: str, active: bool) -> Dict[str, Any]:
-    """Toggle whether a file is included in the next review cycle.
+    """Toggle whether a file is included in the next review cycle."""
 
-    Args:
-        project_id: Project ID.
-        filename: Name of the ingested file (stem, without path).
-        active: True to include in reviews, False to exclude.
-
-    Returns:
-        Updated file status dict.
-
-    Raises:
-        ValueError: If project or file not found.
-    """
     project = get_project(project_id)
     if project is None:
         raise ValueError(f"Project not found: {project_id}")
@@ -369,11 +325,8 @@ def toggle_file_active(project_id: str, filename: str, active: bool) -> Dict[str
 
 
 def get_file_toggles(project_id: str) -> Dict[str, bool]:
-    """Get the active/inactive status of all files for a project.
+    """Get the active/inactive status of all files for a project."""
 
-    Returns:
-        Dict mapping filename → bool (True = active/included).
-    """
     project = get_project(project_id)
     if project is None:
         return {}
@@ -383,18 +336,8 @@ def get_file_toggles(project_id: str) -> Dict[str, bool]:
 def restore_project(project_id: str, pin: str) -> Dict[str, Any]:
     """Restore a project from archive.
 
-    Requires PIN. Restores project config, file references, and version history.
+    Requires PIN. Restores project config, file references, and version history."""
 
-    Args:
-        project_id: Project ID.
-        pin: Admin PIN for authorization.
-
-    Returns:
-        Dict with restore confirmation.
-
-    Raises:
-        ValueError: If PIN wrong, project not found, or not archived.
-    """
     _validate_pin(pin)
 
     projects = load_projects()
@@ -436,11 +379,8 @@ def get_auto_archive_suggestions() -> List[Dict[str, Any]]:
     """Get projects that could be auto-archived due to inactivity.
 
     Based on admin config auto_archive_inactivity_days.
-    This is a suggestion hook – does NOT auto-archive.
+    This is a suggestion hook – does NOT auto-archive."""
 
-    Returns:
-        List of project dicts that are inactive beyond threshold.
-    """
     from datetime import datetime, timezone, timedelta
 
     try:
@@ -481,25 +421,14 @@ def get_auto_archive_suggestions() -> List[Dict[str, Any]]:
     return suggestions
 
 
-
 def ingest_files_to_project(
     project_id: str, file_paths: List[Path]
 ) -> Dict[str, Any]:
     """Ingest files into a project's context store.
 
     Parses each file, stores the structured IngestedDocument,
-    and updates the project's file list.
+    and updates the project's file list."""
 
-    Args:
-        project_id: ID of the target project.
-        file_paths: List of paths to files to ingest.
-
-    Returns:
-        Dict with keys: ingested (count), errors (list), documents (list of summaries).
-
-    Raises:
-        ValueError: If project not found.
-    """
     from processors.ingestion import ingest_file
 
     project = get_project(project_id)
@@ -544,14 +473,8 @@ def ingest_files_to_project(
 
 
 def get_project_context(project_id: str) -> List[Dict[str, Any]]:
-    """Load all ingested documents for a project.
+    """Load all ingested documents for a project."""
 
-    Args:
-        project_id: Project ID.
-
-    Returns:
-        List of ingested document dicts from the context store.
-    """
     context_dir = PROJECTS_DIR / project_id / "context"
     if not context_dir.exists():
         return []
@@ -576,7 +499,6 @@ def _update_project_files(project_id: str, file_paths: List[Path]) -> None:
     save_projects(projects)
 
 
-
 def build_project_intelligence(
     project_id: str,
     version_label: Optional[str] = None,
@@ -586,20 +508,8 @@ def build_project_intelligence(
 
     V3: Explicit "Run Intelligence" action with guardrails.
     Each build is saved as a versioned snapshot for iteration tracking.
-    Records run in version control and system health.
+    Records run in version control and system health."""
 
-    Args:
-        project_id: Project ID.
-        version_label: Optional label for this build (e.g. 'post-discovery').
-        ai_backend: Optional backend override for this build only.  When
-            ``None`` the project's configured ``ai_backend`` is used.
-
-    Returns:
-        Built context dict with metadata and version info.
-
-    Raises:
-        ValueError: If project not found, no documents, or guardrail fails.
-    """
     from processors.context_builder import build_context
     from processors.history import save_context_version
 
@@ -815,14 +725,8 @@ def build_project_intelligence(
 
 
 def get_project_intelligence(project_id: str) -> Dict[str, Any]:
-    """Load built intelligence for a project.
+    """Load built intelligence for a project."""
 
-    Args:
-        project_id: Project ID.
-
-    Returns:
-        Intelligence dict, or empty dict if not yet built.
-    """
     intelligence_path = PROJECTS_DIR / project_id / "intelligence.json"
     if not intelligence_path.exists():
         return {}
@@ -831,21 +735,14 @@ def get_project_intelligence(project_id: str) -> Dict[str, Any]:
 
 
 def get_project_summary(project_id: str) -> str:
-    """Get a token-efficient summary of project intelligence.
+    """Get a token-efficient summary of project intelligence."""
 
-    Args:
-        project_id: Project ID.
-
-    Returns:
-        Text summary suitable for prompt injection.
-    """
     from processors.context_builder import build_context_summary
 
     intelligence = get_project_intelligence(project_id)
     if not intelligence:
         return "No intelligence built yet. Run build-context first."
     return build_context_summary(intelligence)
-
 
 
 def run_persona_review(
@@ -858,21 +755,8 @@ def run_persona_review(
 
     V4: Supports multi-role reviews.  ``persona_name`` may be a single
     role string (e.g. ``"Solution Architect"`` or legacy id
-    ``"solution_architect"``) or a list of up to 3 role names.
+    ``"solution_architect"``) or a list of up to 3 role names."""
 
-    Args:
-        project_id: Project ID.
-        persona_name: Role name, legacy persona id, or list of role names.
-        ai_backend: Backend name; defaults to ``"files_only"``.
-        custom_prompt: Optional additional context/instructions.
-            Included verbatim in every AI prompt so results vary when changed.
-
-    Returns:
-        Review result dict.
-
-    Raises:
-        ValueError: If project not found or no intelligence built.
-    """
     from personas.engine import run_review
 
     project = get_project(project_id)
@@ -1049,14 +933,8 @@ def run_persona_review(
 
 
 def get_project_reviews(project_id: str) -> List[Dict[str, Any]]:
-    """Load all stored reviews for a project.
+    """Load all stored reviews for a project."""
 
-    Args:
-        project_id: Project ID.
-
-    Returns:
-        List of review result dicts, newest first.
-    """
     reviews_dir = PROJECTS_DIR / project_id / "reviews"
     if not reviews_dir.exists():
         return []
@@ -1081,21 +959,14 @@ def _store_review(project_id: str, review: Dict[str, Any]) -> None:
         json.dump(review, f, indent=2)
 
 
-
 # ──────────────────────────────────────────────────────────────
 # Iteration & History
 # ──────────────────────────────────────────────────────────────
 
 
 def get_project_versions(project_id: str) -> List[Dict[str, Any]]:
-    """List all context build versions for a project.
+    """List all context build versions for a project."""
 
-    Args:
-        project_id: Project ID.
-
-    Returns:
-        List of version metadata dicts, newest first.
-    """
     from processors.history import list_context_versions
 
     project_dir = PROJECTS_DIR / project_id
@@ -1103,15 +974,8 @@ def get_project_versions(project_id: str) -> List[Dict[str, Any]]:
 
 
 def get_project_version(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
-    """Load a specific context version snapshot.
+    """Load a specific context version snapshot."""
 
-    Args:
-        project_id: Project ID.
-        version_id: e.g. 'v1', 'v2'.
-
-    Returns:
-        Full context snapshot, or None if not found.
-    """
     from processors.history import get_context_version
 
     project_dir = PROJECTS_DIR / project_id
@@ -1121,16 +985,8 @@ def get_project_version(project_id: str, version_id: str) -> Optional[Dict[str, 
 def compare_project_versions(
     project_id: str, version_a: str, version_b: str
 ) -> Dict[str, Any]:
-    """Compare two context versions for a project.
+    """Compare two context versions for a project."""
 
-    Args:
-        project_id: Project ID.
-        version_a: Earlier version (e.g. 'v1').
-        version_b: Later version (e.g. 'v2').
-
-    Returns:
-        Comparison dict with added/removed/unchanged per category.
-    """
     from processors.history import compare_context_versions
 
     project_dir = PROJECTS_DIR / project_id
@@ -1140,16 +996,8 @@ def compare_project_versions(
 def compare_project_reviews(
     project_id: str, review_file_a: str, review_file_b: str
 ) -> Dict[str, Any]:
-    """Compare two review results for a project.
+    """Compare two review results for a project."""
 
-    Args:
-        project_id: Project ID.
-        review_file_a: Filename of earlier review.
-        review_file_b: Filename of later review.
-
-    Returns:
-        Comparison dict showing evolution of findings.
-    """
     from processors.history import compare_reviews
 
     reviews_dir = PROJECTS_DIR / project_id / "reviews"
@@ -1172,15 +1020,8 @@ def compare_project_reviews(
 def get_project_evolution(
     project_id: str, category: str = "risks"
 ) -> List[Dict[str, Any]]:
-    """Get evolution timeline of a category across all versions.
+    """Get evolution timeline of a category across all versions."""
 
-    Args:
-        project_id: Project ID.
-        category: 'risks', 'assumptions', 'dependencies', 'constraints', or 'action_items'.
-
-    Returns:
-        Timeline list with counts and items per version.
-    """
     from processors.history import get_evolution_timeline
 
     project_dir = PROJECTS_DIR / project_id
@@ -1190,15 +1031,8 @@ def get_project_evolution(
 def get_project_review_history(
     project_id: str, persona_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Get review history for a project, optionally filtered by persona.
+    """Get review history for a project, optionally filtered by persona."""
 
-    Args:
-        project_id: Project ID.
-        persona_id: Optional persona filter.
-
-    Returns:
-        List of review summaries, newest first.
-    """
     from processors.history import get_review_history
 
     project_dir = PROJECTS_DIR / project_id
@@ -1236,7 +1070,6 @@ def _update_iteration_on_review(project_id: str) -> None:
             p["updated_at"] = datetime.now(timezone.utc).isoformat()
             break
     save_projects(projects)
-
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1398,16 +1231,8 @@ def update_proposal_status(
 def transition_project_phase(
     project_id: str, new_phase: str, reason: str = ""
 ) -> Dict[str, Any]:
-    """Move a project to a new SDLC phase.
+    """Move a project to a new SDLC phase."""
 
-    Args:
-        project_id: Project ID.
-        new_phase: Target phase (discovery/proposal/planning/execution/review).
-        reason: Optional reason for transition.
-
-    Returns:
-        Transition record dict.
-    """
     from processors.phases import transition_phase
 
     project_dir = PROJECTS_DIR / project_id
@@ -1484,16 +1309,8 @@ def run_deep_dive_analysis(
     persona_name: str = "",
     custom_prompt: str = "",
 ) -> Dict[str, Any]:
-    """Run explicit Deep Dive analysis (standalone, not part of review).
+    """Run explicit Deep Dive analysis (standalone, not part of review)."""
 
-    Args:
-        project_id: Project ID.
-        persona_name: Optional persona to apply.
-        custom_prompt: Additional context from user.
-
-    Returns:
-        Deep Dive result dict.
-    """
     from personas.deep_dive import run_deep_dive
 
     project = get_project(project_id)
@@ -1547,17 +1364,8 @@ def apply_deep_dive_feedback(
     rejected: Optional[List[str]] = None,
     added_to_prompt: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Apply user feedback to deep dive results (feedback loop).
+    """Apply user feedback to deep dive results (feedback loop)."""
 
-    Args:
-        project_id: Project ID.
-        accepted: Accepted suggestions.
-        rejected: Rejected suggestions.
-        added_to_prompt: Items to add to next prompt.
-
-    Returns:
-        Updated feedback status.
-    """
     from personas.deep_dive import apply_feedback
     from datetime import datetime, timezone
 
@@ -1587,14 +1395,8 @@ def apply_deep_dive_feedback(
 
 
 def validate_files_for_ingestion(file_paths: List[str]) -> Dict[str, Any]:
-    """Validate file types before ingestion (guardrail).
+    """Validate file types before ingestion (guardrail)."""
 
-    Args:
-        file_paths: List of file path strings.
-
-    Returns:
-        Validation result with valid/invalid files.
-    """
     from admin.guardrails import validate_file_types
     all_valid, valid_paths, errors = validate_file_types(file_paths)
     return {
@@ -1604,7 +1406,6 @@ def validate_files_for_ingestion(file_paths: List[str]) -> Dict[str, Any]:
         "valid_count": len(valid_paths),
         "invalid_count": len(errors),
     }
-
 
 
 # ──────────────────────────────────────────────────────────────
@@ -1723,7 +1524,6 @@ def get_active_review_for_version(project_id: str, version_id: str) -> Optional[
     return None
 
 
-
 # ──────────────────────────────────────────────────────────────
 # Review Quality Gate (DS-04)
 # ──────────────────────────────────────────────────────────────
@@ -1826,22 +1626,8 @@ def generate_diagram(
     what was actually found, not just the latest intelligence build.
 
     Saves the XML to ``projects_data/{id}/diagrams/{type}.drawio`` and
-    returns a summary dict.
+    returns a summary dict."""
 
-    Args:
-        project_id: Project ID.
-        diagram_type: One of ``dependency_map``, ``risk_heatmap``,
-            ``scope_overview``.
-        version_id: Optional hierarchy version ID to scope data.
-        review_id: Optional review ID whose findings are merged in.
-
-    Returns:
-        Dict with keys: diagram_type, xml, path, generated_at.
-
-    Raises:
-        ValueError: If project not found, no intelligence built, or
-            unknown diagram type.
-    """
     from processors.diagram_generator import generate, DIAGRAM_TYPES as VALID
     from datetime import datetime, timezone
 
@@ -1946,11 +1732,8 @@ def get_diagram(project_id: str, diagram_type: str) -> Dict[str, Any]:
 
 
 def list_diagrams(project_id: str) -> Dict[str, Any]:
-    """List all generated diagrams for a project.
+    """List all generated diagrams for a project."""
 
-    Returns:
-        Dict with ``diagrams`` list (type, path, size_bytes per entry).
-    """
     from processors.diagram_generator import DIAGRAM_TYPES as VALID
 
     diagram_dir = PROJECTS_DIR / project_id / "diagrams"
