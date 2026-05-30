@@ -294,6 +294,8 @@ def save_presales_feedback(
     notes: str = "",
     next_action: str = "",
     status: str = "open",
+    # S6-03: hierarchy version scope (no proposal yet)
+    version_id: str = "",
 ) -> Dict[str, Any]:
     """Save structured presales feedback.
 
@@ -345,8 +347,8 @@ def save_presales_feedback(
             responder_name, responder_email,
             feedback_items, raw_text, change_requested,
             accepted, rejected, concerns,
-            notes, next_action, status, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            notes, next_action, status, version_id, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             feedback_id, project_id, proposal_ver_id, review_id, source,
             responder_name, responder_email,
@@ -356,7 +358,7 @@ def save_presales_feedback(
             Database.jdump(accepted or []),
             Database.jdump(rejected or []),
             Database.jdump(concerns or []),
-            notes, next_action, status, created_at, now,
+            notes, next_action, status, version_id, created_at, now,
         ),
     )
     db.commit()
@@ -384,6 +386,7 @@ def _row_to_feedback(row: Dict[str, Any]) -> Dict[str, Any]:
         "project_id":       row["project_id"],
         "proposal_ver_id":  row.get("proposal_ver_id", ""),
         "review_id":        row.get("review_id", ""),
+        "version_id":       row.get("version_id", ""),
         "source":           row.get("source", "internal"),
         "responder_name":   row.get("responder_name", ""),
         "responder_email":  row.get("responder_email", ""),

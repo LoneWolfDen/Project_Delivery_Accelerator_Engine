@@ -1610,6 +1610,111 @@ def set_active_review_gated(
 # S5-03: Decision status tracking
 # ──────────────────────────────────────────────────────────────
 
+def update_weakness_status(
+    project_id: str,
+    review_id: str,
+    weakness_id: str,
+    status: str,
+) -> Dict[str, Any]:
+    """Update the status of a single weakness on a review (S6-01).
+
+    Valid statuses: open | addressed | validated | rejected
+    Returns the updated weakness dict, or an error dict.
+    """
+    from processors.review_quality import DECISION_STATUSES
+    from models.hierarchy import _make_hierarchy_store
+
+    if status not in DECISION_STATUSES:
+        return {"error": f"Invalid status '{status}'. Must be one of: {', '.join(DECISION_STATUSES)}"}
+
+    store = _make_hierarchy_store(project_id)
+    review = store.get_review(review_id)
+    if review is None:
+        return {"error": f"Review not found: {review_id}"}
+
+    weaknesses = list(review.weaknesses or [])
+    target = next((w for w in weaknesses if w.get("id") == weakness_id), None)
+    if target is None:
+        return {"error": f"Weakness '{weakness_id}' not found in review {review_id}"}
+
+    target["status"] = status
+    store.update_review_weaknesses(review_id, weaknesses)
+
+    return {"review_id": review_id, "weakness_id": weakness_id, "status": status, "updated": True}
+
+
+def get_review_diff(project_id: str, review_id: str) -> Dict[str, Any]:
+    """Return a structured diff between a review and its predecessor (S6-02).
+
+    Diffs three dimensions: findings, weaknesses, decision_points.
+    Each dimension has: new (items only in current), resolved (only in
+    predecessor), unchanged (count present in both).
+
+    Uses text as the comparison key for weaknesses and decision_points;
+    uses (category, item-text) pairs for findings.
+
+    Returns an error dict if the review or its predecessor cannot be loaded.
+    """
+    from models.hierarchy import _make_hierarchy_store
+
+    store = _make_hierarchy_store(project_id)
+    review = store.get_review(review_id)
+    if review is None:
+        return {"error": f"Review not found: {review_id}"}
+
+    if not review.previous_review_id:
+        return {"error": "Review has no predecessor — diff not available"}
+
+    pred = store.get_review(review.previous_review_id)
+    if pred is None:
+        return {"error": f"Predecessor review '{review.previous_review_id}' not found"}
+
+    def _diff_findings(curr: Dict, prev: Dict) -> Dict[str, Any]:
+        """Diff findings dicts — key is (category, text)."""
+        def _flatten(f):
+            pairs = set()
+            for cat, items in (f or {}).items():
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, str):
+                            pairs.add((cat, item.strip()))
+            return pairs
+
+        curr_set = _flatten(curr)
+        prev_set = _flatten(prev)
+        new_items = sorted(
+            [{"category": c, "text": t} for c, t in curr_set - prev_set],
+            key=lambda x: (x["category"], x["text"]),
+        )
+        resolved = sorted(
+            [{"category": c, "text": t} for c, t in prev_set - curr_set],
+            key=lambda x: (x["category"], x["text"]),
+        )
+        unchanged = len(curr_set & prev_set)
+        return {"new": new_items, "resolved": resolved, "unchanged": unchanged}
+
+    def _diff_list(curr: List, prev: List) -> Dict[str, Any]:
+        """Diff lists of dicts by text key."""
+        curr_texts = {(item.get("text", "").strip(), item.get("category", "")): item
+                      for item in (curr or []) if isinstance(item, dict)}
+        prev_texts = {(item.get("text", "").strip(), item.get("category", "")): item
+                      for item in (prev or []) if isinstance(item, dict)}
+        new_keys = set(curr_texts) - set(prev_texts)
+        resolved_keys = set(prev_texts) - set(curr_texts)
+        unchanged = len(set(curr_texts) & set(prev_texts))
+        new_items = sorted([curr_texts[k] for k in new_keys], key=lambda x: x.get("text", ""))
+        resolved = sorted([prev_texts[k] for k in resolved_keys], key=lambda x: x.get("text", ""))
+        return {"new": new_items, "resolved": resolved, "unchanged": unchanged}
+
+    return {
+        "review_id":          review_id,
+        "previous_review_id": review.previous_review_id,
+        "findings":           _diff_findings(review.findings, pred.findings),
+        "weaknesses":         _diff_list(review.weaknesses, pred.weaknesses),
+        "decision_points":    _diff_list(review.decision_points, pred.decision_points),
+    }
+
+
 def update_decision_status(
     project_id: str,
     review_id: str,

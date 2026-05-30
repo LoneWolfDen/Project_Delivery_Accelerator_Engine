@@ -412,7 +412,19 @@ class HierarchyStoreSQLite:
             (Database.jdump(decision_points), self.project_id, review_id),
         )
         self._db.commit()
-        # Mirror to file
+        review = self.get_review(review_id)
+        if review:
+            self._file_save_review(review)
+
+    def update_review_weaknesses(
+        self, review_id: str, weaknesses: List[Dict[str, Any]]
+    ) -> None:
+        """Persist updated weaknesses list for a review (S6-01)."""
+        self._db.execute(
+            "UPDATE reviews SET weaknesses=? WHERE project_id=? AND review_id=?",
+            (Database.jdump(weaknesses), self.project_id, review_id),
+        )
+        self._db.commit()
         review = self.get_review(review_id)
         if review:
             self._file_save_review(review)

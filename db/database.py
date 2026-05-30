@@ -376,12 +376,14 @@ class Database:
             if col not in pv_cols:
                 conn.execute(f"ALTER TABLE proposal_versions ADD COLUMN {col} {definition}")
 
-        # ── presales_feedback: DS-01 structured feedback ──────────────────────
+        # ── presales_feedback: DS-01 structured feedback + S6-03 version_id ────
         pf_cols = _existing_cols("presales_feedback")
         for col, definition in [
             ("feedback_items",   "TEXT DEFAULT '[]'"),
             ("raw_text",         "TEXT DEFAULT ''"),
             ("change_requested", "INTEGER DEFAULT 0"),
+            # S6-03: capture feedback against a hierarchy version (no proposal yet)
+            ("version_id",       "TEXT DEFAULT ''"),
         ]:
             if col not in pf_cols:
                 conn.execute(f"ALTER TABLE presales_feedback ADD COLUMN {col} {definition}")

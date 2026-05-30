@@ -253,6 +253,16 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             from db.decision_log import get_decision_log
             logs = get_decision_log(project_id, entity_type=entity_type, entity_id=entity_id)
             self._json_response({"project_id": project_id, "logs": logs, "count": len(logs)})
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path and clean_path.endswith("/diff"):
+            # GET /api/projects/{id}/hierarchy/reviews/{review_id}/diff
+            parts = clean_path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            result = project_manager.get_review_diff(project_id, review_id)
+            if result.get("error"):
+                self._json_response(result, status=404)
+            else:
+                self._json_response(result)
         # ── Diagram API ──
         elif clean_path.startswith("/api/projects/") and clean_path.endswith("/diagrams"):
             project_id = clean_path.split("/")[3]
@@ -404,6 +414,20 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._json_response(result)
             except ValueError as e:
                 self._json_response({"error": str(e)}, status=400)
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/weakness/" in self.path and self.path.endswith("/status"):
+            # POST /api/projects/{id}/hierarchy/reviews/{review_id}/weakness/{weakness_id}/status
+            parts = self.path.split("/")
+            project_id = parts[3]
+            review_id = parts[6]
+            weakness_id = parts[8]
+            body = self._read_body() or {}
+            result = project_manager.update_weakness_status(
+                project_id, review_id, weakness_id, body.get("status", "")
+            )
+            if result.get("error"):
+                self._json_response(result, status=400)
+            else:
+                self._json_response(result)
         elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/decision/" in self.path and self.path.endswith("/status"):
             # POST /api/projects/{id}/hierarchy/reviews/{review_id}/decision/{decision_id}/status
             parts = self.path.split("/")
@@ -614,6 +638,7 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             notes=body.get("notes", ""),
             next_action=body.get("next_action", ""),
             status="open",
+            version_id=body.get("version_id", ""),
         )
         try:
             from processors.presales_feedback import attach_feedback_to_context
