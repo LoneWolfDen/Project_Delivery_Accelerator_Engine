@@ -977,79 +977,70 @@ def run_persona_review(
     except Exception:
         pass
 
-    # Create Review in hierarchy (linked to latest version)
-    try:
-        from models.hierarchy import HierarchyStore, _make_hierarchy_store
-        store = _make_hierarchy_store(project_id)
-        versions = store.list_versions()
-        if not versions:
-            # No version exists — hierarchy review cannot be linked.
-            # This should have been caught by the upfront guard above,
-            # but handle it defensively here too.
-            pass
-        else:
-            latest_version_id = versions[0]["version_id"]
+    # Create Review in hierarchy (linked to latest version).
+    # NOTE: any exception here is re-raised so the caller sees the failure
+    # rather than silently discarding the review from the hierarchy.
+    from models.hierarchy import _make_hierarchy_store
+    store = _make_hierarchy_store(project_id)
+    versions = store.list_versions()
 
-            # Get included file names for review context – merge BOTH systems:
-            # 1. Legacy context/ documents (ingested via /api/ingest)
-            # 2. New artifact v1 uploads (ingested via /api/v1/artifacts/upload|text)
-            documents = get_project_context(project_id)
-            file_toggles = get_file_toggles(project_id)
-
-            # Legacy files: filter by toggle state
-            legacy_included_files = [
-                d.get("filename", "")
-                for d in documents
-                if file_toggles.get(d.get("filename", ""), True) and d.get("filename", "")
-            ]
-            legacy_categories = list(set(
-                d.get("metadata", {}).get("source_type", "")
-                for d in documents
-                if file_toggles.get(d.get("filename", ""), True)
-                and d.get("metadata", {}).get("source_type", "")
-            ))
-
-            # New artifact v1 files: include those with include=True
-            artifact_included_files: List[str] = []
-            artifact_categories: List[str] = []
-            try:
-                from db.artifact_store_sql import list_artifacts as _list_artifacts_sql
-                artifacts = _list_artifacts_sql(project_id)
-                for art in artifacts:
-                    if art.get("include", True):
-                        label = art.get("title") or art.get("fileName") or art.get("artifactId", "")
-                        if label:
-                            artifact_included_files.append(label)
-                        cat = art.get("category", "")
-                        if cat:
-                            artifact_categories.append(cat)
-            except Exception:
-                pass
-
-            # Merge and deduplicate
-            included_files = list(dict.fromkeys(legacy_included_files + artifact_included_files))
-            categories = list(dict.fromkeys(legacy_categories + artifact_categories))
-
-            store.create_review(
-                version_id=latest_version_id,
-                persona=canonical_persona,
-                ai_backend=ai_backend,
-                prompt_used=review.get("prompt_used", ""),
-                custom_prompt=custom_prompt or "",
-                findings=review.get("findings", {}),
-                questions=review.get("questions", []),
-                summary=review.get("summary", ""),
-                included_files=included_files,
-                categories=categories,
-                ai_metadata=review.get("ai_metadata", {}),
-                deep_dive=review.get("deep_dive"),
-            )
-    except Exception as _review_store_exc:
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
-            "Failed to create hierarchy review for project %s: %s",
-            project_id, _review_store_exc, exc_info=True
+    # versions guard was already checked above; defensive repeat here
+    if not versions:
+        raise ValueError(
+            "No intelligence version found. "
+            "Run 'Build Intelligence' on the Ingest tab before running a review."
         )
+
+    latest_version_id = versions[0]["version_id"]
+
+    # Build included-files list — merge legacy context/ docs and artifact v1 uploads
+    documents = get_project_context(project_id)
+    file_toggles = get_file_toggles(project_id)
+
+    legacy_included_files = [
+        d.get("filename", "")
+        for d in documents
+        if file_toggles.get(d.get("filename", ""), True) and d.get("filename", "")
+    ]
+    legacy_categories = list(set(
+        d.get("metadata", {}).get("source_type", "")
+        for d in documents
+        if file_toggles.get(d.get("filename", ""), True)
+        and d.get("metadata", {}).get("source_type", "")
+    ))
+
+    artifact_included_files: List[str] = []
+    artifact_categories: List[str] = []
+    try:
+        from db.artifact_store_sql import list_artifacts as _list_artifacts_sql
+        for art in _list_artifacts_sql(project_id):
+            if art.get("include", True):
+                label = art.get("title") or art.get("fileName") or art.get("artifactId", "")
+                if label:
+                    artifact_included_files.append(label)
+                cat = art.get("category", "")
+                if cat:
+                    artifact_categories.append(cat)
+    except Exception:
+        pass
+
+    included_files = list(dict.fromkeys(legacy_included_files + artifact_included_files))
+    categories = list(dict.fromkeys(legacy_categories + artifact_categories))
+
+    store.create_review(
+        version_id=latest_version_id,
+        persona=canonical_persona,
+        ai_backend=ai_backend,
+        prompt_used=review.get("prompt_used", ""),
+        custom_prompt=custom_prompt or "",
+        findings=review.get("findings", {}),
+        questions=review.get("questions", []),
+        summary=review.get("summary", ""),
+        included_files=included_files,
+        categories=categories,
+        ai_metadata=review.get("ai_metadata", {}),
+        deep_dive=review.get("deep_dive"),
+    )
 
     # Update iteration tracking
     _update_iteration_on_review(project_id)

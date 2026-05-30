@@ -1994,12 +1994,17 @@ async function runReview(){
 async function runDeepDive(){
   if(!state.current)return;
   const el=document.getElementById('deepDiveResult');
-  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Generating SME questions…</span>';
+  // Guard: require at least one role selected
   const roles=_getSelectedRoles();
+  if(!roles.length){
+    el.innerHTML=`<p style="color:var(--red);font-size:12px">⚠ Select at least one role before generating SME questions.</p>`;
+    toast('Select at least one role first','err');
+    return;
+  }
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Generating SME questions…</span>';
   const custom=document.getElementById('customPrompt')?.value||'';
   const backend=document.getElementById('backendSelect')?.value||'files_only';
-  // Send ALL selected roles; server loops through each and merges question groups
-  const allRoles=roles.length?roles:['Solution Architect'];
+  const allRoles=roles;
   let mergedGroups=[],mergedQuestions=[],mergedPct=0;
   for(const persona of allRoles){
     const r=await api('POST',`/api/projects/${state.current.id}/deep-dive`,
@@ -2021,11 +2026,6 @@ async function runDeepDive(){
   const groups=r.question_groups||[];
   const allQ=r.all_questions||[];
   const pct=r.scope_completeness??0;
-  const pctTag=pct>=70?'tag-green':pct>=40?'tag-yellow':'tag-red';
-  const srcLabel=r.ai_mode
-    ?`✨ AI (${escHtml(r.ai_backend)}) — questions tailored to this project`
-    :'🔍 Heuristic — select an AI backend for project-specific questions';
-  state._ddAllItems=allQ;
   const pctTag=pct>=70?'tag-green':pct>=40?'tag-yellow':'tag-red';
   const srcLabel=r.ai_mode
     ?`✨ AI (${escHtml(r.ai_backend)}) — questions tailored to this project`
