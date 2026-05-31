@@ -256,6 +256,36 @@ details[open] .chevron{transform:rotate(90deg);}
 .phase-step.current{background:var(--accent-dim);color:#fff;border-color:var(--accent);}
 .phase-step.pending{background:var(--surface2);color:var(--text-dim);}
 
+/* ─── Sprint 8: Review Strength / Proposal panels ───────────── */
+.rs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+@media(max-width:600px){.rs-grid{grid-template-columns:1fr;}}
+.rs-cell{background:var(--surface2);border-radius:var(--radius);padding:8px 10px;}
+.rs-cell-header{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:6px;display:flex;align-items:center;gap:5px;}
+.rs-item{font-size:11px;color:var(--text-dim);padding:3px 0;display:flex;align-items:flex-start;gap:5px;line-height:1.4;}
+.rs-item::before{content:'•';color:var(--text-muted);flex-shrink:0;}
+.rs-item.resolved::before{content:'✓';color:var(--green);}
+.pr-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius);margin-bottom:8px;}
+.pr-bar.not-ready{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);}
+.pr-bar.partial{background:rgba(227,179,65,.08);border:1px solid rgba(227,179,65,.3);}
+.pr-bar.ready{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);}
+.nba-item{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:var(--radius);
+  background:var(--surface2);margin-bottom:5px;font-size:12px;}
+.nba-num{font-size:10px;font-weight:700;background:var(--accent-dim);color:#fff;
+  border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.dp-card{border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;margin-bottom:6px;background:var(--surface);}
+.dp-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px;}
+.dp-desc{font-size:11px;color:var(--text-dim);margin-bottom:4px;line-height:1.4;}
+.dp-opts{font-size:10px;color:var(--text-muted);font-style:italic;}
+.prog-row{display:flex;align-items:flex-start;gap:6px;padding:4px 0;font-size:11px;color:var(--text-dim);}
+.prog-resolved{color:var(--green);}
+.prog-new{color:var(--accent);}
+.prog-still{color:var(--yellow);}
+.prop-strength-area{padding:6px 10px;border-radius:var(--radius);margin-bottom:4px;font-size:11px;}
+.prop-strength-strong{background:rgba(63,185,80,.08);border-left:3px solid var(--green);}
+.prop-strength-weak{background:rgba(248,81,73,.08);border-left:3px solid var(--red);}
+.fb-map-tag{font-size:9px;padding:1px 6px;border-radius:20px;background:var(--surface3);
+  color:var(--text-muted);margin-left:4px;}
 /* ─── Loading overlay ───────────────────────────────────────── */
 .loading-bar{height:2px;background:var(--accent-dim);border-radius:2px;
   animation:loadbar 1.2s ease-in-out infinite;width:60%;}
@@ -2105,7 +2135,7 @@ async function viewReviewDetail(rid){
       <p class="fs11 c-dim">These areas had no findings — consider addressing them in the next review.</p>
     </div>`;
   }
-  // S5-01/S5-03: Decision Points section
+  // S5-01/S5-03: Decision Points section — raw status table (kept for completeness)
   const decisionPoints = r.decision_points || [];
   if (decisionPoints.length) {
     html += `<div class="card" style="margin-top:8px;border-top:2px solid var(--accent)">
@@ -2122,48 +2152,29 @@ async function viewReviewDetail(rid){
       <p class="fs11 c-dim" style="margin-top:6px">Decisions that must be made before this review can be finalised.</p>
     </div>`;
   }
-  // S6-02: What Changed — fetch real diff when predecessor exists
+
+  // F2: Enriched Decision Points Engine (cards with title/options/SME link)
+  html += renderDecisionPointsEngine(r);
+
+  // F1: Review Strength Panel
+  html += renderReviewStrength(r);
+
+  // F4: Proposal Readiness Indicator
+  html += renderProposalReadiness(r);
+
+  // F6: Next Best Actions
+  html += renderNextBestActions(r);
+
+  // F3: Review Progression — replaces "What Changed" diff
   if(r.previous_review_id){
-    let diffHtml = '';
+    let diff = null;
     try {
-      const diff = await api('GET', `/api/projects/${pid}/hierarchy/reviews/${r.review_id}/diff`);
-      if (diff && !diff.error) {
-        function _diffSection(label, icon, data) {
-          if (!data) return '';
-          const newItems = data.new || [];
-          const resolved = data.resolved || [];
-          const unchanged = data.unchanged || 0;
-          if (!newItems.length && !resolved.length && !unchanged) return '';
-          const rows = [
-            ...newItems.map(i => `<div class="diff-added">${escHtml((i.text||i.category||String(i)).slice(0,120))}</div>`),
-            ...resolved.map(i => `<div class="diff-removed">${escHtml((i.text||i.category||String(i)).slice(0,120))}</div>`),
-          ].join('') || `<p class="fs11 c-dim" style="padding:2px 0">No changes</p>`;
-          const badge = newItems.length
-            ? `<span class="diff-trend up">+${newItems.length}</span>`
-            : resolved.length
-              ? `<span class="diff-trend down">−${resolved.length}</span>`
-              : `<span class="diff-trend same">~</span>`;
-          return `<details class="mb8">
-            <summary class="diff-cat-header">
-              <span>${icon}</span><strong style="font-size:12px">${label}</strong>
-              ${badge}
-              <span class="diff-count" style="margin-left:auto">${unchanged} unchanged</span>
-            </summary>
-            <div class="diff-cat-body">${rows}</div>
-          </details>`;
-        }
-        diffHtml = _diffSection('Findings', '📋', diff.findings)
-                 + _diffSection('Weaknesses', '⚠️', diff.weaknesses)
-                 + _diffSection('Decision Points', '🎯', diff.decision_points);
-      }
+      const d = await api('GET', `/api/projects/${pid}/hierarchy/reviews/${r.review_id}/diff`);
+      if (d && !d.error) diff = d;
     } catch(e) {}
-    html+=`<div class="card diff-card" style="margin-top:8px">
-      <div class="flex-between mb">
-        <div class="card-title" style="font-size:12px"><span class="icon">🔄</span>What Changed from ${escHtml(r.previous_review_id)}</div>
-      </div>
-      ${diffHtml || '<p class="fs11 c-dim">Diff unavailable.</p>'}
-    </div>`;
+    html += renderReviewProgression(diff, r.previous_review_id);
   }
+
   // S3-03: Tighten button — pre-populates previousReviewId and switches to Reviews tab
   html+=`<div style="margin-top:8px">
     <button class="btn btn-sm btn-outline" onclick="
@@ -2663,7 +2674,7 @@ async function runDeepDive(){
       const dpLine = dpText
         ? `<div style="font-size:9px;color:var(--text-dim);margin-top:2px;padding-left:2px">→ Decision: ${escHtml(dpText)}</div>`
         : '';
-      const originLine=`<div style="font-size:9px;color:var(--text-muted);margin-top:2px;padding-left:2px;font-style:italic">📎 Derived from: ${escHtml(_originLabel)}</div>`;
+      const originLine=`<div style="font-size:9px;color:var(--text-muted);margin-top:2px;padding-left:2px;font-style:italic">📎 Derived from: ${escHtml(_originLabel)}${_smeQuestionTypeTag(qText)}</div>`;
       return`<div class="dd-row" data-idx="${i}" data-section="${sectionId}"
           data-decision-id="${(typeof q==='object'&&q)?escHtml(q.decision_point_id||''):''}"
           data-decision-text="${(typeof q==='object'&&q)?escHtml(q.decision_point_text||''):''}"
@@ -3366,18 +3377,25 @@ async function viewPresales(){
   }
 
   // ── Feedback log ───────────────────────────────────────────
+  // F8: enrich feedback with mapping to existing decisions/weaknesses
+  const enrichedFeedback = _enrichFeedbackWithMapping(feedbackList, activeReview);
   let fbCard='';
-  if(feedbackList.length){
-    const rows=feedbackList.map(f=>{
+  if(enrichedFeedback.length){
+    const rows=enrichedFeedback.map(f=>{
       const srcTag=f.source==='external'?'tag-purple':'tag-blue';
       const stTag={open:'tag-yellow',actioned:'tag-green',closed:''}[f.status]||'';
+      const mappedTag = f._mappedContext
+        ? `<span class="fb-map-tag" title="Mapped to existing ${f._mappedContext.type}">
+            🔗 ${escHtml(f._mappedContext.type)}: ${escHtml(f._mappedContext.text)}</span>`
+        : '';
       return`<div class="card" style="background:var(--surface2);margin-bottom:6px">
         <div class="flex-between mb" style="flex-wrap:wrap;gap:4px">
-          <div class="flex gap-sm">
+          <div class="flex gap-sm" style="flex-wrap:wrap">
             <span class="tag ${srcTag}">${f.source}</span>
             <span class="tag ${stTag}">${f.status}</span>
             <strong style="font-size:11px">${escHtml(f.responder_name||'Anonymous')}</strong>
             ${f.responder_email?`<span class="fs10 c-muted">${escHtml(f.responder_email)}</span>`:''}
+            ${mappedTag}
           </div>
           <span class="fs10 c-muted">${fmtDateShort(f.created_at)}</span>
         </div>
@@ -3404,7 +3422,7 @@ async function viewPresales(){
     fbCard=`<div class="card">
       <div class="flex-between mb">
         <div class="card-title"><span class="icon">💬</span>Feedback Log
-          <span class="tag" style="margin-left:6px">${feedbackList.length}</span></div>
+          <span class="tag" style="margin-left:6px">${enrichedFeedback.length}</span></div>
       </div>
       ${rows}
     </div>`;
@@ -3673,8 +3691,14 @@ async function viewPresales(){
     }
   }
 
+  // F7: Proposal Strength summary — derived from active review data
+  let proposalStrengthCard = '';
+  if (activeReview) {
+    proposalStrengthCard = renderProposalStrength(activeReview);
+  }
+
   // ── HTML order: forms first so DOM elements exist before buttons fire ──
-  return createProposalForm+summaryCard+versionsCard+docCard+addVersionForm+runReviewCard+actionsCard+reviewCard+captureFeedbackForm+shareForm+stopCard+fbCard;
+  return createProposalForm+summaryCard+versionsCard+proposalStrengthCard+docCard+addVersionForm+runReviewCard+actionsCard+reviewCard+captureFeedbackForm+shareForm+stopCard+fbCard;
 }
 
 // ── Pre-sales action helpers ─────────────────────────────────
@@ -4539,6 +4563,458 @@ async function loadAppInfo(){
   }catch(e){}
 }
 (async()=>{await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);render();})();
+</script>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+// SPRINT 8 — Review → Decision → Proposal Strengthening
+// ══════════════════════════════════════════════════════════════════════
+
+// ── Shared keyword maps (used by multiple features) ────────────────────
+const _IMPACT_MAP = {
+  'Architecture':  ['architecture','design','pattern','integration','api','microservice','infrastructure','platform','cloud','aws','azure','gcp','database','data model'],
+  'Delivery':      ['delivery','timeline','milestone','sprint','dependency','resource','capacity','team','scope','change','governance','plan'],
+  'Cost':          ['cost','budget','spend','pricing','licence','license','finops','commercial','contract','opex','capex','financial'],
+  'Operations':    ['monitoring','observability','sla','uptime','support','incident','alert','log','backup','recovery','dr','failover','runbook'],
+};
+
+
+
+// ── F1: renderReviewStrength ──────────────────────────────────────────
+// Builds the Review Strength panel: Missing / Weak / Unresolved / Impact
+function renderReviewStrength(r) {
+  const weaknesses   = r.weaknesses || [];
+  const missingCats  = r.missing_categories || [];
+  const decisionPts  = r.decision_points || [];
+  const findings     = r.findings || {};
+
+  // Missing = missing categories + coverage pills missing (we use missingCats only)
+  const missingItems = missingCats.map(c => c.replace(/_/g,' '));
+
+  // Weak = open weaknesses (text, truncated)
+  const weakItems = weaknesses
+    .filter(w => w.status === 'open' || !w.status)
+    .map(w => escHtml((w.text||'').slice(0,90)));
+
+  // Unresolved = open decisions + addressed weaknesses (still acknowledged but not validated)
+  const unresolvedItems = [
+    ...decisionPts.filter(d=>d.status==='open'||!d.status).map(d=>escHtml((d.text||'').slice(0,90))),
+    ...weaknesses.filter(w=>w.status==='addressed').map(w=>'(addressed) '+escHtml((w.text||'').slice(0,70))),
+  ];
+
+  // Impact Areas = map all finding text to domains
+  const allFindingText = Object.values(findings).flat().join(' ').toLowerCase();
+  const impactAreas = Object.entries(_IMPACT_MAP)
+    .filter(([,kws]) => kws.some(kw => allFindingText.includes(kw)))
+    .map(([area]) => area);
+
+  if (!missingItems.length && !weakItems.length && !unresolvedItems.length) return '';
+
+  const cell = (icon, label, color, items) => {
+    if (!items.length) return '';
+    const rows = items.map(t => `<div class="rs-item">${t}</div>`).join('');
+    return `<div class="rs-cell">
+      <div class="rs-cell-header" style="color:${color}">${icon} ${label} <span style="font-weight:400;opacity:.7">(${items.length})</span></div>
+      ${rows}
+    </div>`;
+  };
+
+  const impactHtml = impactAreas.length
+    ? `<div class="rs-cell" style="grid-column:1/-1">
+        <div class="rs-cell-header">🗺️ Impact Areas</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">
+          ${impactAreas.map(a=>`<span class="tag" style="font-size:10px">${escHtml(a)}</span>`).join('')}
+        </div>
+      </div>` : '';
+
+  return `<div class="card" style="margin-top:8px;border-top:2px solid var(--yellow)" id="reviewStrengthPanel">
+    <div class="card-title" style="font-size:12px;margin-bottom:6px">
+      <span class="icon">🔎</span>Review Strength
+      <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:6px">— what is missing, weak, and unresolved</span>
+    </div>
+    <div class="rs-grid">
+      ${cell('🕳️','Missing','var(--text-muted)',missingItems)}
+      ${cell('⚠️','Weak','var(--yellow)',weakItems)}
+      ${cell('❓','Unresolved','var(--red)',unresolvedItems)}
+      ${impactHtml}
+    </div>
+  </div>`;
+}
+
+
+// ── F2: renderDecisionPointsEngine ───────────────────────────────────
+// Enriched Decision Points: title / description / options / SME links
+function _inferDecisionTitle(text) {
+  const t = (text||'').toLowerCase();
+  if (t.includes('cloud')||t.includes('aws')||t.includes('azure')||t.includes('gcp')) return 'Cloud Strategy';
+  if (t.includes('architecture')||t.includes('design pattern')||t.includes('microservice')) return 'Architecture Design';
+  if (t.includes('cost')||t.includes('budget')||t.includes('commercial')) return 'Cost Model';
+  if (t.includes('dr')||t.includes('disaster')||t.includes('recovery')||t.includes('failover')) return 'DR & Recovery';
+  if (t.includes('team')||t.includes('resource')||t.includes('capacity')||t.includes('people')) return 'Team & Capacity';
+  if (t.includes('timeline')||t.includes('milestone')||t.includes('deadline')||t.includes('phasing')) return 'Delivery Timeline';
+  if (t.includes('security')||t.includes('compliance')||t.includes('gdpr')||t.includes('regulation')) return 'Security & Compliance';
+  if (t.includes('integration')||t.includes('api')||t.includes('interface')) return 'Integration Approach';
+  if (t.includes('vendor')||t.includes('partner')||t.includes('contract')) return 'Vendor Selection';
+  if (t.includes('data')||t.includes('migration')||t.includes('etl')) return 'Data Strategy';
+  return 'Open Decision';
+}
+
+function _inferOptions(text) {
+  const t = (text||'').toLowerCase();
+  if (t.includes('cloud')||t.includes('aws')||t.includes('azure')) return ['AWS', 'Azure', 'GCP', 'Hybrid'];
+  if (t.includes('microservice')||t.includes('monolith')) return ['Microservices', 'Modular Monolith', 'Event-Driven'];
+  if (t.includes('phase')||t.includes('big bang')) return ['Phased rollout', 'Big-bang cutover', 'Pilot first'];
+  if (t.includes('make')||t.includes('build')||t.includes('buy')) return ['Build in-house', 'Buy COTS', 'Hybrid'];
+  return [];
+}
+
+function renderDecisionPointsEngine(r) {
+  const dps = (r.decision_points || []).filter(d => d.status === 'open' || !d.status);
+  if (!dps.length) return '';
+
+  const cards = dps.map(dp => {
+    const title   = _inferDecisionTitle(dp.text);
+    const opts    = _inferOptions(dp.text);
+    const optsHtml = opts.length
+      ? `<div class="dp-opts">Options: ${opts.map(o=>escHtml(o)).join(' · ')}</div>` : '';
+    const statusBadge = dp.status === 'addressed'
+      ? '<span class="tag tag-yellow" style="font-size:9px">Partially Clarified</span>'
+      : '<span class="tag tag-red" style="font-size:9px">Open</span>';
+    return `<div class="dp-card">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+        <span class="dp-title">${escHtml(title)}</span>
+        ${statusBadge}
+        <span class="tag" style="font-size:9px;margin-left:auto">${escHtml(dp.category||'')}</span>
+      </div>
+      <div class="dp-desc">${escHtml(dp.text||'')}</div>
+      ${optsHtml}
+      <div style="font-size:9px;color:var(--text-muted);margin-top:4px">
+        🔬 Use SME Questions to surface evidence for this decision
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="card" style="margin-top:8px;border-top:2px solid var(--accent)" id="decisionEnginePanel">
+    <div class="card-title" style="font-size:12px;margin-bottom:2px">
+      <span class="icon">🎯</span>Decisions Required
+      <span class="tag" style="margin-left:6px;background:var(--accent);color:#000">${dps.length}</span>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px">
+      Each decision below must be resolved before this review is proposal-ready.
+    </p>
+    ${cards}
+    <div style="font-size:11px;color:var(--text-dim);margin-top:4px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius)">
+      💡 Run <strong>Ask SME Questions</strong> to generate targeted questions for each decision above.
+    </div>
+  </div>`;
+}
+
+
+// ── F3: renderReviewProgression ───────────────────────────────────────
+// Replaces "What Changed" with Resolved / Improved / Still Open / New
+function renderReviewProgression(diff, prevReviewId) {
+  if (!diff || diff.error) {
+    return `<div class="card diff-card" style="margin-top:8px">
+      <div class="card-title" style="font-size:12px"><span class="icon">📈</span>Review Progression</div>
+      <p class="fs11 c-dim">No predecessor review — this is the first iteration.</p>
+    </div>`;
+  }
+
+  function _classify(data) {
+    const resolved = (data.resolved || []).map(i => ({text: i.text||i.category||String(i), bucket:'resolved'}));
+    const newItems = (data.new || []).map(i => ({text: i.text||i.category||String(i), bucket:'new'}));
+    const unchanged = data.unchanged || 0;
+    return {resolved, newItems, unchanged};
+  }
+
+  const f = _classify(diff.findings || {});
+  const w = _classify(diff.weaknesses || {});
+  const d = _classify(diff.decision_points || {});
+
+  const allResolved = [...w.resolved, ...d.resolved];
+  const allNew      = [...f.newItems, ...w.newItems, ...d.newItems];
+  const stillOpen   = (diff.weaknesses?.unchanged||0) + (diff.decision_points?.unchanged||0);
+  const improved    = w.resolved.length + d.resolved.length;
+
+  const rowHtml = (items, cls, prefix) =>
+    items.slice(0,5).map(i=>`<div class="prog-row ${cls}">${prefix} ${escHtml(String(i.text||i).slice(0,100))}</div>`).join('');
+
+  const resolvedHtml = rowHtml(allResolved, 'prog-resolved', '✓');
+  const newHtml      = rowHtml(allNew,      'prog-new',      '+');
+
+  return `<div class="card diff-card" style="margin-top:8px" id="reviewProgressionPanel">
+    <div class="flex-between mb">
+      <div class="card-title" style="font-size:12px"><span class="icon">📈</span>Review Progression
+        <span class="fs10 c-muted" style="font-weight:400;margin-left:6px">vs ${escHtml(prevReviewId||'')}</span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+      <div style="text-align:center;padding:8px;background:rgba(63,185,80,.08);border-radius:var(--radius)">
+        <div style="font-size:18px;font-weight:700;color:var(--green)">${improved}</div>
+        <div style="font-size:10px;color:var(--text-muted)">Resolved</div>
+      </div>
+      <div style="text-align:center;padding:8px;background:var(--surface2);border-radius:var(--radius)">
+        <div style="font-size:18px;font-weight:700;color:var(--accent)">${allNew.length}</div>
+        <div style="font-size:10px;color:var(--text-muted)">New Findings</div>
+      </div>
+      <div style="text-align:center;padding:8px;background:rgba(227,179,65,.08);border-radius:var(--radius)">
+        <div style="font-size:18px;font-weight:700;color:var(--yellow)">${stillOpen}</div>
+        <div style="font-size:10px;color:var(--text-muted)">Still Open</div>
+      </div>
+      <div style="text-align:center;padding:8px;background:var(--surface2);border-radius:var(--radius)">
+        <div style="font-size:18px;font-weight:700;color:var(--text-dim)">${f.unchanged}</div>
+        <div style="font-size:10px;color:var(--text-muted)">Unchanged</div>
+      </div>
+    </div>
+    ${resolvedHtml ? `<details class="mb8" open><summary class="diff-cat-header" style="list-style:none">
+        ✓ <strong style="font-size:11px">Resolved (${allResolved.length})</strong></summary>
+        <div class="diff-cat-body">${resolvedHtml}</div></details>` : ''}
+    ${newHtml ? `<details class="mb8"><summary class="diff-cat-header" style="list-style:none">
+        + <strong style="font-size:11px">New Findings (${allNew.length})</strong></summary>
+        <div class="diff-cat-body">${newHtml}</div></details>` : ''}
+    ${stillOpen ? `<div style="font-size:11px;color:var(--yellow);padding:4px 0">
+        ⚠ ${stillOpen} weakness/decision item${stillOpen!==1?'s':''} still open from previous review</div>` : ''}
+  </div>`;
+}
+
+
+// ── F4: renderProposalReadiness ───────────────────────────────────────
+// Not Ready / Partially Ready / Ready + blockers + next steps
+function renderProposalReadiness(r) {
+  const openWeaknesses = (r.weaknesses||[]).filter(w=>w.status==='open'||!w.status);
+  const openDecisions  = (r.decision_points||[]).filter(d=>d.status==='open'||!d.status);
+  const missing        = (r.missing_categories||[]);
+
+  const blockers = [
+    ...openDecisions.map(d => `Unresolved decision: ${(d.text||'').slice(0,70)}`),
+    ...openWeaknesses.slice(0,3).map(w => `Weak finding: ${(w.text||'').slice(0,70)}`),
+    ...missing.map(c => `Missing category: ${c.replace(/_/g,' ')}`),
+  ];
+
+  let status, statusClass, statusIcon;
+  if (openDecisions.length > 0 || missing.length > 1) {
+    status = 'Not Ready';  statusClass = 'not-ready';  statusIcon = '🔴';
+  } else if (openWeaknesses.length > 2 || missing.length === 1) {
+    status = 'Partially Ready';  statusClass = 'partial';  statusIcon = '🟡';
+  } else {
+    status = 'Ready';  statusClass = 'ready';  statusIcon = '🟢';
+  }
+
+  // Next steps: actionable, max 5, specific to current gaps
+  const steps = [];
+  if (openDecisions.length) steps.push(`Resolve ${openDecisions.length} open decision${openDecisions.length!==1?'s':''} using SME questions`);
+  if (missing.length)       steps.push(`Add artefacts covering: ${missing.slice(0,2).map(c=>c.replace(/_/g,' ')).join(', ')}`);
+  if (openWeaknesses.length > 2) steps.push(`Address ${openWeaknesses.length} open weaknesses — focus on high-risk categories first`);
+  if (openWeaknesses.some(w=>(w.text||'').toLowerCase().includes('cost')||w.category==='constraints'))
+    steps.push('Clarify cost model and budget constraints before proposal generation');
+  if (openDecisions.some(d=>(d.text||'').toLowerCase().includes('cloud')||(d.text||'').toLowerCase().includes('platform')))
+    steps.push('Confirm cloud/platform direction to unblock architecture decisions');
+  if (!steps.length && status === 'Ready')
+    steps.push('Run a final review iteration to validate all addressed items', 'Generate proposal document');
+
+  const stepsHtml = steps.slice(0,5).map((s,i)=>
+    `<div class="nba-item"><div class="nba-num">${i+1}</div><span>${escHtml(s)}</span></div>`
+  ).join('');
+
+  const blockersHtml = blockers.slice(0,5).map(b=>
+    `<div class="rs-item" style="font-size:11px">${escHtml(b)}</div>`
+  ).join('');
+
+  return `<div class="card" style="margin-top:8px;border-top:2px solid var(--accent-dim)" id="proposalReadinessPanel">
+    <div class="card-title" style="font-size:12px;margin-bottom:8px">
+      <span class="icon">📋</span>Proposal Readiness
+    </div>
+    <div class="pr-bar ${statusClass}">
+      <span style="font-size:20px">${statusIcon}</span>
+      <div>
+        <div style="font-size:13px;font-weight:700">${status}</div>
+        <div style="font-size:11px;color:var(--text-muted)">
+          ${openDecisions.length} unresolved decision${openDecisions.length!==1?'s':''} ·
+          ${openWeaknesses.length} open weakness${openWeaknesses.length!==1?'es':''} ·
+          ${missing.length} missing area${missing.length!==1?'s':''}
+        </div>
+      </div>
+    </div>
+    ${blockersHtml ? `<div style="margin-bottom:8px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px">Why</div>
+      ${blockersHtml}
+    </div>` : ''}
+    <div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px">Next Steps</div>
+      ${stepsHtml}
+    </div>
+  </div>`;
+}
+
+
+// ── F6: renderNextBestActions ─────────────────────────────────────────
+// 3-5 specific executable actions derived from weaknesses + decisions
+function renderNextBestActions(r) {
+  const openW = (r.weaknesses||[]).filter(w=>w.status==='open'||!w.status);
+  const openD = (r.decision_points||[]).filter(d=>d.status==='open'||!d.status);
+  const miss  = (r.missing_categories||[]);
+
+  const actions = [];
+
+  // From open decisions (most specific)
+  for (const dp of openD.slice(0,2)) {
+    const title = _inferDecisionTitle(dp.text);
+    actions.push({
+      text: `Clarify ${title}: ${(dp.text||'').slice(0,60)}…`,
+      from: 'Decision',
+    });
+  }
+  // From high-risk weaknesses
+  for (const w of openW.filter(w=>w.category==='risks').slice(0,2)) {
+    actions.push({
+      text: `Mitigate risk: ${(w.text||'').slice(0,70)}`,
+      from: 'Risk Weakness',
+    });
+  }
+  // From missing categories
+  for (const c of miss.slice(0,2)) {
+    actions.push({
+      text: `Provide ${c.replace(/_/g,' ')} findings — currently no coverage`,
+      from: 'Missing Area',
+    });
+  }
+  // From other open weaknesses (if room)
+  for (const w of openW.filter(w=>w.category!=='risks').slice(0,2)) {
+    if (actions.length >= 5) break;
+    actions.push({
+      text: `Resolve unclear finding: ${(w.text||'').slice(0,70)}`,
+      from: 'Weakness',
+    });
+  }
+
+  if (!actions.length) return '';
+
+  const rows = actions.slice(0,5).map((a,i) => `
+    <div class="nba-item">
+      <div class="nba-num">${i+1}</div>
+      <div style="flex:1">
+        <div style="font-size:12px;color:var(--text)">${escHtml(a.text)}</div>
+        <div style="font-size:9px;color:var(--text-muted);margin-top:2px">
+          📎 From: ${escHtml(a.from)}
+        </div>
+      </div>
+    </div>`).join('');
+
+  return `<div class="card" style="margin-top:8px;border-top:2px solid var(--green-dim)" id="nextBestActionsPanel">
+    <div class="card-title" style="font-size:12px;margin-bottom:6px">
+      <span class="icon">⚡</span>Next Best Actions
+      <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:6px">— do these to move toward proposal-ready</span>
+    </div>
+    ${rows}
+  </div>`;
+}
+
+
+// ── F7: renderProposalStrength ────────────────────────────────────────
+// Strong areas / Weak areas / Risk to Sign-off — used in presales view
+function renderProposalStrength(review) {
+  if (!review) return '';
+  const weaknesses  = review.weaknesses || [];
+  const decisions   = review.decision_points || [];
+  const findings    = review.findings || {};
+  const allText     = Object.values(findings).flat().join(' ').toLowerCase();
+
+  // Strong: categories with findings and no open weakness/decision
+  const openWCats = new Set((weaknesses.filter(w=>!w.status||w.status==='open')).map(w=>w.category));
+  const openDCats = new Set((decisions.filter(d=>!d.status||d.status==='open')).map(d=>d.category));
+  const coveredCats = Object.keys(findings).filter(c=>(findings[c]||[]).length > 0);
+  const strongCats = coveredCats.filter(c=>!openWCats.has(c)&&!openDCats.has(c));
+  const weakCats   = coveredCats.filter(c=>openWCats.has(c)||openDCats.has(c));
+
+  // Risk to sign-off
+  const openD = decisions.filter(d=>!d.status||d.status==='open').length;
+  const openW = weaknesses.filter(w=>!w.status||w.status==='open').length;
+  let riskLevel, riskColor;
+  if      (openD > 1 || openW > 4)  { riskLevel='High';   riskColor='var(--red)'; }
+  else if (openD === 1 || openW > 1) { riskLevel='Medium'; riskColor='var(--yellow)'; }
+  else                                { riskLevel='Low';    riskColor='var(--green)'; }
+
+  if (!strongCats.length && !weakCats.length) return '';
+
+  const strongHtml = strongCats.slice(0,4).map(c=>
+    `<div class="prop-strength-area prop-strength-strong">✓ ${escHtml(c.replace(/_/g,' '))}</div>`
+  ).join('');
+  const weakHtml = weakCats.slice(0,4).map(c=>
+    `<div class="prop-strength-area prop-strength-weak">⚠ ${escHtml(c.replace(/_/g,' '))} — has open items</div>`
+  ).join('');
+
+  return `<div class="card" style="margin-top:8px;border-top:2px solid var(--green-dim)" id="proposalStrengthPanel">
+    <div class="card-title" style="font-size:12px;margin-bottom:8px">
+      <span class="icon">💪</span>Proposal Strength
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;
+      background:var(--surface2);border-radius:var(--radius)">
+      <span style="font-size:11px;color:var(--text-dim)">Risk to Sign-off:</span>
+      <span style="font-weight:700;color:${riskColor}">${escHtml(riskLevel)}</span>
+      <span style="font-size:10px;color:var(--text-muted);margin-left:auto">
+        ${openD} unresolved decision${openD!==1?'s':''} · ${openW} open weakness${openW!==1?'es':''}
+      </span>
+    </div>
+    ${strongCats.length ? `<div style="margin-bottom:6px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Strong Areas</div>
+      ${strongHtml}
+    </div>` : ''}
+    ${weakCats.length ? `<div>
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px">Weak Areas</div>
+      ${weakHtml}
+    </div>` : ''}
+  </div>`;
+}
+
+
+// ── F8: _mapFeedbackToContext ─────────────────────────────────────────
+// Maps a feedback item's raw_text/classified items to existing weaknesses/decisions
+function _mapFeedbackToContext(feedbackItem, review) {
+  if (!review) return null;
+  const text = (feedbackItem.raw_text || (feedbackItem.feedback_items||[]).map(i=>i.text||'').join(' ')).toLowerCase();
+  if (!text) return null;
+
+  const weaknesses = review.weaknesses || [];
+  const decisions  = review.decision_points || [];
+
+  // Try to match against existing weakness
+  const matchedW = weaknesses.find(w =>
+    text.split(' ').filter(t=>t.length>4).some(t=>(w.text||'').toLowerCase().includes(t))
+  );
+  if (matchedW) return {type:'Weakness', id:matchedW.id, text:(matchedW.text||'').slice(0,60)};
+
+  // Try to match against decision
+  const matchedD = decisions.find(d =>
+    text.split(' ').filter(t=>t.length>4).some(t=>(d.text||'').toLowerCase().includes(t))
+  );
+  if (matchedD) return {type:'Decision', id:matchedD.id, text:(matchedD.text||'').slice(0,60)};
+
+  return null;
+}
+
+// Attach a mapped-context tag to each feedback card in the presales view
+function _enrichFeedbackWithMapping(feedbackList, review) {
+  if (!review || !feedbackList) return feedbackList;
+  return feedbackList.map(f => ({
+    ...f,
+    _mappedContext: _mapFeedbackToContext(f, review),
+  }));
+}
+
+// ── F5: _smeQuestionTypeTag ───────────────────────────────────────────
+// Infer question type (decision-driven / gap-filling / trade-off) from text
+function _smeQuestionTypeTag(qText) {
+  const t = (qText||'').toLowerCase();
+  const isDecision  = /which|choose|decide|option|approach|strategy|direction/.test(t);
+  const isTradeOff  = /trade.?off|versus| vs |versus|cost vs|performance vs|balance/.test(t);
+  const isGapFill   = /what|when|who|how many|defined|document|specify|confirm|clarify/.test(t);
+  if (isTradeOff)  return `<span class="fb-map-tag" style="color:var(--yellow)">⚖ Trade-off</span>`;
+  if (isDecision)  return `<span class="fb-map-tag" style="color:var(--accent)">🎯 Decision</span>`;
+  if (isGapFill)   return `<span class="fb-map-tag" style="color:var(--green)">🔍 Gap-fill</span>`;
+  return '';
+}
+
+
 </script>
 </body>
 </html>
