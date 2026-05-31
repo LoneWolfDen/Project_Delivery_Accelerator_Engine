@@ -9,8 +9,19 @@ AcceleratorHandler is responsible for:
 - Calling the appropriate handler function via respond=self._json_response
 - Serving static files
 - Special-casing the diagram XML download (raw bytes, not JSON)
+
+UI version selection:
+- --ui v1 (default): serves static/index.html  (original dark-theme SPA)
+- --ui v2           : serves static/v2/dashboard_v2.html (pastel redesign)
+- ?ui=v2 query param: overrides startup flag for any single request
+
+# TRACE: Server → Static Serving
+# Component: AcceleratorHandler._serve_ui
+# Resolves: UI_VERSION flag + ?ui= query param
+# Serves: static/index.html (v1) | static/v2/dashboard_v2.html (v2)
 """
 
+import argparse
 import json
 import logging
 import os
@@ -50,6 +61,23 @@ PORT = int(os.environ.get("PORT", "8080"))
 APP_NAME = os.environ.get("APP_NAME", "Project Delivery Accelerator Engine")
 APP_VERSION = __version__
 
+# ── UI version selection ──────────────────────────────────────────────────────
+# Parsed once at startup; ?ui= query param can override per-request.
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run Project Delivery Accelerator Engine")
+    parser.add_argument(
+        "--ui",
+        choices=["v1", "v2"],
+        default=os.environ.get("UI_VERSION", "v1"),
+        help="Select UI version: v1 (default dark theme) or v2 (pastel redesign)",
+    )
+    # Use parse_known_args so that test runners / other tooling can pass extra flags
+    args, _ = parser.parse_known_args()
+    return args
+
+_ARGS = _parse_args()
+UI_VERSION: str = _ARGS.ui  # module-level, read by AcceleratorHandler
+
 # Allow Docker / env-var override of the data directory.
 # Writing to both project_manager (shim) and services.project so the path
 # propagates everywhere without a full import cycle.
@@ -82,11 +110,32 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
 
     # ── HTTP verbs ────────────────────────────────────────────────────────────
 
+    def _resolve_ui_version(self, query: dict) -> str:
+        """Return 'v1' or 'v2'. ?ui= query param takes precedence over startup flag.
+
+        # TRACE: Server → UI Version Resolution
+        # Input: ?ui= query param | UI_VERSION startup flag
+        # Output: 'v1' | 'v2'
+        # Used by: do_GET root route
+        """
+        param = query.get("ui", "").strip().lower()
+        if param in ("v1", "v2"):
+            return param
+        return UI_VERSION
+
     def do_GET(self) -> None:
-        # Static files
-        if self.path in ("/", ""):
-            self._serve_static("index.html")
+        # Parse path first so ?ui= param is available for root route
+        clean_path_early, query_early = self._parse_path()
+
+        # ── Root: UI version-aware ────────────────────────────────────────────
+        if clean_path_early in ("/", ""):
+            ui = self._resolve_ui_version(query_early)
+            if ui == "v2":
+                self._serve_static("v2/dashboard_v2.html")
+            else:
+                self._serve_static("index.html")
             return
+
         if self.path.startswith("/feedback"):
             self._serve_static("feedback.html")
             return
@@ -550,6 +599,7 @@ def main() -> None:
     sp.PROJECTS_DIR.mkdir(exist_ok=True)
     server = HTTPServer((HOST, PORT), AcceleratorHandler)
     logger.info("%s v%s — listening on http://%s:%s", APP_NAME, APP_VERSION, HOST, PORT)
+    logger.info("UI version: %s (override with ?ui=v1 or ?ui=v2)", UI_VERSION)
     logger.info("Data directory: %s", os.environ.get("PROJECTS_DATA_DIR", "projects_data/"))
     server.serve_forever()
 

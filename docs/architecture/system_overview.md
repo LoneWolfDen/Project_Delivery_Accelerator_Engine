@@ -1,160 +1,126 @@
 # System Overview
 
-## Purpose
-High-level component map of the Project Delivery Accelerator Engine (PDAE).
-Shows every major layer, the data paths between them, and the single-container
-deployment boundary.
+**Project Delivery Accelerator Engine — V2 Architecture**
 
----
-
-## Diagram
-
-```mermaid
-graph TD
-    %% ── External actors ────────────────────────────────────────
-    User["👤 User\n(Browser)"]
-    AIExt["☁️ External AI\n(Ollama · Bedrock · Gemini)"]
-
-    subgraph Docker["🐳 Single Docker Container  (port 8080)"]
-
-        %% ── Presentation layer ──────────────────────────────────
-        subgraph UI["Presentation Layer"]
-            HTML["static/index.html\nSingle-Page App\n(Vanilla JS, no framework)"]
-            FeedHTML["static/feedback.html\nExternal feedback form"]
-        end
-
-        %% ── Routing layer ───────────────────────────────────────
-        subgraph Routing["Routing Layer  (server.py)"]
-            HTTP["AcceleratorHandler\nextends SimpleHTTPRequestHandler\ndo_GET · do_POST · do_PATCH"]
-        end
-
-        %% ── Handler layer ───────────────────────────────────────
-        subgraph Handlers["Handler Layer  (handlers/)"]
-            H_Project["handlers/project.py\nCRUD + lifecycle"]
-            H_Hierarchy["handlers/hierarchy.py\nPhase · Version · Review tree"]
-            H_Review["handlers/review.py\nRun review · quality gate"]
-            H_Ingest["handlers/ingest.py\nArtifact ingestion"]
-            H_Intel["handlers/intelligence.py\nContext build · personas"]
-            H_Presales["handlers/presales.py\nFeedback · tokens · finalise"]
-            H_Proposal["handlers/proposal.py\nProposal docs"]
-            H_Artifact["handlers/artifact.py\nUpload · process · toggle"]
-            H_Diagram["handlers/diagram.py\nDiagram generate"]
-            H_Deepdive["handlers/deepdive.py\nSME deep-dive"]
-            H_Admin["handlers/admin.py\nConfig · health · lifecycle"]
-        end
-
-        %% ── Service layer ───────────────────────────────────────
-        subgraph Services["Service Layer  (services/)"]
-            S_Project["services/project.py\nProject store · file toggles"]
-            S_Hierarchy["services/hierarchy.py\nPhase→Version→Review ops"]
-            S_Review["services/review.py\nrun_persona_review · quality"]
-            S_Ingest["services/ingest.py\nDocument context assembly"]
-            S_Intel["services/intelligence.py\nIntelligence build · summary"]
-            S_Presales["services/presales.py\nFeedback lifecycle · tokens"]
-            S_Proposal["services/proposal.py\nProposal generation"]
-            S_Diagram["services/diagram.py\nDrawio generation"]
-            S_Admin["services/admin.py\nConfig · health · lifecycle logs"]
-        end
-
-        %% ── Processor layer ─────────────────────────────────────
-        subgraph Processors["Processor Layer  (processors/)"]
-            P_Pipeline["processors/pipeline.py\nArtifact ingestion pipeline\ningested→processing→processed"]
-            P_ContextBuilder["processors/context_builder.py\nAssemble intelligence context"]
-            P_ReviewQuality["processors/review_quality.py\nextract_weaknesses · decision_points\ncompute_missing_categories · gates"]
-            P_VersionControl["processors/version_control.py\ncreate_run_record · get_run_history"]
-            P_PromptLogger["processors/prompt_logger.py\nlog_prompt · query_prompts"]
-            P_ReviewSynth["processors/review_synthesizer.py\nMulti-review synthesis"]
-        end
-
-        %% ── Persona / AI engine ─────────────────────────────────
-        subgraph PersonaEngine["Persona Engine  (personas/)"]
-            PE_Engine["personas/engine.py\nrun_review(roles, context,\nai_backend, custom_prompt)"]
-            PE_DeepDive["personas/deep_dive.py\nrun_deep_dive(persona, scope,\nintelligence, active_files)"]
-        end
-
-        %% ── AI backend registry ─────────────────────────────────
-        subgraph AIBackends["AI Backends  (ai_backends/)"]
-            AB_FilesOnly["files_only\nDeterministic pattern analysis\n(no API call)"]
-            AB_Ollama["ollama\nLocal LLM via Ollama REST"]
-            AB_Bedrock["bedrock\nAWS Bedrock Claude"]
-            AB_Gemini["gemini\nGoogle Gemini Pro"]
-        end
-
-        %% ── Contracts / event bus ───────────────────────────────
-        subgraph Contracts["Contracts  (contracts/)"]
-            Bus["contracts/bus.py\nServiceBus · publish / subscribe"]
-            Types["contracts/types.py\nReviewRequest · ReviewResult · Event · Topics"]
-            Proto["contracts/protocols.py\nReviewAgent protocol\nServiceReviewAgent"]
-        end
-
-        %% ── Data layer ──────────────────────────────────────────
-        subgraph DataLayer["Data Layer"]
-            DB_SQLite["SQLite  (accelerator.db)\nprojects · phases · versions\nreviews · artifacts · proposals\ndecision_log · prompt_log"]
-            DB_Files["Flat Files  (projects_data/)\nJSON dual-write\nversions/ reviews/ phases.json\nraw/ processed/ artifacts/"]
-            DB_Jobs["jobs/  (projects_data/jobs/)\nJob tracking JSON"]
-        end
-
-    end
-
-    %% ── Flow ────────────────────────────────────────────────────
-    User -- "HTTP GET/POST/PATCH\nfetch() calls" --> HTTP
-    HTTP -- "serve static" --> HTML
-    HTTP -- "serve static" --> FeedHTML
-    HTTP -- "parse path + body\nroute to handler" --> Handlers
-    Handlers -- "validate input\ncall service" --> Services
-    Services -- "orchestrate logic\ncall processors" --> Processors
-    Services -- "run_review()" --> PE_Engine
-    Services -- "run_deep_dive()" --> PE_DeepDive
-    PE_Engine -- "generate(prompt)" --> AIBackends
-    PE_DeepDive -- "generate(prompt)" --> AIBackends
-    AB_Ollama -- "REST API" --> AIExt
-    AB_Bedrock -- "AWS SDK" --> AIExt
-    AB_Gemini -- "REST API" --> AIExt
-    Services -- "publish Event" --> Bus
-    Handlers -- "publish Event" --> Bus
-    Services -- "read/write" --> DataLayer
-    Processors -- "read/write" --> DataLayer
-    HTML -- "state.js in-memory\nno page reload" --> HTML
-```
-
----
-
-## Inputs and Outputs
-
-| Layer | Input | Output |
-|---|---|---|
-| User (Browser) | Clicks, form submissions, `fetch()` calls | HTTP requests to `server.py` |
-| AcceleratorHandler | Raw HTTP request (path, body, headers) | JSON responses or static file bytes |
-| Handlers | Parsed path + body dict | Calls to service layer; JSON response via `_json_response` |
-| Services | Validated domain parameters | Business logic results; Events published to `bus` |
-| Processors | Artifacts, reviews, context dicts | Processed documents, quality metrics, version records |
-| Persona Engine | `roles`, `context`, `ai_backend`, `custom_prompt` | `ReviewResult` dict (findings, weaknesses, decision_points) |
-| AI Backends | Prompt string + system prompt | LLM text response |
-| Data Layer | Python dicts / dataclasses | Persisted JSON (SQLite + optional flat files) |
-
----
-
-## Key Assumptions
-
-1. **Offline-first**: `files_only` backend requires no network. AI backends (ollama/bedrock/gemini) are optional plugins.
-2. **Single container**: All layers run in one Docker process on port 8080. No microservices, no message queue.
-3. **Dual persistence**: SQLite is the primary store. Flat-file JSON is written in parallel when `file_write_enabled=True` in AdminConfig (default on), ensuring human-readable backup.
-4. **No frontend framework**: `static/index.html` is a self-contained SPA using vanilla JS. All state lives in the `state` object; UI re-renders via `innerHTML` injection without page reload.
-5. **Event bus is in-process**: `contracts/bus.py` is an in-memory pub/sub used for decoupling, not inter-process messaging.
+> This document describes the full system architecture: runtime layers, component boundaries, and data flow direction. Every node links to a real file in this repository.
 
 ---
 
 ## Linked Components
 
-| File | Role |
-|---|---|
-| `server.py` | Routing entry point |
-| `static/index.html` | SPA — entire frontend |
-| `handlers/*.py` | HTTP boundary for each domain |
-| `services/*.py` | Business logic per domain |
-| `processors/pipeline.py` | Artifact ingestion pipeline |
-| `personas/engine.py` | Review execution engine |
-| `ai_backends/` | Pluggable LLM adapters |
-| `contracts/bus.py` | In-process event bus |
-| `db/database.py` | SQLite schema + connection |
-| `models/hierarchy.py` | Core domain model |
+| Layer | File |
+|-------|------|
+| Entry point (v2) | `static/v2/dashboard_v2.html` |
+| Server | `server.py` |
+| State store | `static/v2/js/state.js` |
+| API module | `static/v2/js/api.js` |
+| Accordion | `static/v2/js/accordion.js` |
+| Orchestrator | `static/v2/js/dashboard.js` |
+| Detail drawer | `ui/v2/components/DetailPanel.js` |
+| Cards | `ui/v2/components/Cards.js` |
+| Header | `ui/v2/components/Header.js` |
+| Sidebar | `ui/v2/components/Sidebar.js` |
+| Layout coordinator | `ui/v2/layout/MainLayout.js` |
+| Hierarchy service | `services/hierarchy.py` |
+| Hierarchy store | `models/hierarchy.py` |
+| Data persistence | `db/hierarchy_store_sql.py` |
+
+---
+
+## System Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph Browser["Browser — Vanilla JS SPA"]
+        direction TB
+        HTML["dashboard_v2.html<br/>(entry point)"]
+        STATE["AppState<br/>state.js<br/>(observable store)"]
+        API_MOD["API module<br/>api.js<br/>(fetch wrappers)"]
+
+        subgraph Components["UI Components"]
+            HEADER["Header.js<br/>dropdowns + refresh"]
+            SIDEBAR["Sidebar.js<br/>version list"]
+            ACCORDION["VersionAccordion<br/>accordion.js"]
+            CARDS["Cards.js<br/>snapshot metrics"]
+            DETAIL["DetailPanel.js<br/>drawer renderer"]
+        end
+
+        DASH["Dashboard.js<br/>(orchestrator)"]
+        LAYOUT["MainLayout.js<br/>(layout coordinator)"]
+    end
+
+    subgraph Server["Python Server (http.server)"]
+        SRV["server.py<br/>AcceleratorHandler"]
+        subgraph Handlers["handlers/"]
+            H_HIER["hierarchy.py"]
+            H_PROJ["project.py"]
+            H_REV["review.py"]
+        end
+        subgraph Services["services/"]
+            S_HIER["hierarchy.py"]
+            S_PROJ["project.py"]
+        end
+    end
+
+    subgraph Persistence["Persistence Layer"]
+        STORE["HierarchyStore<br/>models/hierarchy.py"]
+        SQL["HierarchyStoreSQLite<br/>db/hierarchy_store_sql.py"]
+        FILES["JSON files<br/>projects_data/"]
+        DB[("SQLite DB<br/>accelerator.db")]
+    end
+
+    HTML -->|"loads"| STATE
+    HTML -->|"loads"| API_MOD
+    HTML -->|"boots"| DASH
+    DASH -->|"orchestrates"| Components
+    DASH -->|"reads/writes"| STATE
+    DASH -->|"calls"| API_MOD
+    STATE -->|"notifies"| Components
+    STATE -->|"notifies"| LAYOUT
+    API_MOD -->|"HTTP fetch"| SRV
+    SRV -->|"routes"| Handlers
+    Handlers -->|"calls"| Services
+    Services -->|"uses"| STORE
+    STORE -->|"dual-write"| SQL
+    STORE -->|"dual-write"| FILES
+    SQL -->|"persists"| DB
+```
+
+---
+
+## Layer Descriptions
+
+### Browser Layer
+- **dashboard_v2.html** — Static HTML shell. No server-side templating. Served as a flat file by `server.py`.
+- **AppState** — Singleton observable store. Holds `projects`, `selectedProject`, `selectedVersion`, `selectedReview`, `metrics`, `hierarchy`, `drawerOpen`. Components subscribe to specific keys; changes notify only relevant subscribers.
+- **API module** — All `fetch` calls isolated here. Supports mock data fallback (`window.V2_USE_MOCK = true`) for Step 1 development without a running backend.
+- **Dashboard.js** — Orchestrator. Calls `API`, writes to `AppState`, renders all regions. Auto-boots on `DOMContentLoaded`.
+- **Components** — Pure renderers. Receive data, return HTML strings or mutate specific DOM nodes. No direct API calls.
+- **MainLayout.js** — Handles CSS class mutations for drawer, loading state, keyboard events. No business logic.
+
+### Server Layer
+- **server.py** — `http.server.HTTPServer` with `AcceleratorHandler`. Zero business logic. Routes `GET /` to `static/index.html` (v1) or `static/v2/dashboard_v2.html` (v2) based on `--ui` flag or `?ui=` query param.
+- **handlers/** — Thin request parsers. Extract path params, call services, return JSON.
+- **services/** — All business logic. Hierarchy, projects, reviews, intelligence, proposals.
+
+### Persistence Layer
+- **HierarchyStore** — File-based JSON persistence (`projects_data/{pid}/hierarchy/`).
+- **HierarchyStoreSQLite** — SQLite-backed alternative. Selected via admin config (`sqlite_write_enabled`).
+- Dual-write mode is the default: both stores receive every write.
+
+---
+
+## UI Version Selection Flow
+
+```mermaid
+flowchart LR
+    START([HTTP GET /]) --> PARSE{Parse ?ui= param}
+    PARSE -->|"?ui=v2"| V2["Serve v2/dashboard_v2.html"]
+    PARSE -->|"?ui=v1 or absent"| FLAG{Check --ui flag}
+    FLAG -->|"--ui v2"| V2
+    FLAG -->|"--ui v1 (default)"| V1["Serve index.html (v1)"]
+    V1 -->|"unchanged"| V1_APP["V1 dark-theme SPA"]
+    V2 -->|"isolated"| V2_APP["V2 pastel SPA"]
+```
+
+**Key constraint:** v1 and v2 are fully isolated. No shared JS or CSS. v1 (`static/index.html`) is never modified.

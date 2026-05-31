@@ -1,325 +1,237 @@
 # Data Model
 
-## Purpose
-Entity-relationship diagram for all persisted entities, their attributes,
-primary keys, foreign keys, and relationship cardinalities.
-Sourced directly from `db/database.py` DDL and `models/` dataclasses.
+**Project Delivery Accelerator Engine — Core Entity Model**
 
----
-
-## Core Entity Diagram
-
-```mermaid
-erDiagram
-
-    %% ── Core hierarchy ────────────────────────────────────────
-
-    PROJECT {
-        TEXT id PK "e.g. p_uuid"
-        TEXT name
-        TEXT description
-        TEXT phase "discovery|pre-sales|design|delivery|support"
-        TEXT ai_backend "ollama|bedrock|gemini|files_only"
-        TEXT status "active|archived"
-        TEXT settings "JSON {}"
-        TEXT files "JSON []"
-        TEXT file_toggles "JSON {filename: bool}"
-        TEXT iteration "JSON {current_version, total_builds, total_reviews, ...}"
-        TEXT created_at "ISO 8601 UTC"
-        TEXT updated_at "ISO 8601 UTC"
-        TEXT archived_at
-        TEXT restored_at
-    }
-
-    PHASE {
-        TEXT project_id FK
-        TEXT phase_id PK "pre-sales|design|delivery|support"
-        TEXT label "Pre-sales|Design|Delivery|Support"
-        INTEGER phase_order "1-4"
-        TEXT description
-        TEXT entered_at "ISO 8601 UTC"
-        TEXT exited_at "ISO 8601 UTC"
-        INTEGER is_current "0|1"
-        INTEGER version_count "denormalized counter"
-        INTEGER review_count "denormalized counter"
-    }
-
-    VERSION {
-        TEXT version_id PK "e.g. v1 v2 v3"
-        TEXT project_id FK
-        TEXT phase_id FK "→ phases.phase_id"
-        TEXT label "Version N"
-        TEXT persona "selected persona name"
-        TEXT scope "max 2000 chars"
-        TEXT ai_backend
-        TEXT included_artifacts "JSON [{artifactId, title, category}]"
-        TEXT excluded_artifacts "JSON [{artifactId, title, category}]"
-        TEXT stats "JSON {risks:N, deps:N, constraints:N, assumptions:N}"
-        TEXT review_ids "JSON [r1, r2, ...]"
-        TEXT active_review_id "FK → reviews.review_id"
-        TEXT created_at "ISO 8601 UTC"
-    }
-
-    REVIEW {
-        TEXT review_id PK "e.g. r1 r2 r3"
-        TEXT project_id FK
-        TEXT version_id FK "→ versions.version_id"
-        TEXT phase_id FK "→ phases.phase_id"
-        TEXT persona "e.g. Solution Architect"
-        TEXT ai_backend
-        TEXT prompt_used "full assembled prompt"
-        TEXT custom_prompt "user override"
-        TEXT output "JSON raw LLM output"
-        TEXT findings "JSON {risks:[], gaps:[], recommendations:[], action_items:[], ...}"
-        TEXT questions "JSON []"
-        TEXT summary "120-char preview"
-        TEXT included_files "JSON [filename, ...]"
-        TEXT categories "JSON [category, ...]"
-        TEXT ai_metadata "JSON {model, tokens, latency}"
-        TEXT deep_dive "JSON | NULL"
-        TEXT feedback "JSON | NULL"
-        INTEGER completeness_score "0-100"
-        TEXT quality_status "pending|interim|complete"
-        TEXT completed_by
-        TEXT completed_at
-        TEXT decided_by "who set this as active review"
-        TEXT previous_review_id "FK → reviews.review_id (self-ref)"
-        INTEGER iteration_number "1-based within version"
-        TEXT prompt_builder_state "JSON {injected_questions:[], user_notes:str} | NULL"
-        TEXT weaknesses "JSON [{id,text,category,severity,status}]"
-        TEXT decision_points "JSON [{id,text,category,status}]"
-        TEXT created_at "ISO 8601 UTC"
-    }
-
-    %% ── Artifacts ─────────────────────────────────────────────
-
-    ARTIFACT {
-        TEXT artifact_id PK "e.g. a_abc12345"
-        TEXT project_id FK
-        TEXT type "file|text"
-        TEXT file_name
-        TEXT title
-        TEXT category "project_artefact|meetings_comms|delivery_notes|client_context|architecture_design|external_data"
-        TEXT metadata "JSON (category-specific fields)"
-        INTEGER include "0|1"
-        TEXT status "ingested|processing|processed|failed"
-        TEXT raw_path "path to raw file on disk"
-        TEXT text_content "extracted text (for text type)"
-        TEXT created_at
-    }
-
-    %% ── Proposals ─────────────────────────────────────────────
-
-    PROPOSAL {
-        TEXT project_id PK_FK "1:1 with PROJECT"
-        TEXT proposal_name
-        TEXT client
-        TEXT current_version "FK → proposal_versions.version_id"
-        INTEGER total_versions
-        TEXT created_at
-        TEXT updated_at
-    }
-
-    PROPOSAL_VERSION {
-        TEXT version_id PK "e.g. pv_uuid"
-        TEXT project_id FK
-        INTEGER version_number
-        TEXT label
-        TEXT status "draft|interim|complete"
-        TEXT files "JSON []"
-        TEXT notes
-        TEXT changes_from_previous
-        TEXT context_version
-        TEXT feedback "JSON | NULL"
-        TEXT hierarchy_version_id "FK → versions.version_id"
-        TEXT active_review_id "FK → reviews.review_id"
-        TEXT previous_version_id "FK → proposal_versions.version_id"
-        TEXT feedback_applied "JSON [feedback_id, ...]"
-        TEXT changes_summary
-        TEXT quality_status "draft|interim|complete"
-        INTEGER quality_score
-        TEXT completed_by
-        TEXT completed_at
-        TEXT lock_status "unlocked|soft_locked"
-        TEXT lock_reason
-        TEXT created_at
-    }
-
-    PROPOSAL_DOCUMENT {
-        TEXT doc_id PK
-        TEXT project_id FK
-        TEXT proposal_ver_id FK
-        TEXT generated_at
-        TEXT ai_backend
-        TEXT exec_summary
-        TEXT scope
-        TEXT delivery_phases "JSON [{phase, description, duration_weeks}]"
-        TEXT gantt_data "JSON [{milestone, start_week, end_week, owner}]"
-        TEXT risks "JSON [{risk, category, impact, probability, mitigation}]"
-        TEXT assumptions "JSON [{category, assumption}]"
-        TEXT exclusions "JSON [str]"
-        TEXT responsibilities "JSON RACI matrix"
-        TEXT acceptance_criteria "JSON [str]"
-        TEXT hierarchy_version_id "FK → versions.version_id"
-        TEXT active_review_id "FK → reviews.review_id"
-        INTEGER word_count
-    }
-
-    %% ── Pre-sales ─────────────────────────────────────────────
-
-    PRESALES_FEEDBACK {
-        TEXT feedback_id PK
-        TEXT project_id FK
-        TEXT proposal_ver_id "FK → proposal_versions.version_id"
-        TEXT review_id "FK → reviews.review_id"
-        TEXT version_id "FK → versions.version_id"
-        TEXT source "internal|external"
-        TEXT responder_name
-        TEXT responder_email
-        TEXT feedback_items "JSON [{id, text, type, status}]"
-        TEXT raw_text
-        TEXT change_requested "JSON [str]"
-        TEXT accepted "JSON [str]"
-        TEXT rejected "JSON [str]"
-        TEXT concerns "JSON [str]"
-        TEXT notes
-        TEXT next_action
-        TEXT status "open|actioned|closed"
-        TEXT created_at
-        TEXT updated_at
-    }
-
-    FEEDBACK_TOKEN {
-        TEXT token PK
-        TEXT project_id FK
-        TEXT proposal_ver_id
-        TEXT review_id
-        TEXT expires_at
-        INTEGER used "0|1"
-        TEXT created_at
-    }
-
-    %% ── Audit & Logging ──────────────────────────────────────
-
-    DECISION_LOG {
-        TEXT log_id PK
-        TEXT project_id FK
-        TEXT entity_type "review|proposal_version|feedback_item|finalisation"
-        TEXT entity_id "FK (polymorphic)"
-        TEXT action "completed|set_active|generated|finalised|gate_passed|gate_failed"
-        TEXT actor
-        TEXT reason
-        TEXT metadata "JSON snapshot at time of decision"
-        TEXT created_at
-    }
-
-    PROMPT_LOG {
-        TEXT log_id PK
-        TEXT project_id FK
-        TEXT review_id FK
-        TEXT persona_name
-        TEXT scenario_type
-        TEXT baseline_prompt
-        TEXT injected_questions
-        TEXT user_notes
-        TEXT final_prompt
-        TEXT outcome_review_id
-        TEXT outcome_proposal_ver_id
-        TEXT created_at
-    }
-
-    JOB {
-        TEXT job_id PK "e.g. j_uuid6"
-        TEXT artifact_id FK
-        TEXT project_id FK
-        TEXT status "queued|processing|succeeded|failed"
-        TEXT started_at
-        TEXT ended_at
-        TEXT error
-        TEXT created_at
-    }
-
-    %% ── Relationships ────────────────────────────────────────
-
-    PROJECT ||--o{ PHASE : "has 1:N"
-    PROJECT ||--o{ VERSION : "has 1:N"
-    PROJECT ||--o| PROPOSAL : "has 0:1"
-    PROJECT ||--o{ ARTIFACT : "owns 1:N"
-    PROJECT ||--o{ PRESALES_FEEDBACK : "has 1:N"
-    PROJECT ||--o{ DECISION_LOG : "audits 1:N"
-    PROJECT ||--o{ PROMPT_LOG : "logs 1:N"
-    PROJECT ||--o{ JOB : "has 1:N"
-
-    PHASE ||--o{ VERSION : "groups 1:N"
-    PHASE ||--o{ REVIEW : "groups 1:N"
-
-    VERSION ||--o{ REVIEW : "has 1:N"
-    VERSION ||--o| REVIEW : "active_review_id 0:1"
-
-    REVIEW ||--o| REVIEW : "previous_review_id 0:1 (self-ref)"
-    REVIEW ||--o{ PROMPT_LOG : "logged by 1:N"
-
-    PROPOSAL ||--o{ PROPOSAL_VERSION : "has 1:N"
-    PROPOSAL_VERSION ||--o{ PROPOSAL_DOCUMENT : "generates 1:N"
-    PROPOSAL_VERSION ||--o{ PRESALES_FEEDBACK : "receives 1:N"
-    PROPOSAL_VERSION }o--|| VERSION : "references hierarchy version"
-    PROPOSAL_VERSION }o--|| REVIEW : "references active review"
-
-    ARTIFACT ||--o{ JOB : "processed by 1:N"
-```
-
----
-
-## Key Relationships Summary
-
-| Relationship | Cardinality | FK Location | Notes |
-|---|---|---|---|
-| Project → Phase | 1:N | `phases.project_id` | 4 standard phases seeded on first access |
-| Project → Version | 1:N | `versions.project_id` | Versions are snapshots; never deleted |
-| Phase → Version | 1:N | `versions.phase_id` | Version belongs to the active phase at creation time |
-| Version → Review | 1:N | `reviews.version_id` | Multiple review iterations per version |
-| Version → Review (active) | 0:1 | `versions.active_review_id` | Denormalized pointer; validated on read |
-| Review → Review (predecessor) | 0:1 self-ref | `reviews.previous_review_id` | Chains review iterations |
-| Project → Artifact | 1:N | `artifacts.project_id` | Artifacts are the raw input documents |
-| Artifact → Job | 1:N | `jobs.artifact_id` | One job per processing run |
-| Project → Proposal | 0:1 | `proposals.project_id` (PK=FK) | Optional; created in pre-sales phase |
-| Proposal → ProposalVersion | 1:N | `proposal_versions.project_id` | Versioned proposal iterations |
-| ProposalVersion → Version | N:1 | `proposal_versions.hierarchy_version_id` | Traceability to intelligence version |
-| ProposalVersion → Review | N:1 | `proposal_versions.active_review_id` | Traceability to specific review |
-
----
-
-## Persistence Strategy
-
-| Store | Primary Use | Location | Enabled By |
-|---|---|---|---|
-| SQLite (`accelerator.db`) | Primary read/write | `projects_data/accelerator.db` | `sqlite_write_enabled=True` (default) |
-| Flat JSON files | Human-readable backup / legacy support | `projects_data/{pid}/hierarchy/` | `file_write_enabled=True` (default) |
-| Processed documents | Artifact text extraction output | `projects_data/{pid}/processed/{aid}.json` | Always |
-| Job files | Async job status | `projects_data/jobs/{jid}.json` | Always |
-| Intelligence cache | Assembled context for review | `projects_data/{pid}/intelligence/current.json` | Always |
-
----
-
-## Key Assumptions
-
-1. **SQLite as source of truth**: When `sqlite_write_enabled=True`, all reads go to SQLite. Flat files are written in parallel only as a backup.
-2. **version_id / review_id are sequential integers**: `v1`, `v2`, `v3` and `r1`, `r2`, `r3` — computed from `COUNT(*)+1` at insert time. Not UUIDs.
-3. **No cascading deletes in SQLite schema**: Soft deletes for projects (`status='archived'`); hard deletes for reviews via `DELETE` + manual parent update.
-4. **All JSON columns**: SQLite stores complex objects as JSON strings; `Database.jload()` / `Database.jdump()` handle serialisation.
-5. **Denormalized counters**: `phases.version_count` and `phases.review_count` are incremented/decremented on write; they are not computed from joins at query time.
+> This document defines the data entities, their attributes, foreign key relationships, and storage locations. All entities map directly to Python dataclasses in `models/hierarchy.py`.
 
 ---
 
 ## Linked Components
 
-| Component | File |
-|---|---|
-| SQLite schema DDL | `db/database.py` |
-| File-based hierarchy store | `models/hierarchy.py` → `HierarchyStore` |
-| SQLite-backed hierarchy store | `db/hierarchy_store_sql.py` → `HierarchyStoreSQLite` |
-| Project model dataclass | `models/project.py` → `Project`, `ProjectContext`, `ReviewOutput` |
-| Hierarchy model dataclasses | `models/hierarchy.py` → `Phase`, `Version`, `Review` |
-| Artifact model dataclass | `models/artifact.py` → `Artifact` |
-| Proposal model dataclass | `models/proposal.py` |
-| Store factory | `models/hierarchy.py` → `_make_hierarchy_store()` |
+| Entity | Model File | Store File |
+|--------|-----------|------------|
+| Project | `models/project.py` | `services/project.py` |
+| Phase | `models/hierarchy.py` → `Phase` | `models/hierarchy.py` → `HierarchyStore` |
+| Version | `models/hierarchy.py` → `Version` | `models/hierarchy.py` → `HierarchyStore` |
+| Review | `models/hierarchy.py` → `Review` | `models/hierarchy.py` → `HierarchyStore` |
+| Artifact | `models/artifact.py` → `Artifact` | `processors/artifact_store.py` |
+| Proposal | `models/proposal.py` → `ProposalTracker` | `services/proposal.py` |
+| FeedbackItem | `models/proposal.py` → `FeedbackItem` | `services/presales.py` |
+
+---
+
+## Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    PROJECT {
+        string id PK
+        string name
+        string description
+        string phase
+        string ai_backend
+        string created_at
+        string updated_at
+        string status
+    }
+
+    PHASE {
+        string id PK
+        string project_id FK
+        string label
+        int    order
+        string description
+        bool   is_current
+        string entered_at
+        string exited_at
+        int    version_count
+        int    review_count
+    }
+
+    VERSION {
+        string version_id PK
+        string project_id FK
+        string phase_id   FK
+        string label
+        string created_at
+        string persona
+        string scope
+        string ai_backend
+        json   included_artifacts
+        json   excluded_artifacts
+        json   stats
+        list   review_ids
+        string active_review_id FK
+    }
+
+    REVIEW {
+        string review_id     PK
+        string version_id    FK
+        string project_id    FK
+        string phase_id      FK
+        string persona
+        string ai_backend
+        string created_at
+        string prompt_used
+        string custom_prompt
+        json   output
+        json   findings
+        list   questions
+        string summary
+        int    completeness_score
+        string quality_status
+        string completed_by
+        string completed_at
+        string previous_review_id FK
+        int    iteration_number
+        list   weaknesses
+        list   missing_categories
+        list   decision_points
+    }
+
+    ARTIFACT {
+        string artifact_id PK
+        string project_id  FK
+        string type
+        string file_name
+        string title
+        string category
+        json   metadata
+        bool   include
+        string status
+        string created_at
+        string raw_path
+    }
+
+    PROPOSAL {
+        string proposal_id   PK
+        string project_id    FK
+        string proposal_name
+        string client
+        string current_version
+        int    total_versions
+        string created_at
+        string updated_at
+    }
+
+    PROPOSAL_VERSION {
+        string version_id          PK
+        string proposal_id         FK
+        string hierarchy_version_id FK
+        string active_review_id    FK
+        string label
+        string status
+        string quality_status
+        int    quality_score
+        string lock_status
+        string created_at
+    }
+
+    FEEDBACK_ITEM {
+        string item_id              PK
+        string presales_feedback_id FK
+        string text
+        string category
+        string mapped_to
+        string confidence
+        string status
+        bool   is_critical
+        string created_at
+    }
+
+    PROJECT ||--o{ PHASE          : "has phases"
+    PROJECT ||--o{ VERSION        : "has versions"
+    PROJECT ||--o{ ARTIFACT       : "has artifacts"
+    PROJECT ||--o| PROPOSAL       : "has proposal"
+
+    PHASE   ||--o{ VERSION        : "contains versions"
+    PHASE   ||--o{ REVIEW         : "contains reviews"
+
+    VERSION ||--o{ REVIEW         : "has reviews"
+    VERSION ||--o{ ARTIFACT       : "includes artifacts (snapshot)"
+
+    REVIEW  ||--o| REVIEW         : "previous_review_id (chain)"
+
+    PROPOSAL ||--o{ PROPOSAL_VERSION : "has versions"
+    PROPOSAL_VERSION ||--|| VERSION  : "hierarchy_version_id"
+    PROPOSAL_VERSION ||--|| REVIEW   : "active_review_id"
+    PROPOSAL_VERSION ||--o{ FEEDBACK_ITEM : "has feedback items"
+```
+
+---
+
+## Entity Descriptions
+
+### Project
+Top-level entity. One project = one client engagement or assessment context.  
+**Storage:** `projects_data/projects.json` + `accelerator.db → projects table`
+
+### Phase
+Lifecycle stage within a project. Standard phases: `pre-sales → design → delivery → support`.  
+Only one phase is `is_current` at a time. Phase transitions are recorded with timestamps.  
+**Storage:** `projects_data/{pid}/hierarchy/phases.json`
+
+### Version
+A snapshot of the project state at a point in time. Contains the set of included artifacts, persona, scope text, and AI backend used. Versions are immutable once created.  
+**ID format:** `v1`, `v2`, `v3` … (sequential within project)  
+**Storage:** `projects_data/{pid}/hierarchy/versions/{vid}.json`
+
+### Review
+An execution run against a Version. Contains the prompt used, AI-generated output, structured findings (risks, constraints, dependencies, assumptions, action_items, gaps), questions, weaknesses, and decision points.  
+**ID format:** `r1`, `r2`, `r3` … (sequential within project)  
+**Iteration number:** 1-based per version (R1, R2 … within V1)  
+**Storage:** `projects_data/{pid}/hierarchy/reviews/{rid}.json`
+
+### Artifact
+An ingested document (uploaded file or pasted text). Linked to a project and optionally included in a Version snapshot.  
+**Categories:** `project_artefact`, `meetings_comms`, `delivery_notes`, `client_context`, `architecture_design`, `external_data`  
+**Storage:** `projects_data/{pid}/artifacts/artifacts.json` + raw files in `projects_data/{pid}/raw/`
+
+### Proposal / ProposalVersion
+Tracks client-facing proposal documents. Each `ProposalVersion` is hard-linked to a `Version` and its `active_review_id` for full traceability.
+
+### FeedbackItem
+Atomic unit of structured client feedback. Classified into: `accepted`, `rejected`, `change_requested`, `concerns`. Auto-flagged as `is_critical` when mapped to `scope_change` or `risk`.
+
+---
+
+## Key Relationship Rules
+
+| Rule | Detail |
+|------|--------|
+| Project → Phase | Standard phases always exist; counts are maintained on each phase |
+| Phase → Version | `phase_id` FK on Version; set to `current_phase` at version creation time |
+| Version → Review | `review_ids: List[str]` on Version; `version_id` FK on Review |
+| Version active review | `active_review_id` — validated against `review_ids`; defaults to latest |
+| Review chain | `previous_review_id` links iterations; `iteration_number` is 1-based per version |
+| ProposalVersion traceability | Both `hierarchy_version_id` and `active_review_id` are required (DS-02 gate) |
+
+---
+
+## V2 Dashboard Data Flow
+
+```mermaid
+flowchart LR
+    DB[("SQLite / JSON files")]
+    STORE["HierarchyStore<br/>models/hierarchy.py"]
+    SVC["HierarchyService<br/>services/hierarchy.py"]
+    API_ROUTE["GET /hierarchy/metrics<br/>server.py"]
+    API_JS["API.fetchMetrics()<br/>api.js"]
+    APPSTATE["AppState.metrics<br/>state.js"]
+    CARDS["Cards.render(metrics)<br/>Cards.js"]
+    BANNER["ContextBanner<br/>dashboard.js"]
+
+    DB --> STORE --> SVC --> API_ROUTE --> API_JS --> APPSTATE --> CARDS
+    APPSTATE --> BANNER
+```
+
+**Data shape at each boundary:**
+
+| Boundary | Shape |
+|----------|-------|
+| HierarchyStore → Service | `Version` + `Review` dataclass objects |
+| Service → Handler | Python `dict` |
+| Handler → HTTP | `JSON` string |
+| HTTP → API module | Parsed `object` (JS) |
+| API module → AppState | `MetricsPayload` object |
+| AppState → Cards | `MetricsPayload` (same object, no copy) |
