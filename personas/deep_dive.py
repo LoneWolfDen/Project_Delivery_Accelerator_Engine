@@ -282,6 +282,22 @@ def _ai_questions(
             custom_context=gap_section + custom_section,
         )
 
+        # Append a lightweight variation seed so repeated calls on the same
+        # artefacts produce slightly different question angles each time.
+        _variation_hints = [
+            "Focus on failure modes and edge cases.",
+            "Emphasise integration and handover points.",
+            "Prioritise governance and decision ownership.",
+            "Highlight assumptions that carry the highest risk.",
+            "Consider the perspective of a sceptical stakeholder.",
+            "Focus on what is most likely to be overlooked.",
+        ]
+        import hashlib as _hashlib
+        _seed = int(_hashlib.md5(
+            f"{persona_name}{timestamp}{len(active_files)}".encode()
+        ).hexdigest()[:8], 16)
+        prompt += f"\n\n## Focus Angle\n{_variation_hints[_seed % len(_variation_hints)]}"
+
         backend = get_backend(ai_backend)
         response = backend.generate(
             prompt=prompt,
