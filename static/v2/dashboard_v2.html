@@ -1,6 +1,1087 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contexta v2 – Project Delivery Accelerator</title>
+
+<style>
+/* ─── Design tokens (identical to index.html) ─────────────────────── */
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--surface3:#30363d;
+  --border:#30363d;--border2:#484f58;--text:#e6edf3;--text-dim:#8b949e;
+  --text-muted:#6e7681;--accent:#58a6ff;--accent-dim:#1f6feb;
+  --green:#3fb950;--green-dim:#238636;--yellow:#d29922;--red:#f85149;
+  --purple:#bc8cff;--radius:6px;--radius-lg:10px;
+  --shadow:0 4px 16px rgba(0,0,0,.4);--transition:.15s ease;
+}
+
+/* ─── Reset ───────────────────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;font-size:13px;}
+
+/* ─── Header ──────────────────────────────────────────────────────── */
+header{background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  min-height:48px;position:sticky;top:0;z-index:100;
+  box-shadow:0 1px 4px rgba(0,0,0,.5);}
+.logo{font-size:15px;font-weight:700;white-space:nowrap;letter-spacing:-.3px;}
+.logo span{color:var(--accent);}
+.v2-badge{font-size:9px;font-weight:700;background:var(--accent-dim);
+  color:var(--accent);padding:1px 6px;border-radius:20px;letter-spacing:.4px;}
+.phase-badge{background:var(--accent-dim);color:var(--accent);padding:2px 10px;
+  border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;
+  text-transform:uppercase;}
+.proj-select{background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:5px 10px;border-radius:var(--radius);
+  font-size:12px;cursor:pointer;}
+.proj-select:focus{outline:none;border-color:var(--accent);}
+nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap;}
+nav button{background:transparent;color:var(--text-dim);border:none;
+  padding:6px 11px;border-radius:var(--radius);cursor:pointer;
+  font-size:12px;font-weight:500;transition:background var(--transition),color var(--transition);}
+nav button:hover{background:var(--surface2);color:var(--text);}
+nav button.active{background:var(--surface2);color:var(--accent);}
+
+/* ─── Compare button in header ────────────────────────────────────── */
+.btn-compare{display:inline-flex;align-items:center;gap:5px;
+  background:transparent;color:var(--accent);border:1px solid var(--accent-dim);
+  padding:5px 12px;border-radius:var(--radius);cursor:pointer;
+  font-size:12px;font-weight:600;transition:all var(--transition);white-space:nowrap;}
+.btn-compare:hover{background:rgba(88,166,255,.1);border-color:var(--accent);}
+.btn-compare .cmp-icon{font-size:13px;}
+</style>
+
+<style>
+/* ─── Layout ──────────────────────────────────────────────────────── */
+main{max-width:1080px;margin:0 auto;padding:20px 16px;}
+
+/* ─── Cards ───────────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:16px 18px;margin-bottom:12px;}
+.card-title{font-size:13px;font-weight:600;color:var(--text);
+  margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.card-title .icon{font-size:15px;}
+.card-subtitle{font-size:11px;color:var(--text-dim);margin-bottom:10px;}
+.card-section{font-size:11px;font-weight:600;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.6px;margin:10px 0 5px;}
+
+/* ─── Stat grid ───────────────────────────────────────────────────── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;}
+.stat{background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:12px 14px;text-align:center;cursor:pointer;
+  transition:border-color var(--transition),background var(--transition);}
+.stat:hover{border-color:var(--accent);background:var(--surface3);}
+.stat .num{font-size:26px;font-weight:700;color:var(--accent);line-height:1.2;}
+.stat .lbl{font-size:10px;color:var(--text-dim);text-transform:uppercase;
+  letter-spacing:.5px;margin-top:2px;}
+.stat.green .num{color:var(--green);}
+.stat.yellow .num{color:var(--yellow);}
+.stat.red .num{color:var(--red);}
+.stat.purple .num{color:var(--purple);}
+</style>
+
+
+<style>
+/* ─── Buttons ─────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:5px;background:var(--accent);
+  color:#000;border:none;padding:6px 14px;border-radius:var(--radius);
+  cursor:pointer;font-size:12px;font-weight:600;transition:opacity var(--transition);}
+.btn:hover{opacity:.85;}
+.btn:disabled{opacity:.45;cursor:not-allowed;}
+.btn-sm{padding:4px 10px;font-size:11px;}
+.btn-xs{padding:2px 8px;font-size:10px;border-radius:4px;}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+.btn-outline:hover{background:rgba(88,166,255,.08);}
+.btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border);}
+.btn-ghost:hover{color:var(--text);border-color:var(--border2);}
+
+/* ─── Forms ───────────────────────────────────────────────────────── */
+input,select,textarea{background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:6px 10px;border-radius:var(--radius);
+  font-size:12px;width:100%;transition:border-color var(--transition);}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);}
+select{width:auto;min-width:130px;cursor:pointer;}
+
+/* ─── Tags / badges ───────────────────────────────────────────────── */
+.tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;
+  font-weight:500;border:1px solid var(--border2);color:var(--text-dim);
+  white-space:nowrap;}
+.tag-green{border-color:var(--green-dim);color:var(--green);background:rgba(63,185,80,.08);}
+.tag-blue{border-color:var(--accent-dim);color:var(--accent);background:rgba(88,166,255,.08);}
+.tag-yellow{border-color:var(--yellow);color:var(--yellow);background:rgba(210,153,34,.08);}
+.tag-red{border-color:var(--red);color:var(--red);background:rgba(248,81,73,.08);}
+.tag-purple{border-color:var(--purple);color:var(--purple);background:rgba(188,140,255,.08);}
+
+/* ─── Flex helpers ────────────────────────────────────────────────── */
+.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:6px;}
+.mt{margin-top:10px;} .mt-sm{margin-top:6px;} .mb{margin-bottom:10px;}
+.gap-sm{gap:5px;}
+
+/* ─── Empty state ─────────────────────────────────────────────────── */
+.empty{text-align:center;padding:40px 20px;color:var(--text-dim);}
+.empty .empty-icon{font-size:36px;margin-bottom:10px;opacity:.5;}
+.empty p{font-size:13px;margin-bottom:14px;}
+
+/* ─── Accordion / details ─────────────────────────────────────────── */
+details>summary{cursor:pointer;user-select:none;list-style:none;}
+details>summary::-webkit-details-marker{display:none;}
+.collapse-header{display:flex;align-items:center;gap:8px;padding:10px 12px;
+  border-radius:var(--radius);background:var(--surface2);cursor:pointer;
+  transition:background var(--transition);}
+.collapse-header:hover{background:var(--surface3);}
+.chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;
+  display:inline-block;}
+details[open] .chevron{transform:rotate(90deg);}
+.collapse-body{padding:10px 0 4px;}
+
+/* ─── Sort bar ────────────────────────────────────────────────────── */
+.sort-bar{display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap;}
+.sort-btn{background:var(--surface2);border:1px solid var(--border);
+  color:var(--text-dim);padding:3px 10px;border-radius:20px;font-size:11px;
+  cursor:pointer;transition:all var(--transition);}
+.sort-btn.active{border-color:var(--accent);color:var(--accent);
+  background:rgba(88,166,255,.08);}
+
+/* ─── Phase bar ───────────────────────────────────────────────────── */
+.phase-bar{display:flex;align-items:center;gap:0;margin:10px 0;overflow-x:auto;}
+.phase-step{padding:7px 18px;font-size:11px;font-weight:600;cursor:pointer;
+  transition:all var(--transition);white-space:nowrap;text-align:center;
+  border:1px solid var(--border);margin-right:-1px;}
+.phase-step:first-child{border-radius:var(--radius) 0 0 var(--radius);}
+.phase-step:last-child{border-radius:0 var(--radius) var(--radius) 0;margin-right:0;}
+.phase-step.done{background:var(--green-dim);color:#fff;border-color:var(--green-dim);}
+.phase-step.current{background:var(--accent-dim);color:#fff;border-color:var(--accent);}
+.phase-step.pending{background:var(--surface2);color:var(--text-dim);}
+
+/* ─── Findings items ──────────────────────────────────────────────── */
+.findings-item{font-size:12px;padding:3px 0 3px 10px;color:var(--text-dim);
+  border-left:2px solid var(--border);margin-bottom:2px;}
+
+/* ─── Loading / toast ─────────────────────────────────────────────── */
+.loading-bar{height:2px;background:var(--accent-dim);border-radius:2px;
+  animation:loadbar 1.2s ease-in-out infinite;width:60%;}
+@keyframes loadbar{0%{width:0%;opacity:1}70%{width:80%;opacity:1}100%{width:100%;opacity:0}}
+.loading-inline{display:inline-flex;align-items:center;gap:6px;
+  color:var(--text-dim);font-size:12px;}
+.spin{animation:spin .8s linear infinite;display:inline-block;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+#toast{position:fixed;bottom:20px;right:20px;background:var(--surface3);
+  border:1px solid var(--border2);color:var(--text);padding:10px 16px;
+  border-radius:var(--radius-lg);font-size:12px;opacity:0;transition:opacity .3s;
+  z-index:9999;max-width:320px;pointer-events:none;}
+#toast.show{opacity:1;}
+#toast.ok{border-color:var(--green-dim);color:var(--green);}
+#toast.err{border-color:var(--red);color:var(--red);}
+
+/* ─── Dash section headers ────────────────────────────────────────── */
+.dash-section{font-size:10px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.7px;padding:4px 0 6px;
+  border-bottom:1px solid var(--border);margin-bottom:8px;
+  display:flex;align-items:center;gap:6px;}
+
+/* ─── Review list items ───────────────────────────────────────────── */
+.review-item{background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--radius);margin:5px 0;overflow:hidden;
+  transition:border-color var(--transition);}
+.review-item:hover{border-color:var(--border2);}
+.review-item.active-review{border-color:var(--accent);}
+.review-item-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  cursor:pointer;transition:background var(--transition);}
+.review-item-header:hover{background:var(--surface2);}
+.review-item-body{padding:8px 12px 10px;border-top:1px solid var(--border);}
+
+/* ─── Utility micro-classes ───────────────────────────────────────── */
+.fs10{font-size:10px}.fs11{font-size:11px}.fs12{font-size:12px}
+.c-dim{color:var(--text-dim)}.c-muted{color:var(--text-muted)}
+.c-accent{color:var(--accent)}.fw6{font-weight:600}.fw7{font-weight:700}
+.ml-auto{margin-left:auto}
+</style>
+
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   COMPARE MODULE STYLES  (scoped with .cmp- prefix)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Overlay / modal shell ────────────────────────────────────────── */
+.cmp-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);
+  z-index:2000;display:flex;align-items:flex-start;justify-content:center;
+  padding:24px 16px;overflow-y:auto;opacity:0;transition:opacity .25s ease;
+  pointer-events:none;}
+.cmp-overlay.cmp-overlay-visible{opacity:1;pointer-events:all;}
+
+.cmp-modal{background:var(--surface);border:1px solid var(--border2);
+  border-radius:var(--radius-lg);width:100%;max-width:820px;
+  box-shadow:var(--shadow);display:flex;flex-direction:column;
+  transform:translateY(-12px);transition:transform .25s ease;}
+.cmp-overlay.cmp-overlay-visible .cmp-modal{transform:translateY(0);}
+
+/* ── Modal header ─────────────────────────────────────────────────── */
+.cmp-modal-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  background:var(--surface2);border-radius:var(--radius-lg) var(--radius-lg) 0 0;}
+.cmp-modal-title{font-size:14px;font-weight:700;color:var(--text);flex:1;}
+.cmp-close-btn{background:transparent;border:none;color:var(--text-dim);
+  cursor:pointer;font-size:16px;padding:2px 6px;border-radius:var(--radius);
+  transition:color var(--transition),background var(--transition);line-height:1;}
+.cmp-close-btn:hover{color:var(--text);background:var(--surface3);}
+
+/* ── Mode toggle ──────────────────────────────────────────────────── */
+.cmp-mode-toggle{display:inline-flex;border:1px solid var(--border2);
+  border-radius:20px;overflow:hidden;flex-shrink:0;}
+.cmp-mode-btn{background:transparent;border:none;color:var(--text-muted);
+  padding:4px 14px;font-size:11px;font-weight:600;cursor:pointer;
+  transition:background var(--transition),color var(--transition);}
+.cmp-mode-btn:hover:not(.cmp-mode-active){color:var(--text-dim);}
+.cmp-mode-btn.cmp-mode-active{background:var(--surface3);color:var(--text);}
+
+/* ── Modal body ───────────────────────────────────────────────────── */
+.cmp-modal-body{padding:16px;display:flex;flex-direction:column;gap:12px;}
+
+/* ── Selector row ─────────────────────────────────────────────────── */
+.cmp-selectors-area{display:flex;flex-direction:column;gap:8px;}
+.cmp-selector-row{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;
+  align-items:start;}
+@media(max-width:520px){.cmp-selector-row{grid-template-columns:1fr;}}
+.cmp-selector-col{display:flex;flex-direction:column;gap:4px;}
+.cmp-selector-divider{font-size:20px;color:var(--text-muted);padding-top:22px;
+  text-align:center;font-weight:300;user-select:none;}
+.cmp-sel-label{font-size:11px;font-weight:600;}
+.cmp-label-a{color:var(--accent);}
+.cmp-label-b{color:var(--green);}
+.cmp-select{width:100%;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);padding:6px 10px;border-radius:var(--radius);
+  font-size:12px;cursor:pointer;transition:border-color var(--transition);}
+.cmp-select:focus{outline:none;}
+.cmp-select-a:focus{border-color:var(--accent);}
+.cmp-select-b:focus{border-color:var(--green);}
+
+/* ── Per-selector metadata preview chips ─────────────────────────── */
+.cmp-sel-meta{display:flex;flex-wrap:wrap;gap:4px;min-height:20px;margin-top:2px;}
+.cmp-meta-chip{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;
+  font-weight:500;border:1px solid var(--border2);color:var(--text-dim);}
+.cmp-chip-red{border-color:var(--red);color:var(--red);}
+.cmp-chip-green{border-color:var(--green-dim);color:var(--green);}
+.cmp-chip-yellow{border-color:var(--yellow);color:var(--yellow);}
+.cmp-chip-purple{border-color:var(--purple);color:var(--purple);}
+
+/* ── Action row ───────────────────────────────────────────────────── */
+.cmp-actions{display:flex;align-items:center;gap:8px;}
+.cmp-run-btn{display:inline-flex;align-items:center;gap:6px;
+  background:var(--accent);color:#000;border:none;padding:7px 18px;
+  border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:700;
+  transition:opacity var(--transition);}
+.cmp-run-btn:hover{opacity:.85;}
+.cmp-run-btn:disabled{opacity:.45;cursor:not-allowed;}
+.cmp-clear-btn{background:transparent;border:1px solid var(--border);
+  color:var(--text-dim);padding:6px 12px;border-radius:var(--radius);
+  cursor:pointer;font-size:11px;transition:all var(--transition);}
+.cmp-clear-btn:hover{border-color:var(--border2);color:var(--text);}
+</style>
+
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   COMPARE RESULT STYLES
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Result area ──────────────────────────────────────────────────── */
+.cmp-result-area{display:flex;flex-direction:column;gap:0;}
+
+/* ── Summary bar ──────────────────────────────────────────────────── */
+.cmp-summary-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;
+  padding:10px 14px;background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius-lg);margin-bottom:10px;}
+.cmp-summary-pair{display:flex;align-items:center;gap:6px;}
+.cmp-ver-badge{font-size:12px;font-weight:700;padding:2px 10px;border-radius:20px;}
+.cmp-badge-a{background:rgba(88,166,255,.12);color:var(--accent);
+  border:1px solid var(--accent-dim);}
+.cmp-badge-b{background:rgba(63,185,80,.10);color:var(--green);
+  border:1px solid var(--green-dim);}
+.cmp-arrow{color:var(--text-muted);font-size:14px;font-weight:300;}
+.cmp-summary-stats{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cmp-stat-added{font-size:12px;font-weight:700;color:var(--green);}
+.cmp-stat-removed{font-size:12px;font-weight:700;color:var(--red);}
+.cmp-ts-row{font-size:10px;color:var(--text-muted);display:flex;
+  align-items:center;gap:4px;margin-left:auto;}
+.cmp-ts-sep{color:var(--text-muted);}
+
+/* ── Trend pill ───────────────────────────────────────────────────── */
+.cmp-trend-pill{font-size:11px;padding:2px 10px;border-radius:20px;font-weight:600;}
+.cmp-trend-up  {background:rgba(248,81,73,.12); color:var(--red);}
+.cmp-trend-down{background:rgba(63,185,80,.12); color:var(--green);}
+.cmp-trend-same{background:rgba(139,148,158,.12);color:var(--text-dim);}
+
+/* ── Section title ────────────────────────────────────────────────── */
+.cmp-section-title{font-size:10px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.6px;margin:10px 0 5px;
+  padding-bottom:4px;border-bottom:1px solid var(--border);}
+
+/* ── Metadata diff grid ───────────────────────────────────────────── */
+.cmp-meta-grid{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;}
+.cmp-meta-row{display:flex;align-items:center;gap:6px;font-size:11px;flex-wrap:wrap;}
+.cmp-meta-field{font-weight:600;color:var(--text-muted);text-transform:capitalize;
+  min-width:90px;}
+.cmp-meta-before{color:var(--red);background:rgba(248,81,73,.06);
+  padding:1px 7px;border-radius:4px;text-decoration:line-through;}
+.cmp-meta-after{color:var(--green);background:rgba(63,185,80,.06);
+  padding:1px 7px;border-radius:4px;}
+
+/* ── Delta badge ──────────────────────────────────────────────────── */
+.cmp-delta{font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;}
+.cmp-delta-up      {color:var(--red);  background:rgba(248,81,73,.10);}
+.cmp-delta-down    {color:var(--green);background:rgba(63,185,80,.10);}
+.cmp-delta-neutral {color:var(--text-muted);background:var(--surface3);}
+
+/* ── Category / section blocks ────────────────────────────────────── */
+.cmp-cat-block{border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:6px;overflow:hidden;background:var(--bg);}
+.cmp-cat-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  cursor:pointer;background:var(--surface2);list-style:none;
+  transition:background var(--transition);}
+.cmp-cat-header:hover{background:var(--surface3);}
+.cmp-cat-block[open] .cmp-cat-header{border-bottom:1px solid var(--border);}
+.cmp-cat-chevron{font-size:9px;color:var(--text-muted);
+  transition:transform .2s;flex-shrink:0;}
+.cmp-cat-block[open] .cmp-cat-chevron{transform:rotate(90deg);}
+.cmp-cat-icon{font-size:13px;}
+.cmp-cat-name{font-size:12px;font-weight:600;text-transform:capitalize;flex:1;}
+.cmp-count-pill{font-size:11px;background:var(--surface3);
+  border-radius:20px;padding:1px 7px;font-weight:600;color:var(--text-dim);}
+.cmp-no-change{font-size:11px;color:var(--text-muted);margin-left:auto;}
+.cmp-cat-body{padding:8px 12px 10px;}
+
+/* ── Added / removed item rows ────────────────────────────────────── */
+.cmp-group-label{font-size:10px;font-weight:700;letter-spacing:.5px;
+  color:var(--text-muted);margin:6px 0 3px;}
+.cmp-label-added {color:var(--green);}
+.cmp-label-removed{color:var(--red);}
+.cmp-item{display:flex;align-items:flex-start;gap:8px;font-size:12px;
+  padding:3px 0;color:var(--text-dim);}
+.cmp-item-added   .cmp-item-marker{color:var(--green);font-weight:700;flex-shrink:0;}
+.cmp-item-removed .cmp-item-marker{color:var(--red);  font-weight:700;flex-shrink:0;}
+.cmp-item-added  {border-left:2px solid var(--green-dim);padding-left:6px;}
+.cmp-item-removed{border-left:2px solid var(--red);    padding-left:6px;}
+.cmp-unchanged-note{font-size:11px;color:var(--text-muted);
+  padding:4px 0;font-style:italic;}
+.cmp-overflow{font-size:11px;color:var(--text-muted);margin-top:3px;}
+
+/* ── Progression tiles (reviews) ─────────────────────────────────── */
+.cmp-prog-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+  margin-bottom:10px;}
+@media(max-width:480px){.cmp-prog-tiles{grid-template-columns:repeat(2,1fr);}}
+.cmp-prog-tile{text-align:center;padding:10px 6px;border-radius:var(--radius);
+  background:var(--surface2);}
+.cmp-prog-num{font-size:22px;font-weight:700;line-height:1.2;}
+.cmp-prog-lbl{font-size:10px;color:var(--text-muted);margin-top:2px;}
+.cmp-tile-resolved   .cmp-prog-num{color:var(--green);}
+.cmp-tile-new        .cmp-prog-num{color:var(--accent);}
+.cmp-tile-persistent .cmp-prog-num{color:var(--text-dim);}
+.cmp-tile-net        .cmp-prog-num{color:var(--text-dim);}
+
+/* ── Loading / error ─────────────────────────────────────────────── */
+.cmp-loading{display:flex;align-items:center;gap:8px;padding:16px;
+  color:var(--text-dim);font-size:12px;}
+.cmp-spin{animation:spin .8s linear infinite;display:inline-block;font-size:16px;}
+.cmp-error{padding:12px 14px;background:rgba(248,81,73,.08);
+  border:1px solid var(--red);border-radius:var(--radius);
+  color:var(--red);font-size:12px;}
+.cmp-empty{color:var(--text-muted);font-size:12px;padding:12px 0;font-style:italic;}
+</style>
+
+
+</head>
+<body>
+
+<div id="app">
+  <header id="header"></header>
+  <main id="main"></main>
+</div>
+
+<div id="toast"></div>
+
+<!-- Compare module — loaded before inline scripts so Compare is available globally -->
+<script src="js/compare.js"></script>
+
+<script>
+// ── Utilities ────────────────────────────────────────────────────────────────
+function escHtml(s){
+  if(typeof s!=='string')s=String(s||'');
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(iso){return iso?iso.slice(0,16).replace('T',' '):'–';}
+function fmtDateShort(iso){return iso?iso.slice(0,10):'–';}
+function relativeTime(iso){
+  if(!iso)return'';
+  const norm=(iso.endsWith('Z')||iso.includes('+'))?iso:iso+'Z';
+  const diff=Date.now()-new Date(norm).getTime();
+  if(isNaN(diff))return'';
+  const m=Math.floor(diff/60000);
+  if(m<1)return'just now';
+  if(m<60)return`${m}m ago`;
+  const h=Math.floor(m/60);
+  if(h<24)return`${h}h ago`;
+  return`${Math.floor(h/24)}d ago`;
+}
+
+let _toastTimer=null;
+function toast(msg,type='ok'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.className='show '+(type==='err'?'err':'ok');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>el.className='',3000);
+}
+
+async function api(method,path,body){
+  const opts={method,headers:{'Content-Type':'application/json'}};
+  if(body)opts.body=JSON.stringify(body);
+  try{const r=await fetch(path,opts);return r.json();}
+  catch(e){return{error:e.message};}
+}
+</script>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const TABS=['dashboard','versions','reviews'];
+
+let state={
+  projects:[],current:null,tab:'dashboard',
+  backends:[],appName:'Contexta',
+  _dashVersion:'',_dashReview:'',
+  _versionSort:'newest',_reviewSort:'newest',
+  _lastRenderedProject:null,
+};
+
+// ── Shared helpers ───────────────────────────────────────────────────────────
+function formatVersionOption(v){
+  const cnt=v.review_count||0;
+  const ar=v.active_review;
+  let aStr='';
+  if(ar)aStr=`, active: ${ar.review_id}${ar.persona?' · '+ar.persona:''}`;
+  const lbl=v.label?' – '+v.label:'';
+  return`${v.version_id}${lbl} (${cnt} review${cnt===1?'':'s'}${aStr})`;
+}
+</script>
+
+
+<script>
+// ── Header ───────────────────────────────────────────────────────────────────
+function renderHeader(){
+  const proj=state.current;
+  const phase=proj?proj.phase:'';
+  const opts=state.projects.map(p=>
+    `<option value="${p.id}" ${p.id===(proj?.id)?'selected':''}>${escHtml(p.name)}</option>`
+  ).join('');
+  const displayName=proj?proj.name:state.appName;
+
+  document.getElementById('header').innerHTML=`
+    <span class="logo">⚡ <span>${escHtml(displayName)}</span></span>
+    <span class="v2-badge">v2</span>
+    ${phase?`<span class="phase-badge">${escHtml(phase)}</span>`:''}
+    ${state.projects.length
+      ?`<select class="proj-select" onchange="selectProject(this.value)">${opts}</select>`
+      :'<span style="color:var(--text-dim);font-size:12px">No projects</span>'}
+    <nav>
+      ${TABS.map(t=>`<button class="${state.tab===t?'active':''}"
+        onclick="switchTab('${t}')">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
+    </nav>
+    <!-- ── Compare button ── -->
+    ${proj
+      ?`<button class="btn-compare" onclick="openCompare()"
+          title="Compare versions or reviews side-by-side">
+          <span class="cmp-icon">⇄</span> Compare
+        </button>`
+      :''}`;
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab){
+  if(tab===state.tab&&state.current&&state._lastRenderedProject===state.current.id){
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+  state.tab=tab;
+  render();
+}
+
+async function render(){
+  renderHeader();
+  if(state.current)state._lastRenderedProject=state.current.id;
+  const main=document.getElementById('main');
+  main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
+  const views={dashboard:viewDashboard,versions:viewVersions,reviews:viewReviews};
+  try{
+    main.innerHTML=await(views[state.tab]||viewDashboard)();
+  }catch(e){
+    console.error('render error:',e);
+    main.innerHTML=`<div class="card">
+      <p style="color:var(--red);font-size:12px">⚠ Page failed to load: ${escHtml(e.message)}</p>
+      <button class="btn btn-sm btn-ghost mt" onclick="render()">↻ Retry</button>
+    </div>`;
+  }
+}
+
+// ── Compare entry point ───────────────────────────────────────────────────────
+function openCompare(){
+  if(!state.current){toast('Select a project first','err');return;}
+  Compare.open(state.current.id);
+}
+</script>
+
+
+<script>
+// ── Empty / no-project view ───────────────────────────────────────────────────
+function viewNoProject(){
+  const list=state.projects.length
+    ?`<hr style="border:none;border-top:1px solid var(--border);margin:14px 0">
+       <p class="card-section">Existing Projects</p>
+       <ul style="list-style:none">
+         ${state.projects.map(p=>`<li style="padding:4px 0">
+           <a href="#" onclick="selectProject('${p.id}')" style="color:var(--accent)">
+             ${escHtml(p.name)}</a>
+           <span class="tag" style="margin-left:6px">${p.phase||'–'}</span>
+         </li>`).join('')}
+       </ul>`
+    :'';
+  return`<div class="card">
+    <div class="empty">
+      <div class="empty-icon">📁</div>
+      <p>Create or select a project to get started.</p>
+      <div style="max-width:340px;margin:0 auto">
+        <div style="margin-bottom:10px">
+          <label style="display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px">Project Name</label>
+          <input id="newName" placeholder="e.g. Cloud Migration Assessment">
+        </div>
+        <button class="btn" onclick="createProject()">Create Project</button>
+        <div id="createProjectError" class="mt"></div>
+      </div>
+    </div>
+    ${list}</div>`;
+}
+
+// ── Dashboard view ────────────────────────────────────────────────────────────
+async function viewDashboard(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+  const selV=state._dashVersion||'';
+  const selR=state._dashReview||'';
+
+  let metricsUrl=`/api/projects/${pid}/hierarchy/metrics`;
+  const ps=[];
+  if(selV)ps.push(`version_id=${selV}`);
+  if(selR)ps.push(`review_id=${selR}`);
+  if(ps.length)metricsUrl+='?'+ps.join('&');
+
+  let metrics={},versions=[];
+  try{[metrics]=await Promise.all([api('GET',metricsUrl)]);}catch(e){}
+  try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions`);versions=r.versions||[];}catch(e){}
+
+  const avail=metrics.available_reviews||[];
+  const ds=metrics.data_source||{};
+  const risks=metrics.risks_identified||0;
+  const constraints=metrics.constraints||0;
+  const deps=metrics.dependencies||0;
+  const assumptions=metrics.assumptions||0;
+  const actions=metrics.action_items||0;
+  const totalV=metrics.total_versions||versions.length;
+  const totalR=metrics.total_reviews||0;
+  const gaps=metrics.gaps_identified||0;
+  const findings=metrics.total_findings||0;
+  const artifacts=metrics.artifact_count||0;
+  const trend=metrics.trend||[];
+
+  const vOpts=versions.map(v=>`<option value="${v.version_id}"
+    ${v.version_id===selV?'selected':''}>${escHtml(v.version_id)}
+    ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
+  const rOpts=avail.map(r=>`<option value="${r.review_id}"
+    ${r.review_id===selR?'selected':''}>${r.review_id}
+    – ${escHtml(r.persona)} (${fmtDateShort(r.created_at)})</option>`).join('');
+
+  // Context selector
+  const ctxCard=versions.length?`<div class="card" style="padding:12px 16px">
+    <div class="flex-between mb">
+      <div class="card-title" style="margin:0"><span class="icon">🎯</span>Data Context</div>
+      <span class="tag tag-blue">${escHtml(ds.phase||'–')}</span>
+    </div>
+    <div class="flex" style="gap:10px">
+      <div style="flex:1;min-width:150px">
+        <label style="font-size:10px;color:var(--text-dim)">Version</label>
+        <select style="width:100%;margin-top:2px"
+          onchange="state._dashVersion=this.value;state._dashReview='';render()">
+          <option value="">Latest</option>${vOpts}
+        </select>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label style="font-size:10px;color:var(--text-dim)">Review</label>
+        <select style="width:100%;margin-top:2px"
+          onchange="state._dashReview=this.value;render()">
+          <option value="">Active Review</option>${rOpts}
+        </select>
+      </div>
+    </div>
+    ${ds.version?`<p style="font-size:11px;color:var(--accent);margin-top:6px">
+      Showing: <strong>${escHtml(ds.version_label||ds.version)}</strong>
+      → <strong>${ds.review_persona?escHtml(ds.review_persona)+' ('+ds.review+')':ds.review||'latest review'}</strong>
+    </p>`:''}
+  </div>`:'';
+
+  // Overview stats
+  const overviewCard=`<div class="card">
+    <div class="dash-section">Project Overview</div>
+    <div class="stat-grid mb">
+      <div class="stat green"><div class="num">${totalV}</div><div class="lbl">Versions</div></div>
+      <div class="stat green"><div class="num">${totalR}</div><div class="lbl">Reviews</div></div>
+      ${artifacts?`<div class="stat"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}
+    </div>
+    <div class="flex gap-sm" style="flex-wrap:wrap">
+      <button class="btn" onclick="switchTab('versions')">📋 Versions</button>
+      <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Reviews</button>
+      <button class="btn-compare" onclick="openCompare()" style="margin-left:auto">⇄ Compare</button>
+    </div>
+  </div>`;
+
+  // Version insight stats
+  const insightCard=`<div class="card">
+    <div class="dash-section">Version Insights (${ds.version?escHtml(ds.version_label||ds.version):'Latest'})</div>
+    <div class="stat-grid mb">
+      <div class="stat red"><div class="num">${risks}</div><div class="lbl">Risks</div></div>
+      <div class="stat yellow"><div class="num">${constraints}</div><div class="lbl">Constraints</div></div>
+      <div class="stat purple"><div class="num">${deps}</div><div class="lbl">Dependencies</div></div>
+      <div class="stat"><div class="num">${assumptions}</div><div class="lbl">Assumptions</div></div>
+      <div class="stat"><div class="num">${actions}</div><div class="lbl">Actions</div></div>
+      ${gaps?`<div class="stat red"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
+      ${findings?`<div class="stat yellow"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
+    </div>
+    ${trend.length>1?`
+      <p style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Risk trend · last ${trend.length} versions</p>
+      <div style="display:flex;gap:8px;align-items:flex-end;min-height:48px">
+        ${(()=>{const maxR=Math.max(...trend.map(t=>t.stats?.risks||0),1);
+          return trend.map(t=>{const h=Math.max(6,Math.round((t.stats?.risks||0)/maxR*44));
+            return`<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;cursor:pointer"
+              onclick="state._dashVersion='${t.version_id}';state._dashReview='';render()"
+              title="${escHtml(t.version_id+' · '+fmtDateShort(t.created_at))}">
+              <span style="font-size:9px;color:var(--text-dim)">${t.stats?.risks||0}</span>
+              <div style="width:100%;height:${h}px;background:var(--red);border-radius:3px 3px 0 0;opacity:.7;transition:opacity .15s"
+                onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7"></div>
+              <span style="font-size:9px;color:var(--text-muted)">${t.version_id}</span>
+            </div>`;}).join('');})()}
+      </div>`:''}
+  </div>`;
+
+  return ctxCard+overviewCard+insightCard;
+}
+</script>
+
+
+<script>
+// ── Versions view ─────────────────────────────────────────────────────────────
+async function viewVersions(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+
+  let hierarchy={};
+  try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
+  const tree=hierarchy.tree||[];
+  const totalV=hierarchy.total_versions||0;
+  const totalR=hierarchy.total_reviews||0;
+
+  if(!totalV)return`<div class="card"><div class="empty">
+    <div class="empty-icon">📋</div>
+    <p>No versions yet. Ingest artefacts then run Build Intelligence.</p>
+  </div></div>`;
+
+  // Collect all versions for the inline compare panel
+  const allVersions=[];
+  for(const phase of tree){
+    for(const ver of(phase.versions||[])){
+      allVersions.push(ver);
+    }
+  }
+  allVersions.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+
+  const sort=state._versionSort||'newest';
+  const sortBar=`<div class="sort-bar">
+    <span>Sort:</span>
+    ${['newest','oldest','most-reviews'].map(s=>
+      `<button class="sort-btn ${sort===s?'active':''}"
+        onclick="state._versionSort='${s}';render()">${
+          s==='newest'?'Newest First':s==='oldest'?'Oldest First':'Most Reviews'
+        }</button>`).join('')}
+  </div>`;
+
+  // ── Inline compare panel (no backend, pure client)
+  let inlineCompare='';
+  if(allVersions.length>=2){
+    const mkOpts=list=>list.map(v=>
+      `<option value="${v.version_id}">${escHtml(formatVersionOption(v))}</option>`
+    ).join('');
+    const optsAsc=[...allVersions].reverse();
+    inlineCompare=`<div class="card" style="border-top:2px solid var(--accent)">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">⇄</span>Compare Versions</div>
+        <button class="btn-compare" onclick="openCompare()">Open Full Compare</button>
+      </div>
+      <p class="card-subtitle">Quick inline comparison — or use the Compare button for the full side-by-side diff panel.</p>
+      <div class="flex mb" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px">
+          <label style="font-size:10px;color:var(--text-dim)">Version A (before)</label>
+          <select id="inlineCmpA" style="width:100%;margin-top:3px">${mkOpts(optsAsc)}</select>
+        </div>
+        <span style="color:var(--text-muted);font-weight:700;padding-bottom:6px">→</span>
+        <div style="flex:1;min-width:160px">
+          <label style="font-size:10px;color:var(--text-dim)">Version B (after)</label>
+          <select id="inlineCmpB" style="width:100%;margin-top:3px">${mkOpts(allVersions)}</select>
+        </div>
+        <button class="btn" style="align-self:flex-end"
+          onclick="runInlineVersionCompare()">Compare</button>
+      </div>
+      <div id="inlineCmpResult"></div>
+    </div>`;
+  }
+
+  // ── Phase tree
+  let treeHtml='';
+  for(const phase of tree){
+    let phaseVersions=[...(phase.versions||[])];
+    if(!phaseVersions.length&&!phase.is_current)continue;
+
+    if(sort==='oldest')phaseVersions.sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
+    else if(sort==='most-reviews')phaseVersions.sort((a,b)=>(b.reviews||[]).length-(a.reviews||[]).length);
+    else phaseVersions.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+
+    const isCurrent=phase.is_current;
+    const phRevCnt=phaseVersions.reduce((s,v)=>s+(v.reviews||[]).length,0);
+
+    treeHtml+=`<details ${isCurrent?'open':''} class="card"
+      style="${isCurrent?'border-left:3px solid var(--accent)':''}">
+      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;
+        gap:8px;margin:-16px -18px 0;padding:14px 18px;
+        border-radius:var(--radius-lg) var(--radius-lg) 0 0;background:var(--surface)">
+        <span class="chevron">▶</span>
+        <strong style="font-size:13px;color:${isCurrent?'var(--accent)':'var(--text)'}">
+          ${escHtml(phase.label)}</strong>
+        ${isCurrent?'<span class="tag tag-green">current</span>':''}
+        <span class="tag">${phaseVersions.length} ver</span>
+        <span class="tag">${phRevCnt} rev</span>
+      </summary>
+      <div style="padding-top:12px">`;
+
+    if(!phaseVersions.length){
+      treeHtml+=`<p class="fs11 c-muted">No versions in this phase yet.</p>`;
+    }else{
+      for(const ver of phaseVersions){
+        const verRevs=ver.reviews||[];
+        const activeRid=ver.active_review_id||'';
+        treeHtml+=`<details style="margin:4px 0;padding-left:8px;border-left:2px solid var(--border)">
+          <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;
+            gap:6px;padding:6px 8px;border-radius:var(--radius);transition:background .15s"
+            onmouseover="this.style.background='var(--surface2)'"
+            onmouseout="this.style.background=''">
+            <span class="chevron">▶</span>
+            <strong class="fs12">${escHtml(ver.version_id)}</strong>
+            ${ver.label?`<span class="c-dim fs11">– ${escHtml(ver.label)}</span>`:''}
+            <span class="fs10 c-muted">${fmtDateShort(ver.created_at)}</span>
+            <span class="tag ${verRevs.length?'tag-blue':''}">${verRevs.length} review${verRevs.length===1?'':'s'}</span>
+            ${activeRid?'<span class="tag tag-green" style="font-size:9px">active set</span>':''}
+            ${ver.stats?.risks?`<span class="tag tag-red" style="font-size:9px">${ver.stats.risks} risks</span>`:''}
+          </summary>
+          <div style="padding:6px 0 4px 14px">
+            <div class="flex gap-sm mb" style="flex-wrap:wrap">
+              <button class="btn btn-xs btn-ghost"
+                onclick="state._dashVersion='${ver.version_id}';state._dashReview='';switchTab('dashboard')">
+                View on Dashboard</button>
+              <button class="btn-compare btn-xs" style="font-size:10px;padding:2px 8px"
+                onclick="openCompare()">⇄ Compare</button>
+              <span class="fs10 c-dim">${ver.persona?escHtml(ver.persona)+' · ':''} ${escHtml(ver.ai_backend||'files_only')}</span>
+            </div>`;
+
+        for(const rev of verRevs){
+          const rid=rev.review_id||'';if(!rid)continue;
+          const isActive=rid===activeRid;
+          treeHtml+=`<div class="review-item ${isActive?'active-review':''}">
+            <div class="review-item-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+              <span class="chevron">▶</span>
+              <span class="tag" style="font-size:10px;padding:1px 5px;font-weight:700;background:var(--surface3)">R${rev.iteration_number||'?'}</span>
+              <strong class="fs11">${rid}</strong>
+              ${isActive?'<span class="tag tag-green">active</span>':''}
+              <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
+              ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
+              <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${relativeTime(rev.created_at)}</span>
+            </div>
+            <div class="review-item-body" style="display:none">
+              ${rev.summary?`<p class="fs12 c-dim mb">${escHtml(rev.summary.slice(0,160))}</p>`:''}
+              <div class="flex gap-sm">
+                <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
+                  onclick="openCompare()">⇄ Compare Reviews</button>
+              </div>
+            </div>
+          </div>`;
+        }
+        treeHtml+=`</div></details>`;
+      }
+    }
+    treeHtml+=`</div></details>`;
+  }
+
+  const header=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">📋</span>Project Versions</div>
+      <span class="c-dim fs11">${totalV} versions · ${totalR} reviews</span>
+    </div>
+    ${sortBar}
+  </div>`;
+
+  return header+treeHtml+inlineCompare;
+}
+</script>
+
+
+<script>
+// ── Inline version compare (uses Compare module internals via public API) ──────
+async function runInlineVersionCompare(){
+  const va=document.getElementById('inlineCmpA')?.value;
+  const vb=document.getElementById('inlineCmpB')?.value;
+  const el=document.getElementById('inlineCmpResult');
+  if(!va||!vb){el.innerHTML='<p style="color:var(--yellow);font-size:12px">Select both versions.</p>';return;}
+  if(va===vb){el.innerHTML='<p style="color:var(--yellow);font-size:12px">Select two different versions.</p>';return;}
+  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Comparing…</span>';
+  const pid=state.current.id;
+  const data=await api('POST',`/api/projects/${pid}/compare-versions`,{version_a:va,version_b:vb});
+  if(data.error){el.innerHTML=`<p style="color:var(--red);font-size:12px">${escHtml(data.error)}</p>`;return;}
+
+  const s=data.summary||{};
+  const cats=data.categories||{};
+  const CAT_ICONS={risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',action_items:'✅'};
+  const TREND_MAP={
+    improving:'tag-green',risks_increasing:'tag-red',
+    complexity_increasing:'tag-yellow',stable:''
+  };
+  const trendTag=`<span class="tag ${TREND_MAP[s.trend]||''}">${s.trend||'–'}</span>`;
+
+  let html=`<div style="background:var(--surface2);border:1px solid var(--border);
+    border-radius:var(--radius-lg);overflow:hidden;margin-top:6px">
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:11px;font-weight:600;color:var(--accent)">${escHtml(va)}</span>
+      <span class="c-muted">→</span>
+      <span style="font-size:11px;font-weight:600;color:var(--green)">${escHtml(vb)}</span>
+      ${trendTag}
+      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">
+        <span style="color:var(--green)">+${s.total_added||0}</span> &nbsp;
+        <span style="color:var(--red)">–${s.total_removed||0}</span>
+      </span>
+    </div>`;
+
+  for(const[cat,d]of Object.entries(cats)){
+    const net=d.net_change||0;
+    const netCol=net>0?'var(--red)':net<0?'var(--green)':'var(--text-dim)';
+    const added=d.added||[];
+    const removed=d.removed||[];
+    const hasChanges=added.length||removed.length;
+    html+=`<details ${hasChanges?'open':''} style="border-bottom:1px solid var(--border)">
+      <summary class="cmp-cat-header" style="list-style:none">
+        <span class="cmp-cat-chevron">▶</span>
+        <span>${CAT_ICONS[cat]||'📌'}</span>
+        <strong style="font-size:12px;text-transform:capitalize">${cat.replace(/_/g,' ')}</strong>
+        <span class="cmp-count-pill">${d.count_before} → ${d.count_after}</span>
+        <span style="font-size:12px;font-weight:700;color:${netCol}">
+          ${net>0?'+':''}${net}</span>
+        ${!hasChanges?'<span class="cmp-no-change">no changes</span>':''}
+      </summary>
+      <div style="padding:6px 12px 10px">
+        ${added.slice(0,5).map(i=>`<div class="cmp-item cmp-item-added">
+          <span class="cmp-item-marker">+</span>
+          <span>${escHtml(String(i).slice(0,120))}</span>
+        </div>`).join('')}
+        ${added.length>5?`<p class="cmp-overflow">… and ${added.length-5} more</p>`:''}
+        ${removed.slice(0,5).map(i=>`<div class="cmp-item cmp-item-removed">
+          <span class="cmp-item-marker">−</span>
+          <span>${escHtml(String(i).slice(0,120))}</span>
+        </div>`).join('')}
+        ${removed.length>5?`<p class="cmp-overflow">… and ${removed.length-5} more</p>`:''}
+        ${!hasChanges?`<p class="cmp-unchanged-note">${d.unchanged_count||d.count_before} items — no changes</p>`:''}
+      </div>
+    </details>`;
+  }
+  html+=`<div style="padding:6px 12px;font-size:11px;color:var(--text-dim)">
+    ${fmtDate(data.timestamp_a)} → ${fmtDate(data.timestamp_b)}
+  </div></div>`;
+  el.innerHTML=html;
+}
+</script>
+
+
+<script>
+// ── Reviews view ──────────────────────────────────────────────────────────────
+async function viewReviews(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+
+  let hierarchy={};
+  try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
+  const tree=hierarchy.tree||[];
+
+  let versionsWithReviews=[];
+  for(const phase of tree){
+    for(const ver of(phase.versions||[])){
+      if((ver.reviews||[]).length>0)versionsWithReviews.push({...ver,phase_label:phase.label});
+    }
+  }
+  if(state._dashVersion){
+    versionsWithReviews=versionsWithReviews.filter(v=>v.version_id===state._dashVersion);
+  }
+
+  const sort=state._reviewSort||'newest';
+  const sortBar=`<div class="sort-bar">
+    <span>Sort:</span>
+    ${['newest','oldest','most-findings'].map(s=>
+      `<button class="sort-btn ${sort===s?'active':''}"
+        onclick="state._reviewSort='${s}';render()">${
+          s==='newest'?'Newest First':s==='oldest'?'Oldest First':'Most Findings'
+        }</button>`).join('')}
+    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">⇄ Compare Reviews</button>
+  </div>`;
+
+  if(!versionsWithReviews.length){
+    return`<div class="card">
+      <div class="flex-between mb">
+        <div class="card-title"><span class="icon">🔍</span>Review History</div>
+        <button class="btn-compare" onclick="openCompare()">⇄ Compare</button>
+      </div>
+      ${sortBar}
+      <div class="empty" style="padding:24px 0">
+        <div class="empty-icon">🔍</div>
+        <p>No reviews yet. Run a Persona Review from the main dashboard.</p>
+      </div>
+    </div>`;
+  }
+
+  let listHtml=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">🔍</span>Review History
+        ${state._dashVersion?`<span class="tag tag-blue fs10">v: ${escHtml(state._dashVersion)}</span>`:''}
+      </div>
+    </div>
+    ${sortBar}`;
+
+  for(const ver of versionsWithReviews){
+    let revs=[...(ver.reviews||[])];
+    if(sort==='oldest')revs.sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
+    else if(sort==='most-findings')revs.sort((a,b)=>(b.total_findings||0)-(a.total_findings||0));
+    else revs.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+    const activeId=ver.active_review_id||'';
+
+    listHtml+=`<details open style="border-left:2px solid var(--border);padding-left:10px;margin:8px 0">
+      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
+        padding:5px 6px;border-radius:var(--radius)"
+        onmouseover="this.style.background='var(--surface2)'"
+        onmouseout="this.style.background=''">
+        <span class="chevron">▶</span>
+        <strong class="fs12">${escHtml(ver.version_id)}</strong>
+        ${ver.label?`<span class="c-dim fs12">– ${escHtml(ver.label)}</span>`:''}
+        <span class="tag">${escHtml(ver.phase_label||'')}</span>
+        <span class="tag tag-blue">${revs.length} reviews</span>
+      </summary>`;
+
+    for(const rev of revs){
+      const rid=rev.review_id||'';if(!rid)continue;
+      const isActive=rid===activeId;
+      const qStatus=rev.quality_status||'pending';
+      const qCls=qStatus==='complete'?'tag-green':qStatus==='interim'?'tag-yellow':'';
+      const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'In Progress':'Draft';
+
+      listHtml+=`<details style="margin:4px 0;background:var(--bg);
+        border:1px solid ${isActive?'var(--accent)':'var(--border)'};
+        border-radius:var(--radius);overflow:hidden">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;
+          gap:7px;padding:7px 10px"
+          onmouseover="this.style.background='var(--surface2)'"
+          onmouseout="this.style.background=''">
+          <span class="chevron">▶</span>
+          <span class="tag" style="font-size:10px;padding:1px 6px;font-weight:700;
+            background:var(--surface3)">R${rev.iteration_number||'?'}</span>
+          <strong class="fs11">${rid}</strong>
+          ${isActive?'<span class="tag tag-green">active</span>':''}
+          <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
+          <span class="tag ${qCls}" style="font-size:9px">${qLabel}</span>
+          ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
+          <span style="font-size:10px;color:var(--text-muted);margin-left:auto">
+            ${relativeTime(rev.created_at)}</span>
+        </summary>
+        <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
+          ${rev.summary?`<p class="fs12 c-dim" style="margin-bottom:8px">${escHtml(rev.summary.slice(0,200))}</p>`:''}
+          <div class="flex gap-sm">
+            <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
+              onclick="openCompare()">⇄ Compare Reviews</button>
+          </div>
+        </div>
+      </details>`;
+    }
+    listHtml+=`</details>`;
+  }
+  listHtml+=`</div>`;
+  return listHtml;
+}
+</script>
+
+
+<script>
+// ── Project actions ───────────────────────────────────────────────────────────
+async function selectProject(id){
+  state.current=state.projects.find(x=>x.id===id)||state.current;
+  try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
+  state._dashVersion='';state._dashReview='';
+  state.tab='dashboard';render();
+}
+
+async function createProject(){
+  const name=(document.getElementById('newName')?.value||'').trim();
+  if(!name)return;
+  const r=await api('POST','/api/projects',{name});
+  if(r.project){
+    await loadProjects();
+    state.current=state.projects.find(p=>p.id===r.project.id)||r.project;
+    state.tab='dashboard';toast(`Project "${name}" created`);render();
+  }else{
+    const el=document.getElementById('createProjectError');
+    if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px;margin-top:6px">${escHtml(r.error||'Failed')}</p>`;
+    else toast(r.error||'Failed','err');
+  }
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+async function loadProjects(){
+  const r=await api('GET','/api/projects');
+  state.projects=r.projects||[];
+  if(!state.current&&state.projects.length){
+    let restoredId=null;
+    try{restoredId=localStorage.getItem('pdae_current_project_id');}catch(e){}
+    const found=restoredId&&state.projects.find(x=>x.id===restoredId);
+    state.current=found||state.projects[0];
+  }
+}
+
+async function loadBackends(){
+  const r=await api('GET','/api/backends');
+  state.backends=r.backends||[];
+}
+
+async function loadAppInfo(){
+  try{
+    const h=await api('GET','/api/health');
+    if(h.app){state.appName=h.app;document.title=`${h.app} v2`;}
+  }catch(e){}
+}
+
+(async()=>{
+  await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);
+  render();
+})();
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Contexta v2 — Project Delivery Accelerator</title>
@@ -155,6 +1236,18 @@
         </div>
       </section>
 
+      <!-- ── SECTION A2: Risk & Gap Summary ────────────── -->
+      <!--
+        TRACE: UI → RiskGapSummary → AppState (metrics)
+        Component: summary.js → RiskGapSummary.render()
+        Populated by: RiskGapSummary.mount() on DOMContentLoaded,
+                      then reactively on AppState 'metrics' change.
+        Logic: rule-based only — no AI/LLM dependency.
+      -->
+      <div id="v2-summary-panel" aria-live="polite" aria-label="Risk and gap summary">
+        <!-- Populated by RiskGapSummary.mount() -->
+      </div>
+
       <!-- ── SECTION B: Version Accordion ───────────────── -->
       <!--
         TRACE: UI → VersionAccordion → API → /hierarchy/versions + /hierarchy/reviews
@@ -270,8 +1363,8 @@
 <!-- 3. Component renderers -->
 <script src="/static/v2/js/dashboard.js"></script>
 
-<!-- 4. Quick navigation search — no deps beyond AppState -->
-<script src="/static/v2/js/search.js"></script>
+<!-- 4. Summary panel — risk/gap rule-based summary -->
+<script src="/static/v2/js/summary.js"></script>
 
 <!-- ═══════════════════════════════════════════════════════════
      Accessibility: sync drawer aria-hidden with open state
