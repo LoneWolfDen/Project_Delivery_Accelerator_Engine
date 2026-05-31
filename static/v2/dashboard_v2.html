@@ -81,6 +81,13 @@
               onclick="Dashboard.onRefresh()">
         ↺
       </button>
+      <!--
+        Quick Navigation Search
+        TRACE: UI → QuickSearch → search.js
+        Type "v3" → jump to version, "r7" → jump to review
+        Populated by QuickSearch.mount() on DOMContentLoaded
+      -->
+      <div id="v2-search-wrap" style="margin-left:auto"></div>
     </div>
     <div class="header-context" aria-label="Current context" aria-live="polite">
       <span class="ctx-label" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;opacity:0.6">Showing:</span>
@@ -262,6 +269,9 @@
 
 <!-- 3. Component renderers -->
 <script src="/static/v2/js/dashboard.js"></script>
+
+<!-- 4. Quick navigation search — no deps beyond AppState -->
+<script src="/static/v2/js/search.js"></script>
 
 <!-- ═══════════════════════════════════════════════════════════
      Accessibility: sync drawer aria-hidden with open state
