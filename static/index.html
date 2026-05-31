@@ -1877,6 +1877,9 @@ function renderCoverageAssessment(review){
     ${missing.length?`<p style="font-size:11px;color:var(--text-muted);margin-top:4px">
       ⬆️ Consider adding context on: ${missing.slice(0,4).map(d=>escHtml(d.label)).join(', ')}${missing.length>4?' and more':''}
     </p>`:'<p style="font-size:11px;color:var(--green);margin-top:4px">✓ All key areas detected in this review</p>'}
+    <p style="font-size:10px;color:var(--text-muted);margin-top:6px;padding-top:5px;border-top:1px solid var(--border)">
+      💡 Improve your score by addressing missing areas above, adding more artefacts, and clarifying weak findings in the next review iteration.
+    </p>
   </div>`;
 }
 
@@ -1913,6 +1916,13 @@ async function viewReviewDetail(rid){
       <span style="font-size:11px;color:var(--text-dim);font-weight:600">Decision Readiness:</span>
       <span id="detailReadinessBadge" class="tag" style="font-size:11px">…</span>
       <span id="detailReadinessDetail" style="font-size:11px;color:var(--text-dim)"></span>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--radius);padding:7px 10px;margin-bottom:10px;font-size:11px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <span style="color:var(--text-dim)">📌 <strong>Context:</strong></span>
+      <span style="color:var(--text-dim)">Version <strong>${escHtml(r.version_id||'—')}</strong></span>
+      <span style="color:var(--text-dim)">Phase <strong>${escHtml(r.phase_id||'—')}</strong></span>
+      ${r.included_files?.length?`<span style="color:var(--text-muted)">${r.included_files.length} artefact${r.included_files.length!==1?'s':''} reviewed</span>`:'<span style="color:var(--text-muted)">No artefacts recorded</span>'}
+      ${r.categories?.length?`<span style="color:var(--text-muted)">${r.categories.filter(Boolean).map(c=>escHtml(c)).join(' · ')}</span>`:''}
     </div>`;
 
   // Files included (Bug #2 fix result: now shows both artifact v1 + legacy files)
@@ -2001,13 +2011,13 @@ async function viewReviewDetail(rid){
     if(qs.length||notes){
       html+=`<details style="margin-top:6px">
         <summary class="collapse-header" style="list-style:none;margin-bottom:0">
-          <span class="chevron">▶</span> <span class="fs12 c-accent">Prompt Builder State</span>
-          ${qs.length?`<span class="tag tag-purple" style="font-size:9px;margin-left:6px">${qs.length} injected</span>`:''}
+          <span class="chevron">▶</span> <span class="fs12 c-accent">Prompt Composition</span>
+          ${qs.length?`<span class="tag tag-purple" style="font-size:9px;margin-left:6px">${qs.length} SME question(s)</span>`:''}
         </summary>
         <div style="padding:8px 10px;background:var(--surface2);border-radius:var(--radius);margin-top:4px">
-          ${qs.length?`<p class="fs10 c-dim" style="margin-bottom:4px;font-weight:600">Injected Questions:</p>
+          ${qs.length?`<p class="fs10 c-dim" style="margin-bottom:4px;font-weight:600">SME Questions included:</p>
             ${qs.map(q=>`<div class="findings-item" style="font-size:11px">❓ ${escHtml(q)}</div>`).join('')}`:''}
-          ${notes?`<p class="fs10 c-dim" style="margin-top:6px;margin-bottom:2px;font-weight:600">User Notes:</p>
+          ${notes?`<p class="fs10 c-dim" style="margin-top:6px;margin-bottom:2px;font-weight:600">User Context &amp; Constraints:</p>
             <p style="font-size:11px;white-space:pre-wrap">${escHtml(notes)}</p>`:''}
         </div>
       </details>`;
@@ -2021,17 +2031,65 @@ async function viewReviewDetail(rid){
   // S4-01: Weaknesses section
   const weaknesses = r.weaknesses || [];
   if (weaknesses.length) {
+    // Group weaknesses by category
+    const _wCatOrder=['risks','assumptions','dependencies','constraints','action_items'];
+    const _wGroups={};
+    for(const w of weaknesses){
+      const cat=w.category||'other';
+      (_wGroups[cat]=_wGroups[cat]||[]).push(w);
+    }
+    // Category display config: icon, label
+    const _wCatMeta={
+      risks:{icon:'⚠️',label:'Risks'},
+      assumptions:{icon:'💡',label:'Assumptions'},
+      dependencies:{icon:'🔗',label:'Dependencies'},
+      constraints:{icon:'🚧',label:'Constraints'},
+      action_items:{icon:'📋',label:'Action Items'},
+    };
+    const _wStatusIcon={open:'🔴',addressed:'✅',validated:'🟢',rejected:'🚫'};
+    // Sort groups: known categories first, then alphabetical
+    const _wGroupKeys=Object.keys(_wGroups).sort((a,b)=>{
+      const ai=_wCatOrder.indexOf(a),bi=_wCatOrder.indexOf(b);
+      if(ai>=0&&bi>=0)return ai-bi;
+      if(ai>=0)return-1;if(bi>=0)return 1;
+      return a.localeCompare(b);
+    });
+    const _wGroupsHtml=_wGroupKeys.map(cat=>{
+      const meta=_wCatMeta[cat]||{icon:'🔍',label:cat.replace(/_/g,' ')};
+      const items=_wGroups[cat];
+      const rows=items.map(w=>`<div class="findings-item" style="font-size:12px;display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+          <span title="${escHtml(w.status||'open')}" style="font-size:14px;line-height:1.4;flex-shrink:0">${_wStatusIcon[w.status||'open']||'🔴'}</span>
+          <span style="flex:1;line-height:1.5">${escHtml(w.text||'')}</span>
+          <select title="Update status" style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);flex-shrink:0" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value)">
+            ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${w.status===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>`).join('');
+      return`<details open style="margin-bottom:6px">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);font-size:12px;font-weight:600">
+          <span class="chevron" style="font-size:9px">▶</span>
+          <span>${meta.icon}</span>
+          <span>${escHtml(meta.label)}</span>
+          <span class="tag" style="margin-left:4px;font-size:9px">${items.length}</span>
+        </summary>
+        <div style="padding:0 4px">${rows}</div>
+      </details>`;
+    }).join('');
     html += `<div class="card" style="margin-top:8px;border-top:2px solid var(--yellow)">
       <div class="flex-between mb">
-        <div class="card-title" style="font-size:12px"><span class="icon">⚠️</span>Weaknesses <span class="tag" style="background:var(--yellow);color:#000">${weaknesses.length}</span></div>
+        <div class="card-title" style="font-size:12px"><span class="icon">⚠️</span>Weaknesses <span class="tag" style="background:var(--yellow);color:#000;font-size:10px">${weaknesses.length}</span></div>
       </div>
-      ${weaknesses.map(w => `<div class="findings-item" style="font-size:12px;display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
-        <span class="tag" style="font-size:9px">${escHtml(w.category||'')}</span>
-        <select style="font-size:9px;padding:1px 4px;border-radius:4px;border:1px solid var(--border);background:var(--bg2);color:var(--text)" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value)">
-          ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${w.status===s?' selected':''}>${s}</option>`).join('')}
-        </select>
-        <span style="flex:1">${escHtml(w.text||'')}</span>
-      </div>`).join('')}
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+        Areas where the solution lacks clarity, completeness, or confidence. Use these insights to improve the next review iteration.
+      </p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);font-size:10px;color:var(--text-dim)">
+        <strong style="font-size:10px">Status:</strong>
+        <span>🔴 Open</span>
+        <span>✅ Addressed</span>
+        <span>🟢 Validated</span>
+        <span>🚫 Rejected</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--text-muted)">Use the dropdown to track progress</span>
+      </div>
+      ${_wGroupsHtml}
     </div>`;
   }
   // S4-02: Missing Areas section
@@ -2237,27 +2295,39 @@ async function viewReviews(){
       </p>
     </div>
 
-    <!-- S2-01: Three-section prompt builder -->
+    <!-- S2-01: Prompt Builder — three layers -->
     <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:4px">
-      <!-- Section 1: Baseline prompt (collapsed read-only preview) -->
+      <div style="padding:5px 10px;background:var(--surface3);border-bottom:1px solid var(--border);
+        font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+        <span style="font-weight:700;color:var(--text-dim)">What goes into your review prompt:</span>
+        <span style="opacity:.7">① Role persona</span>
+        <span style="opacity:.5">+</span>
+        <span style="opacity:.7">② SME questions</span>
+        <span style="opacity:.5">+</span>
+        <span style="opacity:.7">③ Your notes</span>
+      </div>
+
+      <!-- Section 1: Role persona (read-only preview) -->
       <details id="baselinePromptSection" style="border-bottom:1px solid var(--border)">
         <summary style="list-style:none;cursor:pointer;padding:7px 10px;background:var(--surface2);
           display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-dim)">
           <span class="chevron">▶</span>
-          <span>① Baseline Persona Prompt</span>
-          <span class="tag" style="font-size:9px;margin-left:auto">read-only</span>
+          <span>① Role Persona Prompt</span>
+          <span style="font-size:10px;color:var(--text-muted);margin-left:4px;font-weight:400">— the reviewer's lens and focus areas</span>
+          <span class="tag" style="font-size:9px;margin-left:auto">auto / read-only</span>
         </summary>
         <div id="baselinePromptPreview" style="padding:8px 10px;font-size:11px;color:var(--text-muted);
           font-family:monospace;white-space:pre-wrap;background:var(--bg);max-height:120px;overflow-y:auto">
-          Select a role above to preview the baseline prompt.
+          Select a role above to preview the persona prompt.
         </div>
       </details>
 
-      <!-- Section 2: Injected SME questions -->
+      <!-- Section 2: SME questions added to prompt -->
       <div style="border-bottom:1px solid var(--border);padding:8px 10px;background:var(--surface)">
-        <div style="font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:6px">
-          ② Injected Questions
-          <span id="injectedCount" class="tag" style="font-size:9px;margin-left:4px">0</span>
+        <div style="font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:3px;display:flex;align-items:center;gap:6px">
+          <span>② SME Questions</span>
+          <span id="injectedCount" class="tag" style="font-size:9px">0</span>
+          <span style="font-size:10px;color:var(--text-muted);font-weight:400">— added via Ask SME Questions above</span>
         </div>
         <div id="injectedQuestions" style="display:flex;flex-wrap:wrap;gap:5px;min-height:24px">
           <span style="font-size:11px;color:var(--text-muted);font-style:italic">
@@ -2266,10 +2336,10 @@ async function viewReviews(){
         </div>
       </div>
 
-      <!-- Section 3: User notes (free text) -->
+      <!-- Section 3: User context / constraints -->
       <div style="padding:8px 10px;background:var(--surface)">
         <label style="font-size:11px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:4px">
-          ③ Additional Notes <span class="fs10 c-muted">(optional constraints, context)</span>
+          ③ Your Context &amp; Constraints <span class="fs10 c-muted">(optional — appended to the prompt)</span>
         </label>
         <textarea id="userNotes" rows="2"
           placeholder="e.g. Budget capped at £500K. AWS only. 3 senior engineers available."
@@ -2426,7 +2496,11 @@ async function runReview(){
   };
 
   const el=document.getElementById('reviewResult');
-  el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Running review…</span>';
+  const _reviewMsgs=['Thinking through your solution…','Reviewing architecture and trade-offs…','Analysing risks and assumptions…','Checking for gaps and weak signals…','Cross-referencing artefacts…','Almost there — finalising findings…'];
+  let _reviewMsgIdx=0;
+  el.innerHTML=`<span class="loading-inline"><span class="spin">⟳</span> <span id="reviewSpinMsg">${_reviewMsgs[0]}</span></span>`;
+  const _reviewMsgTimer=setInterval(()=>{_reviewMsgIdx=(_reviewMsgIdx+1)%_reviewMsgs.length;const m=document.getElementById('reviewSpinMsg');if(m)m.textContent=_reviewMsgs[_reviewMsgIdx];},2200);
+
 
   // S3-03: include chain link when a predecessor review is set
   const previousReviewId=(document.getElementById('previousReviewId')?.value||'').trim();
@@ -2434,6 +2508,7 @@ async function runReview(){
   if(custom)body.custom_prompt=custom;
   if(previousReviewId)body.previous_review_id=previousReviewId;
   const r=await api('POST','/api/review',body);
+  clearInterval(_reviewMsgTimer);
   if(r.error){el.innerHTML=`<p style="color:var(--red)">${escHtml(r.error)}</p>`;return;}
   // Clear prompt builder state after a successful review submission
   state._injectedQuestions=[];
@@ -2442,6 +2517,8 @@ async function runReview(){
   if(notesEl)notesEl.value='';
   const prevEl=document.getElementById('previousReviewId');
   if(prevEl)prevEl.value='';
+  // Auto-collapse SME section to reclaim space
+  _collapseSMESection();
 
   const roleTag=`<span class="tag tag-purple">${escHtml((r.roles||[r.persona]).join(' / '))}</span>`;
   let html=`<div class="card">
@@ -2564,6 +2641,20 @@ async function runDeepDive(){
 
   function ddGroup(grp){
     const sectionId=`grp_${globalIdx}`;
+    // Traceability: determine origin label for this group
+    const _grpCat=(grp.category||'').toLowerCase();
+    const _originLabel=(()=>{
+      if(_grpCat.includes('gap')||_grpCat.includes('weakness'))return'Review Weakness';
+      if(_grpCat.includes('decision'))return'Decision Point';
+      if(_grpCat.includes('risk'))return'Risk Register';
+      if(_grpCat.includes('scope'))return'Project Scope';
+      if(_grpCat.includes('architecture')||_grpCat.includes('design'))return'Architecture Document';
+      if(_grpCat.includes('delivery')||_grpCat.includes('planning'))return'Delivery Plan';
+      if(_grpCat.includes('data')||_grpCat.includes('security'))return'Security / Data Artefacts';
+      if(_grpCat.includes('nfr')||_grpCat.includes('non-functional'))return'NFR Document';
+      if(_grpCat.includes('people')||_grpCat.includes('capacity')||_grpCat.includes('skill'))return'Resource Plan';
+      return'Project Intelligence';
+    })();
     const rows=(grp.questions||[]).map(q=>{
       const i=globalIdx++;
       // S5-02: q may be a dict {question, decision_point_id, decision_point_text}
@@ -2572,12 +2663,13 @@ async function runDeepDive(){
       const dpLine = dpText
         ? `<div style="font-size:9px;color:var(--text-dim);margin-top:2px;padding-left:2px">→ Decision: ${escHtml(dpText)}</div>`
         : '';
+      const originLine=`<div style="font-size:9px;color:var(--text-muted);margin-top:2px;padding-left:2px;font-style:italic">📎 Derived from: ${escHtml(_originLabel)}</div>`;
       return`<div class="dd-row" data-idx="${i}" data-section="${sectionId}"
           data-decision-id="${(typeof q==='object'&&q)?escHtml(q.decision_point_id||''):''}"
           data-decision-text="${(typeof q==='object'&&q)?escHtml(q.decision_point_text||''):''}"
           onclick="toggleDDRow(this)">
         <span class="dd-row-check-icon" id="dd-chk-${i}">✓</span>
-        <span class="dd-row-content" style="flex:1">❓ ${escHtml(qText)}${dpLine}</span>
+        <span class="dd-row-content" style="flex:1">❓ ${escHtml(qText)}${dpLine}${originLine}</span>
       </div>`;
     }).join('');
     return`<details open class="mb8">
@@ -2618,6 +2710,24 @@ async function runDeepDive(){
   <div id="ddFeedbackResult"></div></div>`;
   el.innerHTML=html;
   _refreshDDTotals();
+}
+
+// Collapse the SME result card into a summary strip
+function _collapseSMESection(){
+  const card=document.getElementById('ddResultCard');
+  if(!card)return;
+  const el=document.getElementById('deepDiveResult');
+  if(!el)return;
+  const roleLabel=escHtml((state.lastDeepDive?.roles||[]).join(' + ')||'SME');
+  const qCount=(state._ddAllItems||[]).length;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;
+    background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+    font-size:11px;color:var(--text-dim);cursor:pointer" onclick="render()">
+    <span>🔬</span>
+    <span><strong>SME Questions</strong> — ${roleLabel}</span>
+    <span class="tag tag-blue" style="font-size:9px">${qCount} questions</span>
+    <span style="margin-left:auto;font-size:10px;color:var(--text-muted)">▲ collapsed after review run</span>
+  </div>`;
 }
 
 function toggleDDRow(rowEl){
