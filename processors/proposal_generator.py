@@ -1,26 +1,38 @@
-"""Proposal Document Generator — DS-05.
+"""Proposal Document Generator — DS-05 / PDAE-MS-01.
 
 Generates a structured proposal document FROM:
-  hierarchy Version + Active Review
+  hierarchy Version + Active Review  [single-review path — unchanged]
+  hierarchy Version + Active Review + supplemental reviews  [multi-review path]
 
-Two code paths:
+Two generation code paths:
   AI mode    — structured LLM prompt extracts/enriches each section
   files_only — template population from review findings (deterministic)
 
 Gate: rejects if review quality_status == 'pending' (unless force=True).
+
+Sprint 2 additions (PDAE-MS-01):
+  - supplemental_review_ids param (optional, default None)
+  - ProposalInputSnapshot captured on every call
+  - synthesize_reviews() called when supplementals present
+  - _run_proposal_review_pass() — six-domain critique (AI or deterministic)
+  - All new artifacts stored on ProposalDocument and persisted to DB
 
 Output: ProposalDocument dataclass → saved to proposal_documents table.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from models.proposal import (
     ProposalDocument, DeliveryPhase, GanttRow, RiskEntry, AssumptionEntry,
+    ProposalInputSnapshot, ProposalReviewPass, ReviewPassDomain,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
@@ -175,10 +187,22 @@ def _generate_ai(
 ) -> ProposalDocument:
     """Use LLM to generate enriched proposal sections."""
     try:
-        from ai_backends import call_llm
+        from ai_backends import get_backend
         prompt = _build_generation_prompt(version, review)
-        raw = call_llm(ai_backend, prompt, max_tokens=3000)
-        return _parse_ai_response(raw, version, review, proposal_ver_id, ai_backend)
+        backend = get_backend(ai_backend)
+        system_prompt = (
+            "You are a senior delivery consultant generating a structured client proposal. "
+            "Follow the output format exactly. Use plain text only, no markdown."
+        )
+        response = backend.generate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.3,
+            max_tokens=3000,
+        )
+        if not response.success:
+            raise RuntimeError(f"LLM call failed: {response.error}")
+        return _parse_ai_response(response.text, version, review, proposal_ver_id, ai_backend)
     except Exception:
         # Graceful fallback to files_only on any LLM error
         doc = _generate_files_only(version, review, proposal_ver_id)
@@ -474,6 +498,220 @@ def _count_words(doc: ProposalDocument) -> int:
 
 
 # ──────────────────────────────────────────────────────────────
+# PDAE-MS-01  Proposal Review Pass (Sprint 2 — S2-03)
+# ──────────────────────────────────────────────────────────────
+
+# Keyword signals used by the deterministic (files_only) review pass.
+_BLOCKER_KEYWORDS = {"must", "required", "block", "cannot proceed", "prevent"}
+
+_DOMAIN_SIGNALS: Dict[str, List[str]] = {
+    "scope":               ["scope", "deliver", "objective", "requirement", "in scope", "out of scope"],
+    "architecture":        ["architecture", "design", "integration", "platform", "infrastructure", "api", "system"],
+    "delivery":            ["timeline", "phase", "milestone", "sprint", "delivery", "schedule", "deadline"],
+    "security_compliance": ["security", "compliance", "gdpr", "auth", "encryption", "audit", "access", "iso"],
+    "operations":          ["monitor", "sla", "runbook", "support", "handover", "alert", "incident", "operations"],
+    "commercials":         ["budget", "cost", "commercial", "pricing", "contract", "margin", "invoic"],
+}
+
+
+def _run_proposal_review_pass(
+    doc: ProposalDocument,
+    conflicts: List[Any],
+    ai_backend: str,
+) -> ProposalReviewPass:
+    """Critique the generated proposal across six domains.
+
+    AI path:  single LLM call returning structured per-domain critique.
+    files_only: deterministic scan of doc content using keyword signals.
+
+    Always returns a fully-populated ProposalReviewPass — never None.
+    """
+    from datetime import datetime, timezone as _tz
+    generated_at = datetime.now(_tz.utc).isoformat()
+
+    if ai_backend != "files_only":
+        try:
+            result = _review_pass_ai(doc, conflicts, ai_backend, generated_at)
+            if result is not None:
+                return result
+        except Exception as exc:
+            logger.warning("Review pass LLM call failed (%s): %s — using deterministic fallback", ai_backend, exc)
+
+    return _review_pass_deterministic(doc, conflicts, generated_at, ai_backend)
+
+
+def _review_pass_ai(
+    doc: ProposalDocument,
+    conflicts: List[Any],
+    ai_backend: str,
+    generated_at: str,
+) -> Optional[ProposalReviewPass]:
+    """Call LLM for six-domain critique. Returns None on failure."""
+    from ai_backends import get_backend
+
+    conflict_lines = "\n".join(
+        f"  - {c.description if hasattr(c, 'description') else str(c)}"
+        for c in conflicts
+    ) or "  (none)"
+
+    phases_text = "\n".join(
+        f"  - {p.phase}: {p.description} ({p.duration_weeks}w)"
+        for p in doc.delivery_phases[:5]
+    ) or "  (none)"
+    risks_text = "\n".join(f"  - {r.risk}" for r in doc.risks[:8]) or "  (none)"
+    assumptions_text = "\n".join(f"  - {a.assumption}" for a in doc.assumptions[:8]) or "  (none)"
+
+    prompt = f"""You are a delivery assurance reviewer. Critique the proposal below across six domains.
+For each domain provide three lists: what is covered well, what is still weak or underspecified, and what may block sign-off.
+
+Domains: Scope | Architecture | Delivery | Security/Compliance | Operations | Commercials
+
+PROPOSAL CONTENT:
+Executive Summary: {doc.exec_summary[:400]}
+Scope: {doc.scope[:400]}
+Delivery Phases:
+{phases_text}
+Key Risks:
+{risks_text}
+Key Assumptions:
+{assumptions_text}
+
+UNRESOLVED CONFLICTS FROM SYNTHESIS:
+{conflict_lines}
+
+Output using EXACTLY these headers (replace DOMAIN with: SCOPE, ARCHITECTURE, DELIVERY, SECURITY_COMPLIANCE, OPERATIONS, COMMERCIALS):
+---DOMAIN_COVERED_WELL---
+---DOMAIN_STILL_WEAK---
+---DOMAIN_BLOCKERS---
+"""
+    backend = get_backend(ai_backend)
+    response = backend.generate(
+        prompt=prompt,
+        system_prompt="You are a senior delivery assurance reviewer. Be specific, concise, and evidence-based.",
+        temperature=0.2,
+        max_tokens=2000,
+    )
+    if not response.success:
+        return None
+
+    raw = response.text or ""
+    domain_map = {
+        "scope":               "SCOPE",
+        "architecture":        "ARCHITECTURE",
+        "delivery":            "DELIVERY",
+        "security_compliance": "SECURITY_COMPLIANCE",
+        "operations":          "OPERATIONS",
+        "commercials":         "COMMERCIALS",
+    }
+
+    def _parse_domain(key: str) -> ReviewPassDomain:
+        prefix = domain_map[key]
+        return ReviewPassDomain(
+            covered_well=_extract_review_pass_lines(raw, f"{prefix}_COVERED_WELL"),
+            still_weak=_extract_review_pass_lines(raw, f"{prefix}_STILL_WEAK"),
+            may_block_signoff=_extract_review_pass_lines(raw, f"{prefix}_BLOCKERS"),
+        )
+
+    return ProposalReviewPass(
+        scope=_parse_domain("scope"),
+        architecture=_parse_domain("architecture"),
+        delivery=_parse_domain("delivery"),
+        security_compliance=_parse_domain("security_compliance"),
+        operations=_parse_domain("operations"),
+        commercials=_parse_domain("commercials"),
+        generated_by=ai_backend,
+        generated_at=generated_at,
+    )
+
+
+def _review_pass_deterministic(
+    doc: ProposalDocument,
+    conflicts: List[Any],
+    generated_at: str,
+    ai_backend: str,
+) -> ProposalReviewPass:
+    """Deterministic keyword-based review pass for files_only mode."""
+    # Aggregate all text content per domain signal set
+    all_text = " ".join([
+        doc.exec_summary, doc.scope,
+        " ".join(r.risk for r in doc.risks),
+        " ".join(a.assumption for a in doc.assumptions),
+        " ".join(p.description for p in doc.delivery_phases),
+        " ".join(doc.acceptance_criteria),
+    ]).lower()
+
+    # Count items found per domain
+    risk_texts = [r.risk.lower() for r in doc.risks]
+    assumption_texts = [a.assumption.lower() for a in doc.assumptions]
+    action_texts = [p.description.lower() for p in doc.delivery_phases]
+
+    conflict_descs = [
+        c.description if hasattr(c, "description") else str(c)
+        for c in (conflicts or [])
+    ]
+
+    def _domain_pass(domain: str) -> ReviewPassDomain:
+        signals = _DOMAIN_SIGNALS[domain]
+        # Items that mention domain signals
+        matched_risks = [r for r in doc.risks if any(s in r.risk.lower() for s in signals)]
+        matched_assumptions = [a for a in doc.assumptions if any(s in a.assumption.lower() for s in signals)]
+        matched_count = len(matched_risks) + len(matched_assumptions)
+
+        covered_well: List[str] = []
+        still_weak: List[str] = []
+        may_block: List[str] = []
+
+        if matched_count >= 2:
+            covered_well.append(f"{domain.replace('_', '/').title()} concerns identified with sufficient detail.")
+        elif matched_count == 1:
+            still_weak.append(f"{domain.replace('_', '/').title()} has limited coverage — only {matched_count} item(s) found.")
+        else:
+            still_weak.append(f"{domain.replace('_', '/').title()} not addressed in current proposal content.")
+
+        # Blocker detection: look for blocker keywords in matched items
+        all_matched_text = " ".join(
+            [r.risk for r in matched_risks] + [a.assumption for a in matched_assumptions]
+        ).lower()
+        for kw in _BLOCKER_KEYWORDS:
+            if kw in all_matched_text:
+                may_block.append(f"Item containing '{kw}' may block sign-off: review before submission.")
+                break
+
+        # Surface conflicts that affect this domain
+        for desc in conflict_descs:
+            if any(s in desc.lower() for s in signals):
+                may_block.append(f"Conflict detected: {desc[:120]}")
+
+        return ReviewPassDomain(
+            covered_well=covered_well,
+            still_weak=still_weak,
+            may_block_signoff=may_block,
+        )
+
+    return ProposalReviewPass(
+        scope=_domain_pass("scope"),
+        architecture=_domain_pass("architecture"),
+        delivery=_domain_pass("delivery"),
+        security_compliance=_domain_pass("security_compliance"),
+        operations=_domain_pass("operations"),
+        commercials=_domain_pass("commercials"),
+        generated_by=f"{ai_backend}_deterministic" if ai_backend != "files_only" else "files_only",
+        generated_at=generated_at,
+    )
+
+
+def _extract_review_pass_lines(raw: str, header: str) -> List[str]:
+    """Extract bullet lines from a ---HEADER--- section."""
+    pattern = rf"---{re.escape(header)}---\s*(.*?)(?=---[A-Z_]+---|$)"
+    match = re.search(pattern, raw, re.DOTALL)
+    if not match:
+        return []
+    block = match.group(1).strip()
+    lines = [ln.strip().lstrip("- ").strip() for ln in block.splitlines()]
+    return [ln for ln in lines if ln]
+
+
+# ──────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────
 
@@ -484,17 +722,26 @@ def generate_proposal_document(
     review_id: str,
     ai_backend: str = "files_only",
     force: bool = False,
+    supplemental_review_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Generate a proposal document from Version + Active Review.
 
     Gate: rejects if review quality_status == 'pending' (unless force=True)
           or if review_id != version.active_review_id.
 
+    PDAE-MS-01 (Sprint 2):
+      supplemental_review_ids — if non-empty, synthesis path is used:
+        1. ProposalInputSnapshot captured
+        2. synthesize_reviews() called → ReconciliationResult
+        3. Reconciled findings used as proposal input
+        4. _run_proposal_review_pass() always runs
+        5. All artifacts stored on ProposalDocument
+
     Returns the saved ProposalDocument dict.
     """
     from db.decision_log import save_proposal_document, log_decision
 
-    # Gate check
+    # ── Gate check (unchanged) ────────────────────────────────
     gate = _check_generation_gate(project_id, hierarchy_version_id, review_id, force)
     if not gate["ok"]:
         return {"error": gate["reason"]}
@@ -502,16 +749,76 @@ def generate_proposal_document(
     version = gate["version"]
     review  = gate["review"]
 
-    # Generate
-    if ai_backend != "files_only":
-        doc = _generate_ai(version, review, proposal_ver_id, ai_backend)
-    else:
-        doc = _generate_files_only(version, review, proposal_ver_id)
+    # ── S2-01: ProposalInputSnapshot — always captured ────────
+    supp_ids = [s for s in (supplemental_review_ids or []) if s and s != review_id]
+    all_selected = [review_id] + supp_ids
+    snapshot = ProposalInputSnapshot(
+        anchor_review_id=review_id,
+        selected_review_ids=all_selected,
+        selected_version_id=hierarchy_version_id,
+        generation_mode="multi" if supp_ids else "single",
+        captured_at=_now(),
+    )
 
-    # Persist
+    # ── S2-02: Synthesis path (multi-review) ──────────────────
+    reconciliation_result_dict: Optional[Dict[str, Any]] = None
+    findings_override: Optional[Dict[str, Any]] = None
+    conflicts: List[Any] = []
+
+    if supp_ids:
+        try:
+            from models.hierarchy import _make_hierarchy_store
+            from processors.review_synthesizer import synthesize_reviews
+
+            store = _make_hierarchy_store(project_id)
+            supplemental_reviews = []
+            for sid in supp_ids:
+                sup_review = store.get_review(sid)
+                if sup_review is None:
+                    return {"error": f"Supplemental review '{sid}' not found"}
+                supplemental_reviews.append(sup_review)
+
+            reconciliation = synthesize_reviews(
+                anchor_review=review,
+                supplemental_reviews=supplemental_reviews,
+                version_scope=getattr(version, "scope", "") or "",
+                ai_backend=ai_backend,
+            )
+            reconciliation_result_dict = reconciliation.to_dict()
+            findings_override = reconciliation.reconciled_findings
+            conflicts = reconciliation.contradictions
+        except Exception as exc:
+            logger.warning(
+                "Synthesis failed for project %s — falling back to single-review path. Error: %s",
+                project_id, exc,
+            )
+            # Non-fatal: fall through to single-review generation
+
+    # ── Generate document sections ────────────────────────────
+    # If synthesis produced reconciled findings, inject them into review
+    # via a lightweight shim so _generate_* functions see one consistent object.
+    generation_review = review
+    if findings_override is not None:
+        generation_review = _FindingsShim(review, findings_override)
+
+    if ai_backend != "files_only":
+        doc = _generate_ai(version, generation_review, proposal_ver_id, ai_backend)
+    else:
+        doc = _generate_files_only(version, generation_review, proposal_ver_id)
+
+    # ── S2-03: Proposal Review Pass — always runs ─────────────
+    review_pass = _run_proposal_review_pass(doc, conflicts, ai_backend)
+
+    # ── Attach synthesis artifacts ────────────────────────────
+    doc.input_snapshot        = snapshot.to_dict()
+    doc.reconciliation_result = reconciliation_result_dict   # None on single-review
+    doc.review_pass           = review_pass.to_dict()
+    # proposal_coverage, decision_summary, forward_guidance → Sprint 3/4
+
+    # ── Persist ───────────────────────────────────────────────
     saved = save_proposal_document(doc.to_dict())
 
-    # S7-02: annotate generated document with Decision Readiness
+    # S7-02: annotate with Decision Readiness (non-blocking)
     try:
         from processors.review_quality import compute_decision_readiness
         from dataclasses import asdict as _asdict
@@ -522,9 +829,9 @@ def generate_proposal_document(
         readiness = compute_decision_readiness(review_dict)
         saved["readiness"] = readiness
     except Exception:
-        pass  # readiness annotation is non-blocking
+        pass
 
-    # Log decision
+    # ── Audit log ─────────────────────────────────────────────
     log_decision(
         project_id=project_id,
         entity_type="proposal_version",
@@ -533,12 +840,33 @@ def generate_proposal_document(
         actor="system",
         reason=f"Generated from version {hierarchy_version_id} + review {review_id}",
         metadata={
-            "doc_id":               saved["doc_id"],
-            "ai_backend":           ai_backend,
-            "hierarchy_version_id": hierarchy_version_id,
-            "active_review_id":     review_id,
-            "word_count":           saved["word_count"],
+            "doc_id":                 saved.get("doc_id", ""),
+            "ai_backend":             ai_backend,
+            "hierarchy_version_id":   hierarchy_version_id,
+            "active_review_id":       review_id,
+            "supplemental_review_ids": supp_ids,
+            "generation_mode":        snapshot.generation_mode,
+            "word_count":             saved.get("word_count", 0),
         },
     )
 
     return saved
+
+
+# ──────────────────────────────────────────────────────────────
+# Internal shim — inject reconciled findings without mutating Review
+# ──────────────────────────────────────────────────────────────
+
+class _FindingsShim:
+    """Thin wrapper around a Review that replaces .findings with reconciled data.
+
+    All other attributes delegate to the wrapped review unchanged.
+    This avoids mutating the original Review dataclass.
+    """
+
+    def __init__(self, review: Any, reconciled_findings: Dict[str, Any]) -> None:
+        self._review = review
+        self.findings = reconciled_findings
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._review, name)

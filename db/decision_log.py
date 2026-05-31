@@ -119,6 +119,9 @@ def save_proposal_document(doc: Dict[str, Any]) -> Dict[str, Any]:
 
     Accepts the dict form returned by ProposalDocument.to_dict().
     Returns the saved dict.
+
+    PDAE-MS-01: six new synthesis columns added (all nullable JSON blobs).
+    Backward-compatible: missing keys default to None (NULL in DB).
     """
     db = get_db()
     db.execute(
@@ -127,8 +130,10 @@ def save_proposal_document(doc: Dict[str, Any]) -> Dict[str, Any]:
             exec_summary, scope, delivery_phases, gantt_data,
             risks, assumptions, exclusions, responsibilities, acceptance_criteria,
             version_label, review_persona, hierarchy_version_id,
-            active_review_id, word_count)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            active_review_id, word_count,
+            input_snapshot, reconciliation_result, review_pass,
+            proposal_coverage, decision_summary, forward_guidance)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             doc.get("doc_id", f"doc_{uuid.uuid4().hex[:8]}"),
             doc.get("project_id", ""),
@@ -149,6 +154,13 @@ def save_proposal_document(doc: Dict[str, Any]) -> Dict[str, Any]:
             doc.get("hierarchy_version_id", ""),
             doc.get("active_review_id", ""),
             doc.get("word_count", 0),
+            # PDAE-MS-01 synthesis fields — None → NULL
+            Database.jdump(doc["input_snapshot"])        if doc.get("input_snapshot")        is not None else None,
+            Database.jdump(doc["reconciliation_result"]) if doc.get("reconciliation_result") is not None else None,
+            Database.jdump(doc["review_pass"])           if doc.get("review_pass")           is not None else None,
+            Database.jdump(doc["proposal_coverage"])     if doc.get("proposal_coverage")     is not None else None,
+            Database.jdump(doc["decision_summary"])      if doc.get("decision_summary")      is not None else None,
+            Database.jdump(doc["forward_guidance"])      if doc.get("forward_guidance")      is not None else None,
         ),
     )
     db.commit()
@@ -209,4 +221,11 @@ def _row_to_doc(row: Dict[str, Any]) -> Dict[str, Any]:
         "hierarchy_version_id": row.get("hierarchy_version_id", ""),
         "active_review_id":     row.get("active_review_id", ""),
         "word_count":           row.get("word_count", 0),
+        # PDAE-MS-01 synthesis fields — NULL in DB → None in dict
+        "input_snapshot":        Database.jload(row.get("input_snapshot"), None),
+        "reconciliation_result": Database.jload(row.get("reconciliation_result"), None),
+        "review_pass":           Database.jload(row.get("review_pass"), None),
+        "proposal_coverage":     Database.jload(row.get("proposal_coverage"), None),
+        "decision_summary":      Database.jload(row.get("decision_summary"), None),
+        "forward_guidance":      Database.jload(row.get("forward_guidance"), None),
     }
