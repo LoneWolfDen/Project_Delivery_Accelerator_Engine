@@ -3228,6 +3228,7 @@ async function viewPresales(){
           ${fb.concerns?.length?('<span class="tag tag-yellow">&#9888; '+fb.concerns.length+' concerns</span>'):''}
         </div>`:''}
         <div class="flex gap-sm">
+          ${_computeProposalReadinessBadge(v)}
           <button class="btn btn-xs btn-outline" onclick="openCaptureFeedback('${v.version_id}')">+ Capture Feedback</button>
           <button class="btn btn-xs btn-ghost" onclick="openShareLink('${v.version_id}')">🔗 Share Link</button>
           <select class="btn btn-xs btn-ghost" style="font-size:10px;padding:2px 6px;min-width:120px"
@@ -3334,6 +3335,12 @@ async function viewPresales(){
           <div class="collapse-body"><ul class="items">${ac.map(a=>`<li>✓ ${escHtml(a)}</li>`).join('')}</ul></div></details>`:''}
         ${(raci.client_responsibilities||[]).length?`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Client Responsibilities</strong></summary>
           <div class="collapse-body"><ul class="items">${(raci.client_responsibilities||[]).map(r=>`<li>● ${escHtml(r)}</li>`).join('')}</ul></div></details>`:''}
+        ${_renderConflictBanner(doc)}
+        ${_renderProposalReadinessBadge(doc)}
+        ${_renderProposalReviewPass(doc)}
+        ${_renderProposalCoverage(doc)}
+        ${_renderDecisionSummary(doc)}
+        ${_renderForwardGuidance(doc)}
       </div>`;
     } else {
       // No doc yet — show generate button if review is available
@@ -3508,6 +3515,13 @@ async function viewPresales(){
           <option value="">— select active review —</option>
         </select>
         <p id="propReviewGateMsg" style="font-size:11px;margin-top:3px"></p>
+      </div>
+      <!-- S5-01: Supplemental review selection (shown when version has >1 review) -->
+      <div class="form-row" id="propSupplementalRow" style="display:none">
+        <label>Supplemental Reviews <span style="font-weight:normal;color:var(--text-dim)">(optional — synthesises multiple perspectives)</span></label>
+        <div id="propAnchorReviewPin" style="font-size:11px;color:var(--text-dim);margin-bottom:4px"></div>
+        <div id="propSupplementalCheckboxes" style="display:flex;flex-direction:column;gap:4px"></div>
+        <p style="font-size:10px;color:var(--text-muted);margin-top:4px">Checked reviews are included in multi-review synthesis. Unchecked → single-review generation.</p>
       </div>
       <!-- S7-02: Decision Readiness indicator for selected version -->
       <div class="form-row" id="propReadinessRow" style="font-size:12px;color:var(--text-dim);min-height:20px"></div>
@@ -3740,6 +3754,11 @@ async function submitCreateProposal(){
     );
     if(!proceed)return;
   }
+  // S5-01: collect checked supplemental review IDs (anchor never included)
+  const suppChecks=document.querySelectorAll('#propSupplementalCheckboxes input[type=checkbox]:checked');
+  const supplemental_review_ids=Array.from(suppChecks)
+    .map(c=>c.value)
+    .filter(id=>id&&id!==active_review_id);
   el.innerHTML='<span class="loading-inline"><span class="spin">⟳</span> Creating + generating document…</span>';
   // Step 1: Create proposal
   const r=await api('POST',`/api/projects/${pid}/proposal`,
@@ -3749,7 +3768,7 @@ async function submitCreateProposal(){
   const proposal_ver_id=r.current_version||((r.versions||[])[0]||{}).version_id||'';
   if(proposal_ver_id){
     await api('POST',`/api/projects/${pid}/proposal/generate`,
-      {proposal_ver_id,hierarchy_version_id,review_id:active_review_id,ai_backend});
+      {proposal_ver_id,hierarchy_version_id,review_id:active_review_id,ai_backend,supplemental_review_ids});
   }
   toast('Proposal created');setTimeout(()=>render(),600);
 }
@@ -3760,12 +3779,18 @@ async function onPropVersionChange(){
   const reviewRow=document.getElementById('propReviewRow');
   const reviewSel=document.getElementById('propReviewSelect');
   const gateMsg=document.getElementById('propReviewGateMsg');
-  if(!vid){if(reviewRow)reviewRow.style.display='none';return;}
+  const suppRow=document.getElementById('propSupplementalRow');
+  if(!vid){
+    if(reviewRow)reviewRow.style.display='none';
+    if(suppRow)suppRow.style.display='none';
+    return;
+  }
   if(reviewRow)reviewRow.style.display='';
   // Load reviews for this version
+  let reviews=[];
   try{
     const r=await api('GET',`/api/projects/${pid}/hierarchy/versions/${vid}`);
-    const reviews=r.reviews||[];
+    reviews=r.reviews||[];
     if(reviewSel){
       reviewSel.innerHTML='<option value="">— select review —</option>'
         + reviews.map(rv=>`<option value="${rv.review_id}">${rv.review_id} – ${escHtml(rv.persona||'')} · ${rv.quality_status||'pending'} (${rv.completeness_score||0}%)</option>`).join('');
@@ -3774,6 +3799,8 @@ async function onPropVersionChange(){
     const activeId=r.version?.active_review_id||r.active_review_id||'';
     if(activeId&&reviewSel)reviewSel.value=activeId;
     if(reviewSel)_onPropReviewChange(reviewSel.value,reviews,gateMsg);
+    // S5-01: populate supplemental review selection
+    _renderSupplementalReviews(reviews, reviewSel?.value||activeId||'');
   }catch(e){}
   // S7-02: fetch and display Decision Readiness for the selected version
   const readinessEl=document.getElementById('propReadinessRow');
@@ -3788,6 +3815,31 @@ async function onPropVersionChange(){
       readinessEl.dataset.level=level;
     }catch(e){readinessEl.innerHTML='';}
   }
+}
+
+// S5-01: render supplemental review checkboxes
+function _renderSupplementalReviews(reviews, anchorId){
+  const suppRow=document.getElementById('propSupplementalRow');
+  const pinEl=document.getElementById('propAnchorReviewPin');
+  const boxesEl=document.getElementById('propSupplementalCheckboxes');
+  if(!suppRow||!boxesEl)return;
+  const others=reviews.filter(rv=>rv.review_id!==anchorId);
+  if(others.length===0){
+    suppRow.style.display='none';
+    return;
+  }
+  suppRow.style.display='';
+  if(pinEl){
+    const anchor=reviews.find(rv=>rv.review_id===anchorId);
+    pinEl.innerHTML=anchor
+      ?`📌 Anchor (always included): <strong>${escHtml(anchor.review_id)}</strong> – ${escHtml(anchor.persona||'')} · ${anchor.quality_status||'pending'} (${anchor.completeness_score||0}%)`
+      :`📌 Anchor: ${escHtml(anchorId)}`;
+  }
+  boxesEl.innerHTML=others.map(rv=>`
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer">
+      <input type="checkbox" value="${escHtml(rv.review_id)}" style="cursor:pointer">
+      ${escHtml(rv.review_id)} – ${escHtml(rv.persona||'')} · ${rv.quality_status||'pending'} (${rv.completeness_score||0}%)
+    </label>`).join('');
 }
 
 function _onPropReviewChange(rid,reviews,gateMsg){
@@ -5012,6 +5064,182 @@ function _smeQuestionTypeTag(qText) {
   if (isDecision)  return `<span class="fb-map-tag" style="color:var(--accent)">🎯 Decision</span>`;
   if (isGapFill)   return `<span class="fb-map-tag" style="color:var(--green)">🔍 Gap-fill</span>`;
   return '';
+}
+
+// ── PDAE-MS-01 Sprint 5 helpers ───────────────────────────────────────────
+
+// S5-02: Conflict warning banner
+function _renderConflictBanner(doc){
+  const rr=doc.reconciliation_result;
+  if(!rr)return'';
+  const n=(rr.contradictions||[]).length;
+  if(!n)return'';
+  return`<div style="background:var(--surface2);border:1px solid var(--yellow);border-radius:var(--radius);padding:8px 12px;margin:8px 0;font-size:12px;color:var(--yellow)">
+    ⚠ ${n} conflict(s) detected during review synthesis. See Decision Summary below for details.
+  </div>`;
+}
+
+// S5-07: readiness computed client-side from already-loaded doc (no extra API call)
+function _computeProposalReadiness(doc){
+  const cov=doc.proposal_coverage;
+  const ds=doc.decision_summary;
+  if(!cov||!ds)return{level:'not_assessed',label:'Not assessed'};
+  const domains=['scope','architecture','delivery','security_compliance','operations','commercials'];
+  const hasNotAddressed=domains.some(d=>(cov[d]||{}).status==='Not Yet Addressed');
+  const blockers=(ds.sign_off_blockers||[]).length;
+  const openCount=(ds.open||[]).length;
+  const hasPartial=domains.some(d=>(cov[d]||{}).status==='Partial');
+  if(blockers>0||hasNotAddressed)return{level:'not_ready',label:'🔴 Not Ready'};
+  if(openCount>0||hasPartial)return{level:'needs_work',label:'🟡 Needs Work'};
+  return{level:'ready',label:'🟢 Ready to Submit'};
+}
+
+// Badge used in versionsCard list (reads doc lazily from prop_ver_id — not stored on version object)
+// For S5-07 version-list badge we compute from the last loaded doc if version_id matches curVer
+function _computeProposalReadinessBadge(v){
+  // We don't have the doc object per version in this context — show a neutral placeholder
+  // that is populated when the doc is loaded. The full indicator is shown inside docCard.
+  return'';
+}
+
+// S5-07: readiness label shown at top of doc view
+function _renderProposalReadinessBadge(doc){
+  const r=_computeProposalReadiness(doc);
+  if(r.level==='not_assessed'){
+    return`<div style="font-size:11px;color:var(--text-muted);margin:6px 0">Proposal Readiness: <em>Not assessed</em></div>`;
+  }
+  const colour=r.level==='ready'?'var(--green)':r.level==='needs_work'?'var(--yellow)':'var(--red)';
+  return`<div style="font-size:12px;font-weight:600;margin:8px 0;color:${colour}">Proposal Readiness: ${r.label}</div>`;
+}
+
+// S5-03: Proposal Review Pass — six-domain collapsible
+function _renderProposalReviewPass(doc){
+  const rp=doc.review_pass;
+  if(!rp)return'';
+  const domains=[
+    ['scope','Scope'],['architecture','Architecture'],['delivery','Delivery'],
+    ['security_compliance','Security / Compliance'],['operations','Operations'],['commercials','Commercials']
+  ];
+  function _domainPanel(key,label){
+    const d=rp[key]||{};
+    const cw=d.covered_well||[];
+    const sw=d.still_weak||[];
+    const mb=d.may_block_signoff||[];
+    return`<div style="margin-bottom:6px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius)">
+      <div style="font-size:11px;font-weight:600;margin-bottom:4px">${label}</div>
+      ${cw.length?`<div style="font-size:10px;color:var(--green);margin-bottom:2px">✓ Covered Well</div>
+        <ul style="margin:0 0 4px 14px;padding:0;font-size:10px;color:var(--text-dim)">${cw.map(i=>`<li>${escHtml(i)}</li>`).join('')}</ul>`
+      :`<div style="font-size:10px;color:var(--text-muted)">✓ Covered Well: <em>(none)</em></div>`}
+      ${sw.length?`<div style="font-size:10px;color:var(--yellow);margin-bottom:2px">⚠ Still Weak</div>
+        <ul style="margin:0 0 4px 14px;padding:0;font-size:10px;color:var(--text-dim)">${sw.map(i=>`<li>${escHtml(i)}</li>`).join('')}</ul>`
+      :`<div style="font-size:10px;color:var(--text-muted)">⚠ Still Weak: <em>(none)</em></div>`}
+      ${mb.length?`<div style="font-size:10px;color:var(--red);margin-bottom:2px">🔴 May Block Sign-off</div>
+        <ul style="margin:0 0 0 14px;padding:0;font-size:10px;color:var(--red)">${mb.map(i=>`<li>${escHtml(i)}</li>`).join('')}</ul>`
+      :`<div style="font-size:10px;color:var(--text-muted)">🔴 May Block Sign-off: <em>(none)</em></div>`}
+    </div>`;
+  }
+  return`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Proposal Review Pass</strong>
+    <span class="tag" style="margin-left:6px;font-size:10px">6 domains</span></summary>
+    <div class="collapse-body">
+      ${domains.map(([k,l])=>_domainPanel(k,l)).join('')}
+    </div></details>`;
+}
+
+// S5-04: Proposal Coverage table
+function _renderProposalCoverage(doc){
+  const cov=doc.proposal_coverage;
+  if(!cov)return'';
+  const domains=[
+    ['scope','Scope'],['architecture','Architecture'],['delivery','Delivery'],
+    ['security_compliance','Security / Compliance'],['operations','Operations'],['commercials','Commercials']
+  ];
+  function _badge(status){
+    if(status==='Addressed')return`<span class="tag tag-green" style="font-size:10px">Addressed</span>`;
+    if(status==='Partial')return`<span class="tag tag-yellow" style="font-size:10px">Partial</span>`;
+    return`<span class="tag tag-red" style="font-size:10px">Not Yet Addressed</span>`;
+  }
+  const rows=domains.map(([k,l])=>{
+    const d=cov[k]||{};
+    const themes=(d.matched_themes||[]);
+    return`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-size:11px;font-weight:600;white-space:nowrap">${l}</td>
+      <td style="padding:5px 8px">${_badge(d.status||'Not Yet Addressed')}</td>
+      <td style="padding:5px 8px;font-size:10px;color:var(--text-dim)">${themes.length?themes.map(t=>`<span class="tag" style="font-size:9px">${escHtml(t)}</span>`).join(' '):'<em>(none detected)</em>'}</td>
+      <td style="padding:5px 8px;font-size:10px;color:var(--text-muted)">${escHtml(d.gap_notes||'')}</td>
+    </tr>`;
+  }).join('');
+  return`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Proposal Coverage</strong>
+    <span class="tag" style="margin-left:6px;font-size:10px">6 domains</span></summary>
+    <div class="collapse-body" style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="color:var(--text-muted);border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:4px 8px">Domain</th>
+          <th style="padding:4px 8px;text-align:left">Status</th>
+          <th style="padding:4px 8px;text-align:left">Matched Themes</th>
+          <th style="padding:4px 8px;text-align:left">Gap Notes</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div></details>`;
+}
+
+// S5-05: Decision Summary — three collapsible sub-sections
+function _renderDecisionSummary(doc){
+  const ds=doc.decision_summary;
+  if(!ds)return'';
+  function _items(list,emptyLabel){
+    if(!list||!list.length)return`<p style="font-size:11px;color:var(--text-muted);margin:4px 0">${emptyLabel}</p>`;
+    return`<ul style="margin:4px 0 0 14px;padding:0;font-size:11px;color:var(--text-dim)">${list.map(i=>
+      `<li>${escHtml(i.text||'')}${i.source_review_id?` <span class="tag" style="font-size:9px">${escHtml(i.source_review_id)}</span>`:''}</li>`
+    ).join('')}</ul>`;
+  }
+  const blockers=ds.sign_off_blockers||[];
+  const blockerStyle=blockers.length?'border:1px solid var(--red);border-radius:var(--radius);padding:6px 8px;margin-top:6px':'margin-top:6px';
+  return`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Decision Summary</strong>
+    ${blockers.length?`<span class="tag tag-red" style="margin-left:6px;font-size:10px">${blockers.length} blocker(s)</span>`:''}
+    </summary>
+    <div class="collapse-body">
+      <details open><summary style="font-size:11px;font-weight:600;cursor:pointer;padding:4px 0">Confirmed Decisions ✓</summary>
+        ${_items(ds.confirmed,'None')}</details>
+      <details open><summary style="font-size:11px;font-weight:600;cursor:pointer;padding:4px 0">Open Decisions ⚠</summary>
+        ${_items(ds.open,'None')}</details>
+      <div style="${blockerStyle}">
+        <div style="font-size:11px;font-weight:600;color:var(--red);padding:4px 0">Sign-off Blockers 🔴</div>
+        ${_items(blockers,'None')}
+      </div>
+    </div></details>`;
+}
+
+// S5-06: Forward Guidance — five collapsible sub-sections
+function _renderForwardGuidance(doc){
+  const fg=doc.forward_guidance;
+  if(!fg)return'';
+  const total=(fg.strengthen_weak_areas||[]).length+(fg.resolve_key_decisions||[]).length
+    +(fg.improve_credibility||[]).length+(fg.accelerate_client_alignment||[]).length
+    +(fg.optional_enhancements||[]).length;
+  if(!total)return'';
+  function _item(i){
+    return`<div style="padding:5px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:11px;font-weight:600;color:var(--text)">${escHtml(i.issue||'')}</div>
+      ${i.why_it_matters?`<div style="font-size:10px;color:var(--text-dim);margin-top:2px">→ ${escHtml(i.why_it_matters)}</div>`:''}
+      ${i.suggested_action?`<div style="font-size:10px;color:var(--accent);margin-top:2px">✦ ${escHtml(i.suggested_action)}</div>`:''}
+      ${i.trade_off_or_constraint?`<div style="font-size:10px;color:var(--yellow);margin-top:2px">⚖ ${escHtml(i.trade_off_or_constraint)}</div>`:''}
+    </div>`;
+  }
+  function _section(label,items){
+    if(!items||!items.length)return'';
+    return`<details><summary style="font-size:11px;font-weight:600;cursor:pointer;padding:4px 0">${label} <span class="tag" style="font-size:9px">${items.length}</span></summary>
+      <div>${items.map(_item).join('')}</div></details>`;
+  }
+  return`<details><summary class="collapse-header" class="no-ls"><span class="chevron">▶</span><strong>Forward Guidance</strong>
+    <span class="tag" style="margin-left:6px;font-size:10px">${total} recommendation(s)</span></summary>
+    <div class="collapse-body">
+      ${_section('Strengthen Weak Areas',fg.strengthen_weak_areas)}
+      ${_section('Resolve Key Decisions',fg.resolve_key_decisions)}
+      ${_section('Improve Credibility',fg.improve_credibility)}
+      ${_section('Accelerate Client Alignment',fg.accelerate_client_alignment)}
+      ${(fg.optional_enhancements||[]).length?_section('Optional Enhancements',fg.optional_enhancements):''}
+    </div></details>`;
 }
 
 
