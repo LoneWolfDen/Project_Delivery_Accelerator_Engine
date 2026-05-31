@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contexta v2 — Project Delivery Accelerator</title>
+
+  <!--
+    dashboard_v2.html — V2 Entry Point
+    TRACE: UI → Layout Shell
+    Served by: server.py AcceleratorHandler._serve_static('v2/dashboard_v2.html')
+    Triggered by: --ui v2 flag OR ?ui=v2 query param
+    v1 (static/index.html) is NOT modified.
+
+    Script load order (dependencies first):
+      1. helpers.js    — pure utilities, no deps
+      2. state.js      — AppState singleton, no deps
+      3. api.js        — API module, reads window.V2_USE_MOCK
+      4. accordion.js  — VersionAccordion, reads AppState
+      5. dashboard.js  — Orchestrator, reads all above; auto-boots on DOMContentLoaded
+      6. DetailPanel.js — Drawer renderer
+      7. Cards.js       — Snapshot card renderer
+      8. Header.js      — Header renderer
+      9. Sidebar.js     — Sidebar renderer
+     10. MainLayout.js  — Layout coordinator, wires AppState subscriptions
+  -->
+
+  <!-- V2 CSS -->
+  <link rel="stylesheet" href="/static/v2/css/theme.css">
+  <link rel="stylesheet" href="/static/v2/css/layout.css">
+  <link rel="stylesheet" href="/static/v2/css/components.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     APP SHELL
+     TRACE: Layout → #v2-app → header + body(sidebar + main + drawer)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="v2-app">
+
+  <!-- ── HEADER (sticky) ──────────────────────────────────── -->
+  <!--
+    TRACE: UI → Header → AppState (projects, versions, reviews)
+    Component: Header.js
+    Dropdowns: project, version, review (cascading)
+    Controls:  refresh button (no reload)
+    Context:   "Version → Review" always visible
+  -->
+  <header id="v2-header" role="banner">
+    <!-- Populated by Dashboard.init() via Header.mount() -->
+    <div class="header-logo">
+      ⚡ <span>Contexta <span class="logo-accent">v2</span></span>
+      <span class="v2-badge">BETA</span>
+    </div>
+    <div class="header-controls">
+      <div class="v2-select-wrap" style="min-width:180px">
+        <select id="v2-project-select"
+                aria-label="Select project"
+                onchange="Dashboard.onProjectChange(this)">
+          <option value="">Loading projects…</option>
+        </select>
+      </div>
+      <div class="v2-select-wrap" style="min-width:160px">
+        <select id="v2-version-select"
+                aria-label="Select version"
+                onchange="Dashboard.onVersionChange(this)">
+          <option value="">Latest Version</option>
+        </select>
+      </div>
+      <div class="v2-select-wrap" style="min-width:170px">
+        <select id="v2-review-select"
+                aria-label="Select review"
+                onchange="Dashboard.onReviewChange(this)">
+          <option value="">Active Review</option>
+        </select>
+      </div>
+      <button id="v2-refresh-btn"
+              class="btn-icon"
+              title="Refresh data — no page reload"
+              aria-label="Refresh"
+              onclick="Dashboard.onRefresh()">
+        ↺
+      </button>
+    </div>
+    <div class="header-context" aria-label="Current context" aria-live="polite">
+      <span class="ctx-label" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;opacity:0.6">Showing:</span>
+      <span id="v2-ctx-version" class="ctx-value">–</span>
+      <span class="ctx-sep">→</span>
+      <span id="v2-ctx-review">Active Review</span>
+    </div>
+    <div class="header-last-updated" id="v2-last-updated" aria-live="polite"></div>
+  </header>
+
+  <!-- ── BODY: sidebar + main + drawer ───────────────────── -->
+  <div id="v2-body">
+
+    <!-- ── LEFT SIDEBAR ─────────────────────────────────── -->
+    <!--
+      TRACE: UI → Sidebar → AppState (versions, selectedVersion, selectedReview)
+      Component: Sidebar.js
+      Shows: Version list (collapsed by default) → expand → reviews
+      Controls: Expand all / Collapse all / Compact toggle
+    -->
+    <aside id="v2-sidebar" aria-label="Version navigation">
+      <div class="sidebar-section-title">Versions</div>
+      <div id="v2-sidebar-version-list">
+        <!-- Populated by Dashboard.renderAll() via Sidebar.render() -->
+        <div class="skeleton" style="height:40px;border-radius:8px;margin-bottom:6px"></div>
+        <div class="skeleton" style="height:40px;border-radius:8px;margin-bottom:6px"></div>
+        <div class="skeleton" style="height:40px;border-radius:8px"></div>
+      </div>
+    </aside>
+
+    <!-- ── MAIN CONTENT ──────────────────────────────────── -->
+    <main id="v2-main" role="main" aria-label="Dashboard content">
+
+      <!-- Context banner: "Showing data for: Vx → Review y" -->
+      <!--
+        TRACE: UI → ContextBanner → MetricsPayload.data_source
+        Updated by: Dashboard._renderContextBanner()
+      -->
+      <div id="v2-context-banner"
+           class="context-banner hidden"
+           aria-live="polite"
+           style="margin-bottom:20px">
+        <span class="ctx-label">Showing data for:</span>
+        <strong id="v2-ctx-version-banner">–</strong>
+        <span class="ctx-sep">→</span>
+        <strong id="v2-ctx-review-banner">–</strong>
+      </div>
+
+      <!-- ── SECTION A: Snapshot Cards ──────────────────── -->
+      <!--
+        TRACE: UI → SnapshotCards → API → /hierarchy/metrics
+        Component: Cards.js → render(metrics)
+        Data: MetricsPayload {total_versions, total_reviews,
+              risks_identified, gaps_identified, total_findings}
+      -->
+      <section class="main-section" aria-labelledby="section-a-title">
+        <div class="section-header">
+          <h2 class="section-title" id="section-a-title">Overview</h2>
+        </div>
+        <div class="snapshot-grid" id="v2-snapshot-grid">
+          <!-- Populated by Dashboard._renderSnapshotCards() -->
+          <div class="skeleton snapshot-card skeleton-card"></div>
+          <div class="skeleton snapshot-card skeleton-card"></div>
+          <div class="skeleton snapshot-card skeleton-card"></div>
+        </div>
+      </section>
+
+      <!-- ── SECTION B: Version Accordion ───────────────── -->
+      <!--
+        TRACE: UI → VersionAccordion → API → /hierarchy/versions + /hierarchy/reviews
+        Component: accordion.js → VersionAccordion.render(versions)
+        Data: Version (1:N) Review
+        Interactions:
+          - Click version header → expand/collapse (200-300ms CSS transition)
+          - Click ↗ button → open detail drawer
+          - Click review row → AppState.openDrawer('review', data)
+          - Expand All / Collapse All
+      -->
+      <section class="main-section" aria-labelledby="section-b-title">
+        <div class="section-header">
+          <h2 class="section-title" id="section-b-title">Version History</h2>
+          <div class="expand-bar" style="margin-bottom:0">
+            <button id="v2-expand-all-btn"
+                    class="btn btn-ghost btn-sm"
+                    aria-label="Expand or collapse all versions"
+                    onclick="Dashboard.onExpandAll()">
+              Expand All
+            </button>
+            <span class="expand-bar-count" id="v2-version-count"></span>
+          </div>
+        </div>
+        <div class="accordion-wrap" id="v2-accordion-wrap" aria-label="Version accordion">
+          <!-- Populated by VersionAccordion.render() -->
+          <div class="skeleton" style="height:52px;border-radius:12px;margin-bottom:8px"></div>
+          <div class="skeleton" style="height:52px;border-radius:12px;margin-bottom:8px"></div>
+          <div class="skeleton" style="height:52px;border-radius:12px"></div>
+        </div>
+      </section>
+
+      <!-- ── SECTION C: Timeline (Placeholder — not implemented) ── -->
+      <!--
+        TRACE: UI → TimelinePlaceholder (future)
+        Status: Placeholder only — logic not built in Sprint 1
+        Future: Chronological activity feed (versions + reviews)
+      -->
+      <section class="main-section" aria-labelledby="section-c-title">
+        <div class="section-header">
+          <h2 class="section-title" id="section-c-title">Timeline</h2>
+          <span class="badge badge-default">Coming Soon</span>
+        </div>
+        <div class="timeline-placeholder" role="img" aria-label="Timeline not yet available">
+          <div class="timeline-placeholder-icon">📅</div>
+          <div class="timeline-placeholder-label">Chronological activity timeline</div>
+          <div class="timeline-placeholder-note">Will show version + review activity in order — planned for Sprint 2</div>
+        </div>
+      </section>
+
+    </main><!-- /#v2-main -->
+
+    <!-- ── RIGHT DETAIL DRAWER ───────────────────────────── -->
+    <!--
+      TRACE: UI → DetailDrawer → AppState.openDrawer() → API detail
+      Component: DetailPanel.js
+      Trigger: Click on version (↗ button) or review row
+      Behaviour: Slide in from right (CSS transform), no navigation change
+      Close: × button OR Esc key (MainLayout._handleKeydown)
+    -->
+    <aside id="v2-drawer"
+           role="complementary"
+           aria-label="Detail panel"
+           aria-hidden="true">
+      <div class="drawer-header">
+        <div class="drawer-title" id="v2-drawer-title">Details</div>
+        <button id="v2-drawer-close"
+                class="drawer-close"
+                aria-label="Close detail panel"
+                title="Close (Esc)"
+                onclick="Dashboard.onCloseDrawer()">
+          ✕
+        </button>
+      </div>
+      <div id="v2-drawer-content">
+        <!-- Populated by Dashboard._renderDrawerContent() via DetailPanel.js -->
+        <div class="empty-state">
+          <div class="empty-state-icon">🔍</div>
+          <div class="empty-state-title">Select a version or review</div>
+          <p class="empty-state-desc">Click any item to see full details here.</p>
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- /#v2-body -->
+
+</div><!-- /#v2-app -->
+
+<!-- ── Toast notification ────────────────────────────────── -->
+<div id="v2-toast" role="status" aria-live="polite"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCRIPTS — load order matters (dependencies first)
+     ═══════════════════════════════════════════════════════════ -->
+
+<!--
+  Step 1 dev mode: mock data active (window.V2_USE_MOCK = true by default in api.js).
+  Step 2 switch: set window.V2_USE_MOCK = false before api.js loads,
+                 or remove this block entirely.
+-->
+<script>
+  // Set to false to use live backend APIs instead of mock data
+  window.V2_USE_MOCK = true;
+</script>
+
+<!-- 1. Utilities — no deps -->
+<script src="/static/v2/js/state.js"></script>
+<script src="/static/v2/js/api.js"></script>
+
+<!-- 2. UI components — depend on AppState + API -->
+<script src="/static/v2/js/accordion.js"></script>
+
+<!-- 3. Component renderers -->
+<script src="/static/v2/js/dashboard.js"></script>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Accessibility: sync drawer aria-hidden with open state
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+  (function () {
+    'use strict';
+
+    // Sync #v2-drawer aria-hidden whenever open class changes
+    const drawer = document.getElementById('v2-drawer');
+    if (drawer && window.MutationObserver) {
+      new MutationObserver(() => {
+        const isOpen = drawer.classList.contains('open');
+        drawer.setAttribute('aria-hidden', String(!isOpen));
+      }).observe(drawer, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    // Context banner sync — keep both header spans and banner in sync
+    if (window.AppState) {
+      AppState.subscribe(['selectedVersion', 'selectedReview'], function () {
+        const v = AppState.get('selectedVersion');
+        const r = AppState.get('selectedReview');
+
+        // Header context
+        const ctxV = document.getElementById('v2-ctx-version');
+        const ctxR = document.getElementById('v2-ctx-review');
+        if (ctxV) ctxV.textContent = v ? (v.version_id + (v.label ? ' – ' + v.label : '')) : '–';
+        if (ctxR) ctxR.textContent = r ? (r.review_id + (r.persona ? ' · ' + r.persona : '')) : 'Active Review';
+
+        // Banner
+        const banner = document.getElementById('v2-context-banner');
+        const bannerV = document.getElementById('v2-ctx-version-banner');
+        const bannerR = document.getElementById('v2-ctx-review-banner');
+        if (v && banner) {
+          banner.classList.remove('hidden');
+          if (bannerV) bannerV.textContent = v.version_id + (v.label ? ' – ' + v.label : '');
+          if (bannerR) bannerR.textContent = r ? (r.review_id + (r.persona ? ' · ' + r.persona : '')) : 'Active Review';
+        } else if (banner) {
+          banner.classList.add('hidden');
+        }
+      });
+    }
+  })();
+</script>
+
+</body>
+</html>
