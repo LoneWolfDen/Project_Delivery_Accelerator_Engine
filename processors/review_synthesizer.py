@@ -621,6 +621,325 @@ def merge_decision_points(selected_reviews: List[Any]) -> List[Dict[str, Any]]:
 # Prompt builders for later sprints (defined here for testability)
 # ────────────────────────────────────────────────────────────────────────────
 
+# ────────────────────────────────────────────────────────────────────────────
+# S3-01  Proposal Coverage (deterministic)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Signal words used to classify items into coverage domains.
+# Lists are ordered by specificity — first match wins for gap_notes generation.
+_COVERAGE_SIGNALS: Dict[str, List[str]] = {
+    "scope":               ["scope", "deliver", "objective", "requirement",
+                            "in scope", "out of scope", "feature", "capability"],
+    "architecture":        ["architecture", "design", "integration", "platform",
+                            "infrastructure", "api", "system", "component",
+                            "service", "database", "cloud", "network"],
+    "delivery":            ["timeline", "phase", "milestone", "sprint", "delivery",
+                            "schedule", "deadline", "roadmap", "release", "iteration"],
+    "security_compliance": ["security", "compliance", "gdpr", "auth", "encryption",
+                            "audit", "access", "iso", "pen test", "vulnerability",
+                            "identity", "rbac", "privilege", "certificate"],
+    "operations":          ["monitor", "sla", "runbook", "support", "handover",
+                            "alert", "incident", "operations", "observability",
+                            "logging", "backup", "disaster recovery", "on-call"],
+    "commercials":         ["budget", "cost", "commercial", "pricing", "contract",
+                            "margin", "invoic", "payment", "licence", "subscription",
+                            "commercia", "revenue", "spend"],
+}
+
+# Human-readable domain labels for gap_notes messages.
+_DOMAIN_LABELS: Dict[str, str] = {
+    "scope":               "Scope",
+    "architecture":        "Architecture",
+    "delivery":            "Delivery",
+    "security_compliance": "Security / Compliance",
+    "operations":          "Operations",
+    "commercials":         "Commercials",
+}
+
+
+def compute_proposal_coverage(
+    reconciliation: Optional[Any],
+    review_pass: Optional[Any],
+    scope_themes: List[str],
+) -> "ProposalCoverage":
+    """Compute six-domain coverage map deterministically.
+
+    Sources:
+      - reconciliation.reconciled_findings (merged findings from all selected reviews)
+        OR a plain dict with the same structure when reconciliation is None
+        (single-review path uses doc findings directly)
+      - review_pass  — a ProposalReviewPass dataclass or plain dict with per-domain
+        still_weak / may_block_signoff lists
+      - scope_themes — list of extracted scope theme strings
+
+    Status rules (spec §11):
+      Addressed         — ≥2 matched items AND no blocker for this domain in review_pass
+      Partial           — 1 matched item, OR matched items but domain flagged in still_weak
+      Not Yet Addressed — 0 matched items
+
+    Always returns a fully-populated ProposalCoverage.  Deterministic.
+    """
+    from models.proposal import ProposalCoverage, CoverageDomain
+    from datetime import datetime, timezone as _tz
+
+    computed_at = datetime.now(_tz.utc).isoformat()
+
+    # Flatten all text from findings for signal matching
+    findings: Dict[str, List[str]] = {}
+    if reconciliation is not None:
+        if hasattr(reconciliation, "reconciled_findings"):
+            findings = reconciliation.reconciled_findings or {}
+        elif isinstance(reconciliation, dict):
+            findings = reconciliation.get("reconciled_findings", {})
+
+    all_items: List[str] = []
+    for cat_items in findings.values():
+        if isinstance(cat_items, list):
+            all_items.extend(str(it) for it in cat_items if it)
+
+    # Build per-domain still_weak and blocker sets from review_pass
+    rp_weak:    Dict[str, List[str]] = {}
+    rp_blockers: Dict[str, List[str]] = {}
+    if review_pass is not None:
+        for domain in _COVERAGE_SIGNALS:
+            if hasattr(review_pass, domain):
+                dom_obj = getattr(review_pass, domain)
+                rp_weak[domain]    = list(getattr(dom_obj, "still_weak", []) or [])
+                rp_blockers[domain] = list(getattr(dom_obj, "may_block_signoff", []) or [])
+            elif isinstance(review_pass, dict):
+                dom_dict = review_pass.get(domain, {}) or {}
+                rp_weak[domain]    = list(dom_dict.get("still_weak", []) or [])
+                rp_blockers[domain] = list(dom_dict.get("may_block_signoff", []) or [])
+
+    def _assess_domain(domain: str) -> CoverageDomain:
+        signals = _COVERAGE_SIGNALS[domain]
+        label   = _DOMAIN_LABELS[domain]
+
+        # Find items (from findings) that match domain signals
+        matched: List[str] = [
+            item for item in all_items
+            if any(sig in item.lower() for sig in signals)
+        ]
+
+        # Also check scope_themes for domain relevance
+        theme_matches: List[str] = [
+            t for t in scope_themes
+            if any(sig in t.lower() for sig in signals)
+        ]
+        matched_themes = list(dict.fromkeys(theme_matches))  # deduplicate, preserve order
+
+        count = len(matched)
+        has_blocker = bool(rp_blockers.get(domain))
+        is_weak     = bool(rp_weak.get(domain))
+
+        if count == 0:
+            status   = "Not Yet Addressed"
+            gap_notes = f"No {label} content found in proposal findings."
+        elif count == 1:
+            status   = "Partial"
+            gap_notes = f"Only one {label} item identified — needs further development."
+        elif is_weak:
+            status   = "Partial"
+            gap_notes = (
+                f"{label} has items but quality assessment flagged weaknesses: "
+                + "; ".join(rp_weak[domain][:2])
+            )
+        else:
+            # count >= 2 and not weak
+            if has_blocker:
+                status   = "Partial"
+                gap_notes = (
+                    f"{label} has coverage but sign-off blockers remain: "
+                    + "; ".join(rp_blockers[domain][:2])
+                )
+            else:
+                status    = "Addressed"
+                gap_notes = ""
+
+        return CoverageDomain(
+            status=status,
+            matched_themes=matched_themes,
+            gap_notes=gap_notes,
+        )
+
+    return ProposalCoverage(
+        scope=_assess_domain("scope"),
+        architecture=_assess_domain("architecture"),
+        delivery=_assess_domain("delivery"),
+        security_compliance=_assess_domain("security_compliance"),
+        operations=_assess_domain("operations"),
+        commercials=_assess_domain("commercials"),
+        source_theme_count=len(scope_themes),
+        computed_at=computed_at,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S3-02  Decision Summary (LLM + deterministic fallback)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Blocker keywords for deterministic classification
+_DS_BLOCKER_KEYWORDS = frozenset([
+    "must", "required", "block", "cannot proceed", "prevent",
+    "blocks", "blocker", "blocking", "prerequisite", "mandatory",
+    "sign-off required", "approval required",
+])
+
+
+def _run_decision_summary(
+    merged_decisions: List[Dict[str, Any]],
+    reconciliation_notes: str,
+    selected_review_ids: List[str],
+    ai_backend: str,
+) -> "DecisionSummary":
+    """Classify merged decision points into confirmed / open / sign-off blockers.
+
+    AI path:  single LLM call → structured three-bucket output.
+    files_only: deterministic classification using decision_point status field
+                + keyword-based blocker detection.
+
+    Always returns a fully-populated DecisionSummary.  Never raises.
+    """
+    from models.proposal import DecisionSummary, DecisionItem
+    from datetime import datetime, timezone as _tz
+
+    generated_at = datetime.now(_tz.utc).isoformat()
+
+    if ai_backend != "files_only":
+        try:
+            result = _decision_summary_ai(
+                merged_decisions, reconciliation_notes,
+                selected_review_ids, ai_backend, generated_at,
+            )
+            if result is not None:
+                return result
+        except Exception as exc:
+            logger.warning(
+                "Decision summary LLM call failed (%s): %s — using deterministic fallback",
+                ai_backend, exc,
+            )
+
+    return _decision_summary_deterministic(
+        merged_decisions, selected_review_ids, generated_at, ai_backend,
+    )
+
+
+def _decision_summary_deterministic(
+    merged_decisions: List[Dict[str, Any]],
+    selected_review_ids: List[str],
+    generated_at: str,
+    ai_backend: str,
+) -> "DecisionSummary":
+    """Deterministic classification:
+      status == 'addressed' → confirmed
+      status == 'open'      → open; if text contains blocker keyword → also sign_off_blockers
+      status == 'validated' → confirmed
+      anything else         → open
+    sign_off_blockers is always a strict subset of open (AC4).
+    """
+    from models.proposal import DecisionSummary, DecisionItem
+
+    confirmed:      List[DecisionItem] = []
+    open_items:     List[DecisionItem] = []
+    blockers:       List[DecisionItem] = []
+
+    for dp in merged_decisions:
+        text     = dp.get("text", "")
+        category = dp.get("category", "general")
+        source   = dp.get("source_review_id", "")
+        status   = (dp.get("status") or "open").lower()
+
+        item = DecisionItem(text=text, category=category, source_review_id=source)
+
+        if status in ("addressed", "validated"):
+            confirmed.append(item)
+        else:
+            open_items.append(item)
+            # Blocker detection: keyword match on text (AC3)
+            text_lower = text.lower()
+            if any(kw in text_lower for kw in _DS_BLOCKER_KEYWORDS):
+                blockers.append(item)
+
+    return DecisionSummary(
+        confirmed=confirmed,
+        open=open_items,
+        sign_off_blockers=blockers,
+        source_review_ids=list(selected_review_ids),
+        generated_by=(
+            f"{ai_backend}_deterministic" if ai_backend != "files_only" else "files_only"
+        ),
+        generated_at=generated_at,
+    )
+
+
+def _decision_summary_ai(
+    merged_decisions: List[Dict[str, Any]],
+    reconciliation_notes: str,
+    selected_review_ids: List[str],
+    ai_backend: str,
+    generated_at: str,
+) -> Optional["DecisionSummary"]:
+    """Call LLM to classify decisions.  Returns None on failure."""
+    from ai_backends import get_backend
+    from models.proposal import DecisionSummary, DecisionItem
+
+    prompt = build_decision_summary_prompt(merged_decisions, reconciliation_notes)
+    backend = get_backend(ai_backend)
+    response = backend.generate(
+        prompt=prompt,
+        system_prompt=(
+            "You are a senior delivery assurance reviewer. "
+            "Classify each decision point accurately and concisely."
+        ),
+        temperature=0.2,
+        max_tokens=1000,
+    )
+    if not response.success:
+        return None
+
+    raw = response.text or ""
+
+    def _parse_items(header: str) -> List[DecisionItem]:
+        lines = _extract_section_lines(raw, header)
+        items: List[DecisionItem] = []
+        for line in lines:
+            if not line:
+                continue
+            # Format: "text | category | source_review_id"  or plain text
+            parts = [p.strip() for p in line.split("|")]
+            text     = parts[0] if parts else line
+            category = parts[1] if len(parts) > 1 else "general"
+            source   = parts[2] if len(parts) > 2 else (
+                selected_review_ids[0] if selected_review_ids else ""
+            )
+            if text:
+                items.append(DecisionItem(
+                    text=text, category=category, source_review_id=source,
+                ))
+        return items
+
+    confirmed = _parse_items("CONFIRMED")
+    open_items = _parse_items("OPEN")
+    blockers   = _parse_items("BLOCKERS")
+
+    # Ensure sign_off_blockers is a subset of open (LLM may not respect this)
+    open_texts = {i.text for i in open_items}
+    validated_blockers = [b for b in blockers if b.text in open_texts]
+    # If LLM put blockers that aren't in open, add them to open too
+    for b in blockers:
+        if b.text not in open_texts:
+            open_items.append(b)
+
+    return DecisionSummary(
+        confirmed=confirmed,
+        open=open_items,
+        sign_off_blockers=validated_blockers if validated_blockers else blockers,
+        source_review_ids=list(selected_review_ids),
+        generated_by=ai_backend,
+        generated_at=generated_at,
+    )
+
+
 def build_decision_summary_prompt(
     merged_decisions: List[Dict[str, Any]],
     reconciliation_notes: str,
