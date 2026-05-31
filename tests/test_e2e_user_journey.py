@@ -670,3 +670,450 @@ class TestJourney6_NegativeAndGuardrails:
         )
         assert "cross-cutting concern" in diff["risks"]["resolved"]
         assert "cross-cutting concern" in diff["assumptions"]["new"]
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Journey 7 — S4 Weakness Intelligence: baseline → weaknesses → SME → improved review
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestJourney7_S4WeaknessIntelligence:
+    """Full S4 vertical slice.
+
+    Scenario:
+      Step 1. Run baseline review — findings contain weak/unclear items.
+      Step 2. Weakness extraction identifies weak findings automatically.
+      Step 3. Missing category detection flags absent standard categories.
+      Step 4. Gap-aware SME generates questions that reference weaknesses and
+              missing categories.
+      Step 5. User selects SME questions → prompt_builder_state assembled.
+      Step 6. Run second (improved) review chained to baseline —
+              carries pbs with selected questions.
+      Step 7. Verify: second review is improved (weaknesses reduced) OR
+              clarified (missing categories addressed).
+
+    Invariants asserted throughout:
+    - previous_review_id chain intact (S1).
+    - prompt_builder_state persisted (S2).
+    - Gap questions reference specific weakness/category text (S3/S4).
+    - No duplicate questions (S4).
+    - Second review has fewer or zero weaknesses than first (improvement signal).
+    """
+
+    def test_step1_baseline_review_with_weak_findings(self, store, version):
+        """Step 1 — baseline review created with findings that include weak items."""
+        r1 = store.create_review(
+            version_id=version.version_id,
+            persona="Solution Architect",
+            findings={
+                "risks": [
+                    "unclear integration approach between legacy and new system",
+                    "TBC — vendor contract not finalised",
+                ],
+                "assumptions": ["team available from week 1"],
+                # dependencies, constraints, action_items intentionally absent
+            },
+        )
+        assert r1.previous_review_id == ""
+        assert r1.prompt_builder_state is None
+        # Baseline weaknesses field is empty by default (computed later)
+        assert r1.weaknesses == []
+
+    def test_step2_weakness_extraction_identifies_weak_findings(self, store, version):
+        """Step 2 — extract_weaknesses() detects signal phrases and short items."""
+        from processors.review_quality import extract_weaknesses
+        findings = {
+            "risks": [
+                "unclear integration approach between legacy and new system",
+                "TBC — vendor contract not finalised",
+            ],
+            "assumptions": ["team available from week 1"],
+        }
+        weaknesses = extract_weaknesses(findings)
+        assert len(weaknesses) >= 1
+        texts = [w["text"] for w in weaknesses]
+        # 'unclear' and 'TBC' must be detected
+        assert any("unclear" in t.lower() for t in texts), (
+            "Weakness with 'unclear' signal not detected"
+        )
+        assert any("tbc" in t.lower() for t in texts), (
+            "Weakness with 'TBC' signal not detected"
+        )
+        # Each weakness has required keys
+        for w in weaknesses:
+            assert {"id", "text", "category", "status"} <= w.keys()
+            assert w["status"] == "open"
+
+    def test_step3_missing_category_detection(self, store, version):
+        """Step 3 — compute_missing_categories() flags absent standard categories."""
+        from processors.review_quality import compute_missing_categories, STANDARD_CATEGORIES
+        findings = {
+            "risks": ["unclear risk"],
+            "assumptions": ["team available from week 1"],
+            # missing: dependencies, constraints, action_items
+        }
+        missing = compute_missing_categories(findings)
+        assert "dependencies" in missing
+        assert "constraints" in missing
+        assert "action_items" in missing
+        # Present categories not in missing list
+        assert "risks" not in missing
+        assert "assumptions" not in missing
+        # Only standard category names returned
+        for cat in missing:
+            assert cat in STANDARD_CATEGORIES
+
+    def test_step4_gap_aware_sme_generates_specific_questions(self, store, version):
+        """Step 4 — deep dive with weaknesses + missing_categories produces
+        a 'Gaps & Weaknesses' group with specific, non-generic questions."""
+        from personas.deep_dive import run_deep_dive
+        weaknesses = [
+            {"id": "w1", "text": "unclear integration approach between legacy and new system",
+             "category": "risks", "status": "open"},
+            {"id": "w2", "text": "TBC — vendor contract not finalised",
+             "category": "risks", "status": "open"},
+        ]
+        missing_categories = ["dependencies", "constraints", "action_items"]
+
+        result = run_deep_dive(
+            persona_name="Solution Architect",
+            scope="Cloud migration for healthcare platform. 6-month timeline. AWS target.",
+            intelligence={
+                "risks": ["unclear integration approach", "TBC vendor contract"],
+                "assumptions": ["team available from week 1"],
+                "dependencies": [],
+                "constraints": [],
+                "action_items": [],
+            },
+            active_files=[{"filename": "scope.txt", "source_type": "text"}],
+            ai_backend="files_only",
+            weaknesses=weaknesses,
+            missing_categories=missing_categories,
+        )
+
+        # Gaps & Weaknesses group must be present
+        cats = [g["category"] for g in result["question_groups"]]
+        assert "Gaps & Weaknesses" in cats, (
+            "'Gaps & Weaknesses' group not found — gap-aware SME not triggered"
+        )
+
+        gap_grp = next(g for g in result["question_groups"]
+                       if g["category"] == "Gaps & Weaknesses")
+
+        # Questions must reference specific weakness or missing category text
+        qs_text = " ".join(gap_grp["questions"])
+        has_weakness_ref = (
+            "unclear integration approach" in qs_text
+            or "vendor contract" in qs_text
+            or "tbc" in qs_text.lower()
+        )
+        has_category_ref = any(cat in qs_text for cat in missing_categories)
+        assert has_weakness_ref or has_category_ref, (
+            "Gap questions do not reference specific weakness text or missing category names — "
+            f"questions: {gap_grp['questions']}"
+        )
+
+        # No question is generic filler (< 20 chars)
+        for q in gap_grp["questions"]:
+            assert len(q.strip()) >= 20, f"Question too short (vague): {q!r}"
+
+        # Scope completeness is present and in range
+        assert 0 <= result["scope_completeness"] <= 100
+
+    def test_step4_no_duplicate_questions_in_sme_output(self, store, version):
+        """Step 4 — no duplicate questions across the entire deep dive output."""
+        from personas.deep_dive import run_deep_dive
+        result = run_deep_dive(
+            persona_name="Solution Architect",
+            scope="Cloud migration",
+            intelligence={"risks": ["TBC vendor lock-in"], "assumptions": [],
+                          "dependencies": [], "constraints": [], "action_items": []},
+            active_files=[],
+            ai_backend="files_only",
+            weaknesses=[{"id": "w1", "text": "TBC vendor lock-in",
+                         "category": "risks", "status": "open"}],
+            missing_categories=["dependencies"],
+        )
+        all_qs = [q.lower().strip() for q in result["all_questions"]]
+        duplicates = [q for q in all_qs if all_qs.count(q) > 1]
+        assert duplicates == [], (
+            f"Duplicate questions found in SME output: {list(set(duplicates))}"
+        )
+
+    def test_step5_user_selects_questions_assembles_pbs(self, store, version):
+        """Step 5 — user selects gap questions; valid pbs assembled."""
+        from personas.deep_dive import run_deep_dive
+        result = run_deep_dive(
+            persona_name="Solution Architect",
+            scope="Cloud migration for healthcare platform.",
+            intelligence={"risks": ["unclear integration approach"], "assumptions": [],
+                          "dependencies": [], "constraints": [], "action_items": []},
+            active_files=[{"filename": "scope.txt", "source_type": "text"}],
+            ai_backend="files_only",
+            weaknesses=[{"id": "w1", "text": "unclear integration approach",
+                         "category": "risks", "status": "open"}],
+            missing_categories=["dependencies"],
+        )
+
+        # User picks up to 3 questions from all_questions
+        selected = result["all_questions"][:3]
+        assert len(selected) >= 1
+
+        # Strip [Category] prefix to get clean question text (as S3-02 specifies)
+        clean_selected = [
+            q.split("] ", 1)[1] if "] " in q else q
+            for q in selected
+        ]
+
+        pbs = {
+            "injected_questions": clean_selected,
+            "user_notes": "Vendor must be confirmed before week 3",
+        }
+
+        # Badge logic: customised
+        has_q = bool(pbs.get("injected_questions") or [])
+        assert has_q is True
+
+        # All selected questions are non-empty
+        for q in pbs["injected_questions"]:
+            assert q.strip() != ""
+
+    def test_step6_second_review_chained_carries_pbs(self, store, version):
+        """Step 6 — second review is chained to R1 and carries pbs with selected questions."""
+        from processors.review_quality import extract_weaknesses
+        from personas.deep_dive import run_deep_dive
+
+        # R1: baseline
+        r1_findings = {
+            "risks": [
+                "unclear integration approach between legacy and new system",
+                "TBC — vendor contract not finalised",
+            ],
+            "assumptions": ["team available from week 1"],
+        }
+        weaknesses = extract_weaknesses(r1_findings)
+        r1 = store.create_review(
+            version_id=version.version_id,
+            persona="Solution Architect",
+            findings=r1_findings,
+            weaknesses=weaknesses,
+        )
+
+        # SME
+        dd = run_deep_dive(
+            persona_name="Solution Architect",
+            scope=version.scope,
+            intelligence={**r1_findings, "dependencies": [], "constraints": [],
+                          "action_items": []},
+            active_files=[{"filename": "scope.txt", "source_type": "text"}],
+            ai_backend="files_only",
+            weaknesses=weaknesses,
+            missing_categories=["dependencies", "constraints", "action_items"],
+        )
+
+        # Select first gap question
+        selected = dd["all_questions"][:2]
+        pbs = {"injected_questions": selected, "user_notes": "Vendor confirmed AWS"}
+
+        # R2: improved review chained to R1
+        r2_findings = {
+            "risks": [
+                "integration approach documented — API-first confirmed by vendor",
+            ],
+            "assumptions": ["team available from week 1"],
+            "dependencies": ["vendor API team — owner confirmed"],
+            "constraints": ["no downtime allowed during cutover"],
+            "action_items": ["schedule integration review by week 2"],
+        }
+        r2_weaknesses = extract_weaknesses(r2_findings)
+        r2 = store.create_review(
+            version_id=version.version_id,
+            persona="Solution Architect",
+            previous_review_id=r1.review_id,
+            prompt_builder_state=pbs,
+            findings=r2_findings,
+            weaknesses=r2_weaknesses,
+        )
+
+        # Chain intact
+        fetched_r2 = store.get_review(r2.review_id)
+        assert fetched_r2.previous_review_id == r1.review_id
+
+        # pbs persisted
+        assert fetched_r2.prompt_builder_state["injected_questions"] == selected
+
+        # Iteration labels
+        by_id = {s["review_id"]: s["iteration_number"]
+                 for s in store.list_reviews(version_id=version.version_id)}
+        assert by_id[r1.review_id] == 1
+        assert by_id[r2.review_id] == 2
+
+    def test_step7_second_review_improved_weaknesses_reduced(self, store, version):
+        """Step 7 — second review has fewer weaknesses than the baseline.
+
+        Improvement signal: the clarified/resolved findings contain no signal
+        phrases AND are long enough (≥ 8 words) to avoid the short-item flag,
+        so extract_weaknesses() returns a smaller list than for the baseline.
+        """
+        from processors.review_quality import extract_weaknesses
+
+        r1_findings = {
+            "risks": [
+                "unclear integration approach between legacy and new cloud system",
+                "TBC — vendor contract has not been finalised yet",
+                "pending security review with no timeline confirmed",
+            ],
+            "assumptions": ["assumed infrastructure will be available before project start"],
+        }
+        # R2 findings: same categories, all items ≥ 8 words, no signal phrases
+        r2_findings = {
+            "risks": [
+                "Integration approach fully documented and agreed with the vendor team in writing",
+                "Vendor contract has been signed and all commercial terms are confirmed",
+                "Security review completed successfully and certificate of compliance issued",
+            ],
+            "assumptions": [
+                "Infrastructure has been provisioned and confirmed available from week one onward"
+            ],
+            "dependencies": [
+                "Vendor API team owner identified and committed to delivery timeline"
+            ],
+            "constraints": [
+                "No downtime is permitted during the planned production cutover window"
+            ],
+            "action_items": [
+                "Schedule and run the integration smoke test before the end of week two"
+            ],
+        }
+
+        w1 = extract_weaknesses(r1_findings)
+        w2 = extract_weaknesses(r2_findings)
+
+        assert len(w2) < len(w1), (
+            f"Expected second review to have fewer weaknesses than baseline. "
+            f"Baseline: {len(w1)}, second: {len(w2)}\n"
+            f"  Baseline weaknesses: {[x['text'] for x in w1]}\n"
+            f"  Second weaknesses:   {[x['text'] for x in w2]}"
+        )
+
+    def test_step7_second_review_clarified_missing_categories_addressed(self, store, version):
+        """Step 7 (alt) — second review addresses missing categories from baseline."""
+        from processors.review_quality import compute_missing_categories
+
+        r1_findings = {
+            "risks": ["unclear risk"],
+            "assumptions": ["team available"],
+            # missing: dependencies, constraints, action_items
+        }
+        r2_findings = {
+            "risks": ["documented risk — owner assigned"],
+            "assumptions": ["team available and confirmed by HR"],
+            "dependencies": ["vendor API team"],
+            "constraints": ["no downtime during migration"],
+            "action_items": ["schedule kickoff by end of week 1"],
+        }
+
+        missing_after_r1 = compute_missing_categories(r1_findings)
+        missing_after_r2 = compute_missing_categories(r2_findings)
+
+        assert len(missing_after_r2) < len(missing_after_r1), (
+            f"Expected second review to have fewer missing categories. "
+            f"After R1: {missing_after_r1}, after R2: {missing_after_r2}"
+        )
+        assert missing_after_r2 == [], (
+            f"Second review should have no missing categories, but got: {missing_after_r2}"
+        )
+
+    def test_full_s4_journey_state_consistency(self, store, version):
+        """Combined integrity check: after the full S4 journey, all stored state
+        is consistent — no field bleed, no corruption, no missing keys."""
+        from processors.review_quality import extract_weaknesses, compute_missing_categories
+        from personas.deep_dive import run_deep_dive
+
+        # R1
+        r1_findings = {
+            "risks": ["TBC — vendor contract", "unclear NFR targets"],
+            "assumptions": ["budget assumed approved"],
+        }
+        w1 = extract_weaknesses(r1_findings)
+        mc1 = compute_missing_categories(r1_findings)
+        r1 = store.create_review(
+            version_id=version.version_id, persona="Solution Architect",
+            findings=r1_findings, weaknesses=w1,
+        )
+
+        # SME
+        dd = run_deep_dive(
+            persona_name="Solution Architect",
+            scope=version.scope,
+            intelligence={**r1_findings, "dependencies": [], "constraints": [],
+                          "action_items": []},
+            active_files=[],
+            ai_backend="files_only",
+            weaknesses=w1,
+            missing_categories=mc1,
+        )
+        pbs = {
+            "injected_questions": dd["all_questions"][:2],
+            "user_notes": "Vendor confirmed, budget approved",
+        }
+
+        # R2: all items ≥ 8 words, no signal phrases — verified improvement
+        r2_findings = {
+            "risks": [
+                "All identified risks have been fully documented with owner and mitigation plan assigned"
+            ],
+            "assumptions": [
+                "Budget has been formally approved by the finance committee and is confirmed"
+            ],
+            "dependencies": [
+                "Vendor has been confirmed and API integration contract is signed by both parties"
+            ],
+            "constraints": [
+                "No production changes are allowed during the scheduled external audit window"
+            ],
+            "action_items": [
+                "Finalise and publish the NFR document with sign-off before the end of sprint two"
+            ],
+        }
+        w2 = extract_weaknesses(r2_findings)
+        r2 = store.create_review(
+            version_id=version.version_id, persona="Solution Architect",
+            previous_review_id=r1.review_id,
+            prompt_builder_state=pbs,
+            findings=r2_findings,
+            weaknesses=w2,
+        )
+
+        # Assertions
+        fetched_r1 = store.get_review(r1.review_id)
+        fetched_r2 = store.get_review(r2.review_id)
+
+        # Chain
+        assert fetched_r2.previous_review_id == r1.review_id
+        assert fetched_r1.previous_review_id == ""
+
+        # pbs
+        assert fetched_r2.prompt_builder_state is not None
+        assert fetched_r1.prompt_builder_state is None
+
+        # Weaknesses improved
+        assert len(fetched_r2.weaknesses) <= len(fetched_r1.weaknesses)
+
+        # Missing categories improved
+        mc_r2 = compute_missing_categories(fetched_r2.findings)
+        assert len(mc_r2) < len(mc1)
+
+        # Iteration labels
+        by_id = {s["review_id"]: s["iteration_number"]
+                 for s in store.list_reviews(version_id=version.version_id)}
+        assert by_id[r1.review_id] == 1
+        assert by_id[r2.review_id] == 2
+
+        # to_summary() has all S4 keys
+        s1 = fetched_r1.to_summary()
+        s2 = fetched_r2.to_summary()
+        for key in ("weaknesses", "missing_categories", "prompt_builder_state",
+                    "previous_review_id", "iteration_number"):
+            assert key in s1, f"Key '{key}' missing from R1 to_summary()"
+            assert key in s2, f"Key '{key}' missing from R2 to_summary()"
