@@ -148,6 +148,18 @@
         </div>
       </section>
 
+      <!-- ── SECTION A2: Risk & Gap Summary ────────────── -->
+      <!--
+        TRACE: UI → RiskGapSummary → AppState (metrics)
+        Component: summary.js → RiskGapSummary.render()
+        Populated by: RiskGapSummary.mount() on DOMContentLoaded,
+                      then reactively on AppState 'metrics' change.
+        Logic: rule-based only — no AI/LLM dependency.
+      -->
+      <div id="v2-summary-panel" aria-live="polite" aria-label="Risk and gap summary">
+        <!-- Populated by RiskGapSummary.mount() -->
+      </div>
+
       <!-- ── SECTION B: Version Accordion ───────────────── -->
       <!--
         TRACE: UI → VersionAccordion → API → /hierarchy/versions + /hierarchy/reviews
@@ -262,6 +274,9 @@
 
 <!-- 3. Component renderers -->
 <script src="/static/v2/js/dashboard.js"></script>
+
+<!-- 4. Summary panel — risk/gap rule-based summary -->
+<script src="/static/v2/js/summary.js"></script>
 
 <!-- ═══════════════════════════════════════════════════════════
      Accessibility: sync drawer aria-hidden with open state
