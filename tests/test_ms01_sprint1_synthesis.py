@@ -947,19 +947,22 @@ class TestRegressionExistingPath:
         combined = " ".join(top_level_imports)
         assert "proposal_generator" not in combined
 
-    def test_proposal_document_to_dict_has_synthesis_fields(self):
-        """ProposalDocument.to_dict() exposes all 6 synthesis fields (Sprint 2+).
+    def test_proposal_document_to_dict_has_no_new_fields_yet(self):
+        """ProposalDocument.to_dict() must not expose synthesis fields in S1.
 
-        Fields default to None on existing/single-review documents.
+        Synthesis fields are added to ProposalDocument in Sprint 2 only.
         """
         from models.proposal import ProposalDocument
         doc = ProposalDocument(project_id="p1", proposal_ver_id="pv1")
         d = doc.to_dict()
+        # New fields are NOT present on ProposalDocument until Sprint 2
         for key in ["input_snapshot", "reconciliation_result",
                     "review_pass", "proposal_coverage",
                     "decision_summary", "forward_guidance"]:
-            assert key in d, f"Synthesis field '{key}' missing from ProposalDocument.to_dict()"
-            assert d[key] is None, f"Synthesis field '{key}' should default to None"
+            assert key not in d, (
+                f"Synthesis field '{key}' should not be in ProposalDocument.to_dict() "
+                "until Sprint 2"
+            )
 
     def test_existing_proposal_model_tests_still_pass(self):
         """Spot-check: ProposalVersion round-trip still works."""

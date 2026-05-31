@@ -550,3 +550,529 @@ class TestUIContract:
         assert "⚠️" in body, (
             "Weaknesses section expected to use ⚠️ icon"
         )
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F) S4-04 — SME question selection → prompt builder integration
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestSMEToPromptBuilderIntegration:
+    """S4-04 — Gap-aware SME questions can be selected, inserted into
+    prompt_builder_state, and used in the next review.
+
+    Validates:
+    - Questions from a gap-aware deep dive are selectable (non-empty strings).
+    - Selected questions form a valid prompt_builder_state.
+    - prompt_builder_state with selected questions survives the store round-trip.
+    - The review run after selection carries those questions in pbs.
+    - Negative: no duplicate questions appear in pbs after selection.
+    - Negative: no question shorter than 20 chars (vague guard) passes through.
+    """
+
+    @staticmethod
+    def _gap_deep_dive(
+        weaknesses=None, missing_categories=None
+    ) -> dict:
+        from personas.deep_dive import run_deep_dive
+        return run_deep_dive(
+            persona_name="Solution Architect",
+            scope="Cloud migration with unclear integration approach",
+            intelligence={
+                "risks": ["unclear integration approach"],
+                "assumptions": [],
+                "dependencies": [],
+                "constraints": [],
+                "action_items": [],
+            },
+            active_files=[{"filename": "scope.txt", "source_type": "text"}],
+            custom_prompt="",
+            ai_backend="files_only",
+            weaknesses=weaknesses,
+            missing_categories=missing_categories,
+        )
+
+    # ── Question selectability ────────────────────────────────────────────────
+
+    def test_all_questions_are_non_empty_strings(self):
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ]
+        )
+        for q in result["all_questions"]:
+            assert isinstance(q, str)
+            assert len(q.strip()) > 0
+
+    def test_all_questions_are_at_least_20_chars(self):
+        """Vague-question guard: every selectable question meets minimum length."""
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ]
+        )
+        short = [q for q in result["all_questions"] if len(q.strip()) < 20]
+        assert short == [], (
+            f"Questions shorter than 20 chars found (vague guard violated): {short}"
+        )
+
+    def test_group_questions_also_meet_minimum_length(self):
+        result = self._gap_deep_dive(
+            missing_categories=["dependencies", "constraints"]
+        )
+        for grp in result["question_groups"]:
+            for q in grp["questions"]:
+                assert len(q.strip()) >= 20, (
+                    f"Group '{grp['category']}' has a short question: {q!r}"
+                )
+
+    # ── Selection → prompt_builder_state construction ────────────────────────
+
+    def test_selected_questions_form_valid_pbs(self):
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ]
+        )
+        # Simulate user selecting the first 2 questions from all_questions
+        selected = result["all_questions"][:2]
+        pbs = {"injected_questions": selected, "user_notes": ""}
+        assert len(pbs["injected_questions"]) == 2
+        assert all(isinstance(q, str) for q in pbs["injected_questions"])
+
+    def test_pbs_with_gap_questions_is_detected_as_customised(self):
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ]
+        )
+        selected = result["all_questions"][:1]
+        pbs = {"injected_questions": selected, "user_notes": ""}
+        # Badge logic: pbs with non-empty injected_questions → customised
+        has_questions = bool(pbs.get("injected_questions") or [])
+        assert has_questions is True
+
+    def test_gap_questions_selected_into_pbs_reference_weakness_text(self):
+        weakness_text = "unclear integration approach"
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": weakness_text, "category": "risks", "status": "open"}
+            ]
+        )
+        gap_qs = [q for q in result["all_questions"] if "[Gaps & Weaknesses]" in q]
+        assert gap_qs, "No gap questions found in all_questions"
+        joined = " ".join(gap_qs)
+        assert weakness_text in joined, (
+            "Gap question does not reference the weakness text — question is not specific enough"
+        )
+
+    # ── Round-trip: pbs persisted and used in next review ────────────────────
+
+    def test_pbs_with_gap_questions_survives_store_round_trip(self, tmp_path, monkeypatch):
+        import threading
+        monkeypatch.setenv("PROJECTS_DATA_DIR", str(tmp_path))
+        import db.database as _db
+        _db._BASE_DIR = tmp_path
+        _db._thread_local = threading.local()
+
+        from db.hierarchy_store_sql import HierarchyStoreSQLite
+        store = HierarchyStoreSQLite("proj-s4-pbs")
+        store.create_version(
+            included_artifacts=[{"filename": "scope.txt", "category": "scope"}],
+            label="v1",
+        )
+
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ]
+        )
+        selected = [q for q in result["all_questions"] if "[Gaps & Weaknesses]" in q][:2]
+        pbs = {"injected_questions": selected, "user_notes": "Focus on integration clarity"}
+
+        r = store.create_review(
+            version_id="v1",
+            persona="Solution Architect",
+            prompt_builder_state=pbs,
+        )
+        fetched = store.get_review(r.review_id)
+        assert fetched.prompt_builder_state is not None
+        assert fetched.prompt_builder_state["injected_questions"] == selected
+        assert fetched.prompt_builder_state["user_notes"] == "Focus on integration clarity"
+
+    def test_next_review_carries_pbs_and_chains_to_predecessor(self, tmp_path, monkeypatch):
+        import threading
+        monkeypatch.setenv("PROJECTS_DATA_DIR", str(tmp_path))
+        import db.database as _db
+        _db._BASE_DIR = tmp_path
+        _db._thread_local = threading.local()
+
+        from db.hierarchy_store_sql import HierarchyStoreSQLite
+        store = HierarchyStoreSQLite("proj-s4-chain-pbs")
+        store.create_version(
+            included_artifacts=[{"filename": "spec.md", "category": "scope"}],
+            label="v1",
+        )
+
+        # Baseline review (R1)
+        r1 = store.create_review(
+            version_id="v1",
+            persona="Solution Architect",
+            findings={"risks": ["unclear integration approach", "TBC vendor contract"]},
+        )
+
+        # Gap-aware SME
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ],
+            missing_categories=["dependencies"],
+        )
+        selected = result["all_questions"][:2]
+        pbs = {"injected_questions": selected, "user_notes": ""}
+
+        # Tightened review (R2) — chained + carries pbs
+        r2 = store.create_review(
+            version_id="v1",
+            persona="Solution Architect",
+            previous_review_id=r1.review_id,
+            prompt_builder_state=pbs,
+            findings={
+                "risks": [
+                    "vendor contract confirmed — risk resolved",
+                    "integration approach documented",
+                ],
+                "dependencies": ["external API team confirmed as dependency"],
+            },
+        )
+
+        fetched = store.get_review(r2.review_id)
+        assert fetched.previous_review_id == r1.review_id
+        assert fetched.prompt_builder_state["injected_questions"] == selected
+
+    # ── Negative: no duplicates in pbs after selection ────────────────────────
+
+    def test_no_duplicate_questions_in_pbs_after_selection(self):
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ]
+        )
+        # all_questions is the full selectable set — must have no duplicates
+        qs = result["all_questions"]
+        normalised = [q.lower().strip() for q in qs]
+        assert len(normalised) == len(set(normalised)), (
+            "Duplicate questions found in all_questions — "
+            f"duplicates: {[q for q in normalised if normalised.count(q) > 1]}"
+        )
+
+    def test_no_duplicate_questions_in_gap_group(self):
+        """Within the Gaps & Weaknesses group itself, all questions must be unique."""
+        w = [
+            {"id": "w1", "text": "unclear integration approach",
+             "category": "risks", "status": "open"},
+        ]
+        result = self._gap_deep_dive(weaknesses=w, missing_categories=["dependencies"])
+        gap_grp = next(
+            (g for g in result["question_groups"] if g["category"] == "Gaps & Weaknesses"),
+            None,
+        )
+        if gap_grp:
+            qs = [q.lower().strip() for q in gap_grp["questions"]]
+            assert len(qs) == len(set(qs)), (
+                f"Duplicate questions in 'Gaps & Weaknesses' group: "
+                f"{[q for q in qs if qs.count(q) > 1]}"
+            )
+
+    def test_pbs_question_list_deduplication_on_repeated_selection(self):
+        """Simulates a user accidentally selecting the same question twice.
+        The pbs should be deduplicated before storage.
+        """
+        result = self._gap_deep_dive(
+            weaknesses=[
+                {"id": "w1", "text": "unclear integration approach",
+                 "category": "risks", "status": "open"}
+            ]
+        )
+        first_q = result["all_questions"][0]
+        # User accidentally adds same question twice
+        raw_selection = [first_q, first_q]
+        # Dedup (as the UI/backend should do)
+        deduped = list(dict.fromkeys(raw_selection))
+        pbs = {"injected_questions": deduped, "user_notes": ""}
+        assert len(pbs["injected_questions"]) == 1
+
+    # ── prompt reflects selected questions ────────────────────────────────────
+
+    def test_prompt_builder_state_questions_appear_in_review_prompt_field(
+        self, tmp_path, monkeypatch
+    ):
+        """The injected_questions stored in pbs should be traceable
+        in the review record — they are the mechanism for prompt influence."""
+        import threading
+        monkeypatch.setenv("PROJECTS_DATA_DIR", str(tmp_path))
+        import db.database as _db
+        _db._BASE_DIR = tmp_path
+        _db._thread_local = threading.local()
+
+        from db.hierarchy_store_sql import HierarchyStoreSQLite
+        store = HierarchyStoreSQLite("proj-s4-prompt")
+        store.create_version(
+            included_artifacts=[{"filename": "scope.txt", "category": "scope"}],
+            label="v1",
+        )
+
+        question = "What additional detail is available for the unclear integration approach?"
+        pbs = {
+            "injected_questions": [question],
+            "user_notes": "Confirm vendor is API-first",
+        }
+        r = store.create_review(
+            version_id="v1",
+            persona="Solution Architect",
+            prompt_builder_state=pbs,
+            prompt_used=(
+                "## Additional Context\n"
+                f"[Solution Architect] {question}\n"
+                "Confirm vendor is API-first"
+            ),
+        )
+        fetched = store.get_review(r.review_id)
+        # The question is present in pbs
+        assert question in fetched.prompt_builder_state["injected_questions"]
+        # The prompt_used field (as assembled by the UI/backend) contains the question
+        assert question in fetched.prompt_used
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G) Non-regression checks — S4 must not break S1 / S2 / S3 invariants
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestS4NonRegression:
+    """Re-run core invariants from Sprints 1–3 after S4 fields are introduced.
+
+    Verifies that adding weaknesses and missing_categories to a review does not:
+    - Break previous_review_id chain integrity (S1)
+    - Corrupt prompt_builder_state (S2)
+    - Break iteration_number computation (S1)
+    - Prevent the Ask SME flow from working without S4 params (S3 backward-compat)
+    - Reset any unrelated fields on a review that also carries weaknesses
+
+    These are additive checks — they mirror the S1/S2/S3 suites but exercise
+    reviews that *also* carry S4 weakness data.
+    """
+
+    @pytest.fixture()
+    def s4_store(self, tmp_path, monkeypatch):
+        import threading
+        monkeypatch.setenv("PROJECTS_DATA_DIR", str(tmp_path))
+        import db.database as _db
+        _db._BASE_DIR = tmp_path
+        _db._thread_local = threading.local()
+        from db.hierarchy_store_sql import HierarchyStoreSQLite
+        store = HierarchyStoreSQLite("proj-s4-nonreg")
+        store.create_version(
+            included_artifacts=[{"filename": "scope.txt", "category": "scope"}],
+            label="Regression baseline",
+        )
+        return store
+
+    # ── S1 invariants preserved with weaknesses present ──────────────────────
+
+    def test_s1_previous_review_id_chain_unaffected_by_weaknesses(self, s4_store):
+        """S1-02: previous_review_id chain is intact when reviews carry weaknesses."""
+        r1 = s4_store.create_review(
+            version_id="v1", persona="SA",
+            findings={"risks": ["unclear risk"]},
+            weaknesses=[{"id": "w1", "text": "unclear risk",
+                         "category": "risks", "status": "open"}],
+        )
+        r2 = s4_store.create_review(
+            version_id="v1", persona="SA",
+            previous_review_id=r1.review_id,
+            findings={"risks": ["vendor lock-in — full detail provided now"]},
+            weaknesses=[],
+        )
+        fetched_r2 = s4_store.get_review(r2.review_id)
+        assert fetched_r2.previous_review_id == r1.review_id
+        fetched_r1 = s4_store.get_review(r1.review_id)
+        assert fetched_r1.previous_review_id == ""
+
+    def test_s1_iteration_numbers_correct_with_weaknesses(self, s4_store):
+        """S1-03: iteration numbers computed correctly even when reviews have weaknesses."""
+        s4_store.create_review(
+            version_id="v1", persona="SA",
+            weaknesses=[{"id": "w1", "text": "TBC scope",
+                         "category": "risks", "status": "open"}],
+        )
+        s4_store.create_review(
+            version_id="v1", persona="DM",
+            weaknesses=[],
+        )
+        by_id = {s["review_id"]: s["iteration_number"]
+                 for s in s4_store.list_reviews(version_id="v1")}
+        assert by_id["r1"] == 1
+        assert by_id["r2"] == 2
+
+    def test_s1_previous_review_id_in_list_reviews_with_s4_data(self, s4_store):
+        """S1-02: list_reviews() carries previous_review_id for chained reviews with weaknesses."""
+        r1 = s4_store.create_review(
+            version_id="v1", persona="SA",
+            weaknesses=[{"id": "w1", "text": "unclear constraint detail",
+                         "category": "constraints", "status": "open"}],
+        )
+        r2 = s4_store.create_review(
+            version_id="v1", persona="SA",
+            previous_review_id=r1.review_id,
+            weaknesses=[],
+        )
+        summaries = {s["review_id"]: s
+                     for s in s4_store.list_reviews(version_id="v1")}
+        assert summaries[r2.review_id]["previous_review_id"] == r1.review_id
+        assert summaries[r1.review_id]["previous_review_id"] == ""
+
+    # ── S2 invariants preserved with weaknesses present ──────────────────────
+
+    def test_s2_prompt_builder_state_not_corrupted_by_weaknesses(self, s4_store):
+        """S2-02: prompt_builder_state survives round-trip on a review that also has weaknesses."""
+        pbs = {"injected_questions": ["What is the integration design?"], "user_notes": "AWS only"}
+        weaknesses = [{"id": "w1", "text": "unclear integration approach",
+                       "category": "risks", "status": "open"}]
+        r = s4_store.create_review(
+            version_id="v1", persona="SA",
+            prompt_builder_state=pbs,
+            weaknesses=weaknesses,
+        )
+        fetched = s4_store.get_review(r.review_id)
+        assert fetched.prompt_builder_state == pbs
+        assert fetched.weaknesses == weaknesses
+
+    def test_s2_pbs_and_weaknesses_are_independent_fields(self, s4_store):
+        """Clearing weaknesses does not affect pbs; clearing pbs does not affect weaknesses."""
+        pbs = {"injected_questions": ["Q?"], "user_notes": ""}
+        r_with_both = s4_store.create_review(
+            version_id="v1", persona="SA",
+            prompt_builder_state=pbs,
+            weaknesses=[{"id": "w1", "text": "TBC delivery timeline",
+                         "category": "risks", "status": "open"}],
+        )
+        r_pbs_only = s4_store.create_review(
+            version_id="v1", persona="DM",
+            prompt_builder_state=pbs,
+            weaknesses=[],
+        )
+        r_weaknesses_only = s4_store.create_review(
+            version_id="v1", persona="SA",
+            prompt_builder_state=None,
+            weaknesses=[{"id": "w1", "text": "not defined scope boundary",
+                         "category": "risks", "status": "open"}],
+        )
+
+        assert s4_store.get_review(r_with_both.review_id).prompt_builder_state == pbs
+        assert len(s4_store.get_review(r_with_both.review_id).weaknesses) == 1
+
+        assert s4_store.get_review(r_pbs_only.review_id).prompt_builder_state == pbs
+        assert s4_store.get_review(r_pbs_only.review_id).weaknesses == []
+
+        assert s4_store.get_review(r_weaknesses_only.review_id).prompt_builder_state is None
+        assert len(s4_store.get_review(r_weaknesses_only.review_id).weaknesses) == 1
+
+    # ── S3 invariants preserved ───────────────────────────────────────────────
+
+    def test_s3_ask_sme_without_s4_params_still_works(self):
+        """S3-01 backward-compat: run_deep_dive() without weaknesses/missing_categories
+        must return standard question groups (S3 behaviour unchanged)."""
+        from personas.deep_dive import run_deep_dive
+        result = run_deep_dive(
+            persona_name="Delivery Manager",
+            scope="Agile delivery project",
+            intelligence={"risks": ["team capacity risk"], "assumptions": [],
+                          "dependencies": [], "constraints": [], "action_items": []},
+            active_files=[{"filename": "scope.txt", "source_type": "text"}],
+            ai_backend="files_only",
+        )
+        assert isinstance(result["question_groups"], list)
+        assert len(result["question_groups"]) >= 1
+        assert len(result["all_questions"]) >= 1
+        # No Gaps & Weaknesses group — S4 not triggered
+        cats = [g["category"] for g in result["question_groups"]]
+        assert "Gaps & Weaknesses" not in cats
+
+    def test_s3_chaining_with_s4_data_does_not_reset_other_fields(self, s4_store):
+        """S3-03: chaining a review that carries S4 weaknesses must not reset
+        findings, categories, or any other field on the review."""
+        r1 = s4_store.create_review(
+            version_id="v1", persona="SA",
+            findings={"risks": ["vendor lock-in"], "assumptions": ["team available"]},
+            categories=["scope", "risk"],
+            included_files=["scope.txt", "risks.md"],
+            weaknesses=[{"id": "w1", "text": "TBC vendor agreement",
+                         "category": "risks", "status": "open"}],
+        )
+        r2 = s4_store.create_review(
+            version_id="v1", persona="SA",
+            previous_review_id=r1.review_id,
+            findings={"risks": ["vendor confirmed — no longer a risk"],
+                      "assumptions": ["team available"],
+                      "dependencies": ["vendor API"]},
+            categories=["scope", "risk", "dependency"],
+            included_files=["scope.txt", "risks.md"],
+            weaknesses=[],  # no weaknesses in improved review
+        )
+        fetched_r1 = s4_store.get_review(r1.review_id)
+        fetched_r2 = s4_store.get_review(r2.review_id)
+
+        # R1 fields unmodified
+        assert fetched_r1.findings == {
+            "risks": ["vendor lock-in"],
+            "assumptions": ["team available"],
+        }
+        assert fetched_r1.categories == ["scope", "risk"]
+        assert len(fetched_r1.weaknesses) == 1
+
+        # R2 fields correct
+        assert "vendor confirmed" in fetched_r2.findings["risks"][0]
+        assert fetched_r2.previous_review_id == r1.review_id
+        assert fetched_r2.weaknesses == []
+
+    # ── No UI state reset: weaknesses field preserved across list calls ───────
+
+    def test_weaknesses_field_preserved_in_to_summary(self, s4_store):
+        """weaknesses field must appear in to_summary() output."""
+        weaknesses = [
+            {"id": "w1", "text": "unclear constraint detail",
+             "category": "constraints", "status": "open"}
+        ]
+        r = s4_store.create_review(
+            version_id="v1", persona="SA",
+            weaknesses=weaknesses,
+        )
+        s = s4_store.get_review(r.review_id).to_summary()
+        assert "weaknesses" in s
+        assert s["weaknesses"] == weaknesses
+
+    def test_missing_categories_in_to_summary(self, s4_store):
+        """missing_categories field must appear in to_summary() output."""
+        r = s4_store.create_review(
+            version_id="v1", persona="SA",
+            findings={"risks": ["vendor lock-in"]},
+            # missing_categories is computed on-read — not passed to create_review
+        )
+        s = s4_store.get_review(r.review_id).to_summary()
+        assert "missing_categories" in s
+
+    def test_weaknesses_column_exists_in_db_schema(self, s4_store):
+        """S4-01 schema check: weaknesses column must exist in the reviews table."""
+        from db.database import get_db
+        db = get_db()
+        cols = {r[1] for r in db.execute("PRAGMA table_info(reviews)").fetchall()}
+        assert "weaknesses" in cols, (
+            "'weaknesses' column missing from reviews table — S4-01 migration not applied"
+        )
