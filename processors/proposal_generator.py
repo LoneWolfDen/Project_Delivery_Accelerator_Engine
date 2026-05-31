@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 from models.proposal import (
     ProposalDocument, DeliveryPhase, GanttRow, RiskEntry, AssumptionEntry,
     ProposalInputSnapshot, ProposalReviewPass, ReviewPassDomain,
+    ProposalCoverage, DecisionSummary,
 )
 
 logger = logging.getLogger(__name__)
@@ -737,6 +738,10 @@ def generate_proposal_document(
         4. _run_proposal_review_pass() always runs
         5. All artifacts stored on ProposalDocument
 
+    PDAE-MS-01 (Sprint 3):
+        6. compute_proposal_coverage() → ProposalCoverage (always runs)
+        7. _run_decision_summary() → DecisionSummary (always runs)
+
     Returns the saved ProposalDocument dict.
     """
     from db.decision_log import save_proposal_document, log_decision
@@ -809,11 +814,68 @@ def generate_proposal_document(
     # ── S2-03: Proposal Review Pass — always runs ─────────────
     review_pass = _run_proposal_review_pass(doc, conflicts, ai_backend)
 
-    # ── Attach synthesis artifacts ────────────────────────────
+    # ── S3-01: Proposal Coverage — always runs ────────────────
+    from processors.review_synthesizer import (
+        extract_scope_themes,
+        compute_proposal_coverage,
+        merge_decision_points,
+        _run_decision_summary,
+    )
+
+    # Build reconciliation object suitable for coverage (may be None on single-review path)
+    _reconciliation_for_coverage = None
+    if reconciliation_result_dict is not None:
+        _reconciliation_for_coverage = reconciliation_result_dict
+    else:
+        # Single-review: wrap review.findings in the same reconciled_findings shape
+        _reconciliation_for_coverage = {
+            "reconciled_findings": getattr(review, "findings", {}) or {}
+        }
+
+    scope_text   = getattr(version, "scope", "") or ""
+    scope_themes = extract_scope_themes(
+        scope_text,
+        (_reconciliation_for_coverage or {}).get("reconciled_findings", {}),
+    )
+    proposal_coverage: ProposalCoverage = compute_proposal_coverage(
+        _reconciliation_for_coverage,
+        review_pass,
+        scope_themes,
+    )
+
+    # ── S3-02: Decision Summary — always runs ─────────────────
+    # Collect reviews for decision-point merging
+    _all_reviews_for_ds: List[Any] = [review]
+    if supp_ids:
+        try:
+            from models.hierarchy import _make_hierarchy_store as _hs
+            _store_ds = _hs(project_id)
+            for sid in supp_ids:
+                _sup = _store_ds.get_review(sid)
+                if _sup is not None:
+                    _all_reviews_for_ds.append(_sup)
+        except Exception:
+            pass  # non-fatal — use anchor review only
+
+    merged_decisions = merge_decision_points(_all_reviews_for_ds)
+    _recon_notes = (
+        reconciliation_result_dict.get("reconciliation_notes", "")
+        if reconciliation_result_dict else ""
+    )
+    decision_summary: DecisionSummary = _run_decision_summary(
+        merged_decisions=merged_decisions,
+        reconciliation_notes=_recon_notes,
+        selected_review_ids=all_selected,
+        ai_backend=ai_backend,
+    )
+
+    # ── Attach all artifacts ──────────────────────────────────
     doc.input_snapshot        = snapshot.to_dict()
     doc.reconciliation_result = reconciliation_result_dict   # None on single-review
     doc.review_pass           = review_pass.to_dict()
-    # proposal_coverage, decision_summary, forward_guidance → Sprint 3/4
+    doc.proposal_coverage     = proposal_coverage.to_dict()
+    doc.decision_summary      = decision_summary.to_dict()
+    # forward_guidance → Sprint 4
 
     # ── Persist ───────────────────────────────────────────────
     saved = save_proposal_document(doc.to_dict())
@@ -840,13 +902,24 @@ def generate_proposal_document(
         actor="system",
         reason=f"Generated from version {hierarchy_version_id} + review {review_id}",
         metadata={
-            "doc_id":                 saved.get("doc_id", ""),
-            "ai_backend":             ai_backend,
-            "hierarchy_version_id":   hierarchy_version_id,
-            "active_review_id":       review_id,
+            "doc_id":                  saved.get("doc_id", ""),
+            "ai_backend":              ai_backend,
+            "hierarchy_version_id":    hierarchy_version_id,
+            "active_review_id":        review_id,
             "supplemental_review_ids": supp_ids,
-            "generation_mode":        snapshot.generation_mode,
-            "word_count":             saved.get("word_count", 0),
+            "generation_mode":         snapshot.generation_mode,
+            "word_count":              saved.get("word_count", 0),
+            "coverage_statuses": {
+                d: (saved.get("proposal_coverage") or {}).get(d, {}).get("status", "")
+                for d in ["scope", "architecture", "delivery",
+                          "security_compliance", "operations", "commercials"]
+            },
+            "open_decision_count": len(
+                (saved.get("decision_summary") or {}).get("open", [])
+            ),
+            "blocker_count": len(
+                (saved.get("decision_summary") or {}).get("sign_off_blockers", [])
+            ),
         },
     )
 
