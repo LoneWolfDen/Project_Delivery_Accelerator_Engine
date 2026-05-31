@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 from models.proposal import (
     ProposalDocument, DeliveryPhase, GanttRow, RiskEntry, AssumptionEntry,
     ProposalInputSnapshot, ProposalReviewPass, ReviewPassDomain,
-    ProposalCoverage, DecisionSummary,
+    ProposalCoverage, DecisionSummary, ForwardGuidance, ForwardGuidanceItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -713,6 +713,196 @@ def _extract_review_pass_lines(raw: str, header: str) -> List[str]:
 
 
 # ──────────────────────────────────────────────────────────────
+# PDAE-MS-01  Forward Guidance (Sprint 4 — S4-01 / S4-02)
+# ──────────────────────────────────────────────────────────────
+
+# Domain labels used in files_only template text (matches ProposalCoverage domains)
+_COVERAGE_DOMAIN_LABELS: Dict[str, str] = {
+    "scope":               "Scope",
+    "architecture":        "Architecture",
+    "delivery":            "Delivery",
+    "security_compliance": "Security / Compliance",
+    "operations":          "Operations",
+    "commercials":         "Commercials",
+}
+
+
+def _run_forward_guidance(
+    review_pass: ProposalReviewPass,
+    decision_summary: DecisionSummary,
+    conflicts: List[Any],
+    proposal_coverage: ProposalCoverage,
+    version_scope: str,
+    ai_backend: str,
+) -> ForwardGuidance:
+    """Generate recommended focus areas grounded in synthesis outputs.
+
+    AI path:  single LLM call using Forward Guidance Prompt (spec §10).
+    files_only: deterministic template — one item per open decision,
+                one item per "Not Yet Addressed" coverage domain,
+                one item per sign-off blocker.
+
+    Always returns a fully-populated ForwardGuidance.  Never raises.
+    Error isolation: any failure falls back to deterministic result.
+
+    Args:
+        review_pass:       Six-domain proposal critique.
+        decision_summary:  Confirmed / open / sign-off blockers.
+        conflicts:         ConflictEntry list from ReconciliationResult.
+        proposal_coverage: Six-domain coverage map.
+        version_scope:     Version scope text (prompt uses first 600 chars).
+        ai_backend:        Backend name.
+    """
+    from datetime import datetime, timezone as _tz
+
+    generated_at = datetime.now(_tz.utc).isoformat()
+
+    if ai_backend != "files_only":
+        try:
+            result = _forward_guidance_ai(
+                review_pass, decision_summary, conflicts,
+                proposal_coverage, version_scope, ai_backend, generated_at,
+            )
+            if result is not None:
+                return result
+        except Exception as exc:
+            logger.warning(
+                "Forward guidance LLM call failed (%s): %s — using deterministic fallback",
+                ai_backend, exc,
+            )
+
+    return _forward_guidance_deterministic(
+        decision_summary, proposal_coverage, generated_at, ai_backend,
+    )
+
+
+def _forward_guidance_ai(
+    review_pass: ProposalReviewPass,
+    decision_summary: DecisionSummary,
+    conflicts: List[Any],
+    proposal_coverage: ProposalCoverage,
+    version_scope: str,
+    ai_backend: str,
+    generated_at: str,
+) -> Optional[ForwardGuidance]:
+    """Call LLM for forward guidance.  Returns None on failure."""
+    from ai_backends import get_backend
+    from processors.review_synthesizer import (
+        build_forward_guidance_prompt,
+        parse_forward_guidance_response,
+    )
+
+    # Collect coverage gaps (domains not "Addressed")
+    coverage_gaps: List[str] = []
+    for domain, label in _COVERAGE_DOMAIN_LABELS.items():
+        dom_obj = getattr(proposal_coverage, domain, None)
+        if dom_obj is not None:
+            status = getattr(dom_obj, "status", "Not Yet Addressed")
+            if status != "Addressed":
+                coverage_gaps.append(f"{label}: {status}")
+
+    # Convert ConflictEntry objects (or dicts) to ConflictEntry for the prompt
+    from models.proposal import ConflictEntry
+    conflict_entries: List[ConflictEntry] = []
+    for c in (conflicts or []):
+        if hasattr(c, "description"):
+            conflict_entries.append(c)
+        elif isinstance(c, dict):
+            conflict_entries.append(ConflictEntry(
+                category=c.get("category", ""),
+                description=c.get("description", ""),
+                review_ids=c.get("review_ids", []),
+            ))
+
+    prompt = build_forward_guidance_prompt(
+        review_pass_dict=review_pass.to_dict(),
+        decision_summary_dict=decision_summary.to_dict(),
+        conflicts=conflict_entries,
+        version_scope=version_scope,
+        coverage_gaps=coverage_gaps,
+    )
+
+    backend = get_backend(ai_backend)
+    response = backend.generate(
+        prompt=prompt,
+        system_prompt=(
+            "You are a senior delivery advisor. "
+            "Provide actionable, data-grounded recommendations to strengthen the proposal. "
+            "Be specific and concise. Do not invent scope."
+        ),
+        temperature=0.3,
+        max_tokens=2000,
+    )
+    if not response.success:
+        return None
+
+    result = parse_forward_guidance_response(response.text or "", ai_backend)
+    result.generated_at = generated_at
+    return result
+
+
+def _forward_guidance_deterministic(
+    decision_summary: DecisionSummary,
+    proposal_coverage: ProposalCoverage,
+    generated_at: str,
+    ai_backend: str,
+) -> ForwardGuidance:
+    """Deterministic forward guidance for files_only mode.
+
+    Template rules (spec S4-02):
+      Open decision      → resolve_key_decisions item
+      Not Yet Addressed  → strengthen_weak_areas item
+      Sign-off blocker   → accelerate_client_alignment item
+      optional_enhancements always empty in files_only mode
+    """
+    resolve_items: List[ForwardGuidanceItem] = []
+    for dp in decision_summary.open:
+        resolve_items.append(ForwardGuidanceItem(
+            issue=dp.text or "Unresolved decision",
+            why_it_matters="Must be resolved before sign-off can proceed.",
+            suggested_action="Schedule a decision workshop or async resolution with stakeholders.",
+            trade_off_or_constraint="",
+        ))
+
+    strengthen_items: List[ForwardGuidanceItem] = []
+    for domain, label in _COVERAGE_DOMAIN_LABELS.items():
+        dom_obj = getattr(proposal_coverage, domain, None)
+        if dom_obj is None:
+            continue
+        status = getattr(dom_obj, "status", "Not Yet Addressed")
+        if status == "Not Yet Addressed":
+            strengthen_items.append(ForwardGuidanceItem(
+                issue=f"{label} not covered in the proposal.",
+                why_it_matters="Gap in proposal completeness may undermine client confidence.",
+                suggested_action=f"Add a dedicated {label} section to the proposal.",
+                trade_off_or_constraint="",
+            ))
+
+    accelerate_items: List[ForwardGuidanceItem] = []
+    for blocker in decision_summary.sign_off_blockers:
+        accelerate_items.append(ForwardGuidanceItem(
+            issue=blocker.text or "Sign-off blocker identified.",
+            why_it_matters="This item is blocking proposal sign-off.",
+            suggested_action="Escalate and resolve this blocker before the next client review.",
+            trade_off_or_constraint="",
+        ))
+
+    generated_by = (
+        f"{ai_backend}_deterministic" if ai_backend != "files_only" else "files_only"
+    )
+
+    return ForwardGuidance(
+        strengthen_weak_areas=strengthen_items,
+        resolve_key_decisions=resolve_items,
+        improve_credibility=[],
+        accelerate_client_alignment=accelerate_items,
+        optional_enhancements=[],
+        generated_by=generated_by,
+        generated_at=generated_at,
+    )
+
+
+# ──────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────
 
@@ -875,7 +1065,28 @@ def generate_proposal_document(
     doc.review_pass           = review_pass.to_dict()
     doc.proposal_coverage     = proposal_coverage.to_dict()
     doc.decision_summary      = decision_summary.to_dict()
-    # forward_guidance → Sprint 4
+
+    # ── S4-01: Forward Guidance — always runs ─────────────────
+    # Build conflict list from reconciliation result (empty on single-review path)
+    _conflicts_for_fg: List[Any] = []
+    if reconciliation_result_dict:
+        from models.proposal import ConflictEntry
+        for c in (reconciliation_result_dict.get("contradictions") or []):
+            _conflicts_for_fg.append(ConflictEntry(
+                category=c.get("category", ""),
+                description=c.get("description", ""),
+                review_ids=c.get("review_ids", []),
+            ))
+
+    forward_guidance: ForwardGuidance = _run_forward_guidance(
+        review_pass=review_pass,
+        decision_summary=decision_summary,
+        conflicts=_conflicts_for_fg,
+        proposal_coverage=proposal_coverage,
+        version_scope=getattr(version, "scope", "") or "",
+        ai_backend=ai_backend,
+    )
+    doc.forward_guidance = forward_guidance.to_dict()
 
     # ── Persist ───────────────────────────────────────────────
     saved = save_proposal_document(doc.to_dict())
