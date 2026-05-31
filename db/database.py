@@ -428,6 +428,19 @@ class Database:
             )
         """)
 
+        # ── proposal_documents: PDAE-MS-01 Sprint 2 — synthesis artifact columns
+        pd_cols = _existing_cols("proposal_documents")
+        for col, definition in [
+            ("input_snapshot",        "TEXT DEFAULT NULL"),
+            ("reconciliation_result", "TEXT DEFAULT NULL"),
+            ("review_pass",           "TEXT DEFAULT NULL"),
+            ("proposal_coverage",     "TEXT DEFAULT NULL"),
+            ("decision_summary",      "TEXT DEFAULT NULL"),
+            ("forward_guidance",      "TEXT DEFAULT NULL"),
+        ]:
+            if col not in pd_cols:
+                conn.execute(f"ALTER TABLE proposal_documents ADD COLUMN {col} {definition}")
+
         conn.commit()
 
 

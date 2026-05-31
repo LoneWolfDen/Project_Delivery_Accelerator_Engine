@@ -92,6 +92,12 @@ def handle_update_proposal_version_status(
 def handle_generate_proposal_doc(
     project_id: str, body: Dict[str, Any], respond: Callable
 ) -> None:
+    # PDAE-MS-01: supplemental_review_ids — must be a list when provided
+    supplemental_review_ids = body.get("supplemental_review_ids")
+    if supplemental_review_ids is not None and not isinstance(supplemental_review_ids, list):
+        respond({"error": "supplemental_review_ids must be a list"}, status=422)
+        return
+
     result = svc.generate_proposal_doc(
         project_id=project_id,
         proposal_ver_id=body.get("proposal_ver_id", ""),
@@ -99,6 +105,7 @@ def handle_generate_proposal_doc(
         review_id=body.get("review_id", ""),
         ai_backend=body.get("ai_backend", "files_only"),
         force=bool(body.get("force", False)),
+        supplemental_review_ids=supplemental_review_ids,
     )
     if result.get("error"):
         respond(result, status=422)

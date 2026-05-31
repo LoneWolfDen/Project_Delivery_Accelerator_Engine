@@ -161,9 +161,12 @@ def generate_proposal_doc(
     review_id: str,
     ai_backend: str = "files_only",
     force: bool = False,
+    supplemental_review_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     return generate_proposal_document(
-        project_id, proposal_ver_id, hierarchy_version_id, review_id, ai_backend, force,
+        project_id, proposal_ver_id, hierarchy_version_id, review_id,
+        ai_backend, force,
+        supplemental_review_ids=supplemental_review_ids,
     )
 
 

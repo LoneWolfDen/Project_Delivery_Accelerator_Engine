@@ -421,6 +421,17 @@ class ProposalDocument:
     # Metadata
     word_count: int = 0
 
+    # ── PDAE-MS-01 synthesis fields (Sprint 2+) ───────────────
+    # All None by default — populated only on multi-review path or
+    # when review pass / coverage / guidance have been computed.
+    # Existing single-review documents are unaffected.
+    input_snapshot:        Optional[Dict[str, Any]] = field(default=None)
+    reconciliation_result: Optional[Dict[str, Any]] = field(default=None)
+    review_pass:           Optional[Dict[str, Any]] = field(default=None)
+    proposal_coverage:     Optional[Dict[str, Any]] = field(default=None)
+    decision_summary:      Optional[Dict[str, Any]] = field(default=None)
+    forward_guidance:      Optional[Dict[str, Any]] = field(default=None)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "doc_id":               self.doc_id,
@@ -442,6 +453,13 @@ class ProposalDocument:
             "responsibilities":     self.responsibilities,
             "acceptance_criteria":  self.acceptance_criteria,
             "word_count":           self.word_count,
+            # PDAE-MS-01 synthesis fields
+            "input_snapshot":        self.input_snapshot,
+            "reconciliation_result": self.reconciliation_result,
+            "review_pass":           self.review_pass,
+            "proposal_coverage":     self.proposal_coverage,
+            "decision_summary":      self.decision_summary,
+            "forward_guidance":      self.forward_guidance,
         }
 
 
