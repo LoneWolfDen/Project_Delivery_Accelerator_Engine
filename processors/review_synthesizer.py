@@ -976,8 +976,18 @@ def build_forward_guidance_prompt(
     decision_summary_dict: Dict[str, Any],
     conflicts: List[ConflictEntry],
     version_scope: str,
+    coverage_gaps: Optional[List[str]] = None,
 ) -> str:
-    """Build the forward guidance prompt."""
+    """Build the forward guidance prompt (Step 10 of PDAE-MS-01 pipeline).
+
+    Args:
+        review_pass_dict:      ProposalReviewPass.to_dict() — source of still_weak items.
+        decision_summary_dict: DecisionSummary.to_dict() — source of open decisions.
+        conflicts:             List[ConflictEntry] from ReconciliationResult.
+        version_scope:         Version scope text, truncated to 600 chars in prompt.
+        coverage_gaps:         Domain names where ProposalCoverage status != "Addressed".
+                               When None, gaps are not included in the prompt.
+    """
     scope_trunc = (version_scope or "")[:600]
 
     # Collect still_weak across all domains
@@ -989,10 +999,7 @@ def build_forward_guidance_prompt(
 
     open_decisions = [d.get("text", "") for d in decision_summary_dict.get("open", [])]
     conflict_descs = [c.description for c in conflicts]
-
-    # Coverage gaps: domains with status != Addressed
-    coverage_gaps: List[str] = []
-    # (populated in Sprint 3 when proposal_coverage is available)
+    gap_list: List[str] = coverage_gaps or []
 
     def _block(title: str, items: List[str]) -> str:
         if not items:
@@ -1013,6 +1020,8 @@ Rules:
 
 {_block('CONFLICTS', conflict_descs)}
 
+{_block('COVERAGE GAPS', gap_list)}
+
 VERSION SCOPE:
 {scope_trunc}
 
@@ -1022,12 +1031,169 @@ For each recommendation include:
 - suggested_action
 - trade_off_or_constraint (empty string if none)
 
+Each item must be formatted as exactly four lines:
+issue: <text>
+why_it_matters: <text>
+suggested_action: <text>
+trade_off_or_constraint: <text or empty>
+
 Output (use EXACTLY these headers):
 ---STRENGTHEN_WEAK_AREAS---
 ---RESOLVE_KEY_DECISIONS---
 ---IMPROVE_CREDIBILITY---
 ---ACCELERATE_CLIENT_ALIGNMENT---
 ---OPTIONAL_ENHANCEMENTS---"""
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S4-01  Parse forward guidance response
+# ────────────────────────────────────────────────────────────────────────────
+
+def parse_forward_guidance_response(
+    raw: str,
+    ai_backend: str,
+) -> "ForwardGuidance":
+    """Parse the LLM forward guidance response into a ForwardGuidance dataclass.
+
+    Each section contains zero or more items.  Each item is four key: value lines.
+    Missing sections → empty list.  Malformed items → silently skipped.
+    Empty raw response → ForwardGuidance with all empty sections.
+
+    Args:
+        raw:        Raw LLM response text.
+        ai_backend: Backend name recorded on the result.
+
+    Returns:
+        ForwardGuidance with all five sections populated (may be empty lists).
+    """
+    from models.proposal import ForwardGuidance, ForwardGuidanceItem
+
+    raw = raw or ""
+    generated_at = _now_iso()
+
+    _SECTION_HEADERS = [
+        ("strengthen_weak_areas",       "STRENGTHEN_WEAK_AREAS"),
+        ("resolve_key_decisions",        "RESOLVE_KEY_DECISIONS"),
+        ("improve_credibility",          "IMPROVE_CREDIBILITY"),
+        ("accelerate_client_alignment",  "ACCELERATE_CLIENT_ALIGNMENT"),
+        ("optional_enhancements",        "OPTIONAL_ENHANCEMENTS"),
+    ]
+
+    sections: Dict[str, List[ForwardGuidanceItem]] = {}
+    for field_name, header in _SECTION_HEADERS:
+        sections[field_name] = _parse_guidance_section(raw, header)
+
+    return ForwardGuidance(
+        strengthen_weak_areas=sections["strengthen_weak_areas"],
+        resolve_key_decisions=sections["resolve_key_decisions"],
+        improve_credibility=sections["improve_credibility"],
+        accelerate_client_alignment=sections["accelerate_client_alignment"],
+        optional_enhancements=sections["optional_enhancements"],
+        generated_by=ai_backend,
+        generated_at=generated_at,
+    )
+
+
+def _parse_guidance_section(raw: str, header: str) -> "List[ForwardGuidanceItem]":
+    """Extract ForwardGuidanceItems from a single ---HEADER--- section.
+
+    Items are separated by blank lines within the section block.
+    Each item has four key: value lines:
+        issue: ...
+        why_it_matters: ...
+        suggested_action: ...
+        trade_off_or_constraint: ...
+
+    Lines not matching a known key are appended to the most recent key value.
+    """
+    # Extract the raw block preserving blank lines (needed for item separation).
+    # Cannot use _extract_section_lines() here — that helper strips blank lines.
+    pattern = rf"---{re.escape(header)}---[ \t]*\n?(.*?)(?=---[A-Z_]+---|$)"
+    match = re.search(pattern, raw, re.DOTALL)
+    if not match:
+        return []
+    block_raw = match.group(1)
+
+    # Split into lines, stripping leading/trailing whitespace per line
+    all_lines = [ln.strip() for ln in block_raw.splitlines()]
+    if not any(ln for ln in all_lines):
+        return []
+
+    items: List[ForwardGuidanceItem] = []
+    # Group lines into item blocks separated by blank lines
+    blocks: List[List[str]] = [[]]
+    for line in all_lines:
+        if line == "":
+            blocks.append([])
+        else:
+            blocks[-1].append(line)
+
+    for block in blocks:
+        if not block:
+            continue
+        item = _parse_guidance_item(block)
+        if item is not None:
+            items.append(item)
+
+    return items
+
+
+def _parse_guidance_item(lines: List[str]) -> "Optional[ForwardGuidanceItem]":
+    """Parse one item block (list of non-empty lines) into a ForwardGuidanceItem.
+
+    Accepts:
+    - Four-line structured format: "key: value"
+    - Plain-text format (single line or paragraph) — treated as issue text only
+
+    Returns None when the block produces an empty issue after stripping.
+    """
+    from models.proposal import ForwardGuidanceItem
+
+    _KEYS = {
+        "issue":                   "issue",
+        "why_it_matters":          "why_it_matters",
+        "why it matters":          "why_it_matters",
+        "suggested_action":        "suggested_action",
+        "suggested action":        "suggested_action",
+        "trade_off_or_constraint": "trade_off_or_constraint",
+        "trade-off or constraint": "trade_off_or_constraint",
+        "trade_off":               "trade_off_or_constraint",
+    }
+
+    fields: Dict[str, str] = {
+        "issue": "",
+        "why_it_matters": "",
+        "suggested_action": "",
+        "trade_off_or_constraint": "",
+    }
+    current_key = "issue"
+
+    for line in lines:
+        # Try "key: value" split
+        if ":" in line:
+            candidate_key, _, rest = line.partition(":")
+            normalised = candidate_key.strip().lower()
+            if normalised in _KEYS:
+                current_key = _KEYS[normalised]
+                fields[current_key] = (fields[current_key] + " " + rest.strip()).strip()
+                continue
+        # Continuation line — append to current key
+        fields[current_key] = (fields[current_key] + " " + line.strip()).strip()
+
+    # Fallback: if the whole block was plain text (no keys matched), treat
+    # the joined text as the issue.
+    if not fields["issue"]:
+        fields["issue"] = " ".join(lines).strip()
+
+    if not fields["issue"]:
+        return None
+
+    return ForwardGuidanceItem(
+        issue=fields["issue"],
+        why_it_matters=fields["why_it_matters"],
+        suggested_action=fields["suggested_action"],
+        trade_off_or_constraint=fields["trade_off_or_constraint"],
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────────
