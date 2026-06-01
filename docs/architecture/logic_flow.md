@@ -18,6 +18,12 @@
 | Drawer load | `static/v2/js/dashboard.js` | `_loadDrawerDetail()` |
 | Accordion expand | `static/v2/js/accordion.js` | `onVersionHeaderClick()` |
 | Metrics scope | `services/hierarchy.py` | `get_metrics()` |
+| Weakness persistence | `services/review.py` | `update_weakness_note()`, `update_weakness_status()` *(Sprint 1)* |
+| Reconciliation selection | `services/reconciliation.py` | `save_reconciliation_selection()` *(Sprint 3)* |
+| Reconciliation engine | `services/reconciliation.py` | `run_reconciliation()` *(Sprint 3)* |
+| Drawer load | `static/v2/js/dashboard.js` | `_loadDrawerDetail()` |
+| Accordion expand | `static/v2/js/accordion.js` | `onVersionHeaderClick()` |
+| Metrics scope | `services/hierarchy.py` | `get_metrics()` |
 
 ---
 
@@ -199,3 +205,46 @@ flowchart TD
 - Note is optional — empty string clears it; field is never required.
 - Persisted within the weakness dict alongside `status`.
 - No separate table required — stored as JSON within the `weaknesses` column.
+
+
+
+---
+
+## 9. Reconciliation Selection + Engine Logic (Sprint 3)
+
+```mermaid
+flowchart TD
+    A["POST /reconciliation/select\nbody: anchor_review_id, selected_review_ids"] --> B{"anchor_review_id empty?"}
+    B -->|yes| C["Return {error: 'anchor_review_id is required'}"]
+    B -->|no| D{"selected_review_ids empty?"}
+    D -->|yes| E["Return {error: 'must contain anchor'}"]
+    D -->|no| F["Deduplicate IDs\nPrepend anchor if missing"]
+    F --> G["Validate all review IDs exist in store"]
+    G -->|any missing| H["Return {error: 'Review not found: {rid}'}"]
+    G -->|all present| I["store.save_reconciliation_selection()\nSQLite UPSERT"]
+    I --> J["Return ReconciliationSelection dict"]
+
+    K["POST /reconciliation/run\nbody: anchor_review_id (opt), selected_review_ids (opt)"] --> L{"body has anchor + selected?"}
+    L -->|no| M["Load stored selection\nfor this version"]
+    M --> N{"stored selection found?"}
+    N -->|no| O["Return {error: 'No selection found. POST /select first.'}"]
+    N -->|yes| P["Use stored anchor + selected_review_ids"]
+    L -->|yes| P
+    P --> Q["Load + normalise each review\nNormalisedReviewInput per review"]
+    Q --> R["_reconcile_findings_consensus()\nJaccard overlap ≥ 0.70 across ALL selected"]
+    Q --> S["_reconcile_findings_divergent()\nItems missing from any review"]
+    Q --> T["_merge_all_findings()\nDe-duplicated flat list"]
+    Q --> U["_reconcile_decisions()\nSplit open vs confirmed by status"]
+    Q --> V["_reconcile_weaknesses()\nOpen weaknesses only"]
+    Q --> W["_build_provenance_summary()\nPer-review metadata + artifact_refs"]
+    R & S & T & U & V & W --> X["Assemble ReconciliationOutput\nreconciliation_id = rec_{uuid12}\ncreated_at = now"]
+    X --> Y["store.save_reconciliation_output()\nSQLite UPSERT reconciliation_outputs"]
+    Y --> Z["Return ReconciliationOutput dict"]
+```
+
+**Key invariants:**
+- `anchor_only = True` when `len(selected_review_ids) == 1` — all anchor findings become consensus; divergent is empty.
+- Similarity threshold: Jaccard token overlap ≥ 0.70 (`_SIMILARITY_THRESHOLD`).
+- Original reviews are **never modified** by reconciliation.
+- Every output item has `source_reviews: [ProvenanceRef, ...]` — never empty.
+- Re-running overwrites the stored output for the version (latest wins).

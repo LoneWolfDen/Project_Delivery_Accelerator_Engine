@@ -716,6 +716,337 @@ const ReviewDetail = (() => {
     </div>`;
   }
 
+  // ── Sprint 3: Reconciliation Panel ───────────────────────────────────────
+
+  /**
+   * Renders the "Prepare Reconciliation" panel for a review.
+   *
+   * UX rules (from architecture):
+   * - "Reconciliation is NOT the same as proposal generation"
+   * - User must EXPLICITLY select which reviews to reconcile
+   * - Active Review may be pre-populated as anchor, but user must confirm
+   * - Do NOT auto-select latest N reviews
+   *
+   * TRACE: ReviewDetail._renderReconciliationPanel → API.saveReconciliationSelection
+   *        → API.runReconciliation → ReconciliationOutput
+   */
+  function _renderReconciliationPanel(r) {
+    const proj = window.AppState ? window.AppState.get('selectedProject') : null;
+    if (!proj) return '';
+
+    const rid = r.review_id || '';
+    const vid = r.version_id || '';
+    const uid = `rc-panel-${_esc(rid)}`;
+
+    return `<div class="rc-panel" id="${uid}">
+      <div class="rc-panel-header">
+        <span class="rc-panel-icon" aria-hidden="true">🔀</span>
+        <span class="rc-panel-title">Prepare Reconciliation</span>
+        <button class="rc-toggle btn btn-ghost btn-sm"
+                aria-expanded="false"
+                onclick="ReviewDetail.onToggleReconciliationPanel('${_esc(rid)}')"
+                title="Open reconciliation review selection">
+          Select &amp; Reconcile
+        </button>
+      </div>
+
+      <div class="rc-body" id="${uid}-body" style="display:none" aria-hidden="true">
+        <p class="rc-desc">
+          Select an <strong>anchor review</strong> (the primary reference) and
+          optional <strong>supplemental reviews</strong>. Reconciliation compares
+          findings, decisions, and weaknesses across your selection and produces
+          one trusted intelligence pack.
+        </p>
+
+        <div class="rc-section-label">Anchor Review <span class="rc-required">*</span></div>
+        <div class="rc-anchor-row" id="${uid}-anchor-row">
+          <div class="rc-review-chip rc-review-chip--anchor" id="${uid}-anchor"
+               data-review-id="${_esc(rid)}"
+               title="Currently open review — pre-selected as anchor">
+            <span class="rc-chip-icon">⚓</span>
+            <span class="rc-chip-id">${_esc(rid)}</span>
+            <span class="rc-chip-persona">${_esc(r.persona || '')}</span>
+            <span class="rc-anchor-badge">Anchor</span>
+          </div>
+          <p class="rc-anchor-hint">
+            This review is pre-populated as anchor. You can change it below.
+          </p>
+        </div>
+
+        <div class="rc-section-label">All Reviews for this Version</div>
+        <div class="rc-review-list" id="${uid}-review-list">
+          <div class="rc-loading-reviews">⟳ Loading reviews…</div>
+        </div>
+
+        <div class="rc-form-actions">
+          <button class="btn btn-primary btn-sm"
+                  id="${uid}-run"
+                  data-review-id="${_esc(rid)}"
+                  data-version-id="${_esc(vid)}"
+                  data-project-id="${_esc(proj.id)}"
+                  data-panel-uid="${_esc(uid)}"
+                  onclick="ReviewDetail.onRunReconciliation(this)">
+            🔀 Run Reconciliation
+          </button>
+          <button class="btn btn-ghost btn-sm"
+                  onclick="ReviewDetail.onToggleReconciliationPanel('${_esc(rid)}')">
+            Cancel
+          </button>
+        </div>
+
+        <div class="rc-result" id="${uid}-result" style="display:none" aria-live="polite"></div>
+      </div>
+    </div>`;
+  }
+
+  // ── Sprint 3: Toggle reconciliation panel ────────────────────────────────
+
+  /**
+   * Show/hide the reconciliation panel body and populate the review list
+   * from the currently loaded hierarchy (version reviews).
+   * Never auto-selects reviews — user must check boxes explicitly.
+   */
+  async function onToggleReconciliationPanel(reviewId) {
+    const uid  = `rc-panel-${reviewId}`;
+    const body = document.getElementById(`${uid}-body`);
+    const btn  = document.querySelector(`#${uid} .rc-toggle`);
+    if (!body) return;
+
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : '';
+    body.setAttribute('aria-hidden', isOpen ? 'true' : 'false');
+    if (btn) btn.setAttribute('aria-expanded', String(!isOpen));
+
+    if (!isOpen) {
+      // Populate the review list from AppState hierarchy (no new API call needed)
+      _populateReconciliationReviewList(uid, reviewId);
+    }
+  }
+
+  /**
+   * Build checkboxes for every review in the current version.
+   * The currently open review is pre-checked as anchor — unchecked = excluded.
+   * User must explicitly check/uncheck supplemental reviews.
+   *
+   * @param {string} uid        — panel UID prefix
+   * @param {string} anchorRid  — currently open review ID (pre-populated anchor)
+   */
+  function _populateReconciliationReviewList(uid, anchorRid) {
+    const listEl = document.getElementById(`${uid}-review-list`);
+    if (!listEl) return;
+
+    const appState = window.AppState;
+    const ver = appState ? appState.get('selectedVersion') : null;
+    const reviews = (ver && ver.reviews) || [];
+
+    if (!reviews.length) {
+      // Fallback: use available_reviews from metrics if version.reviews not populated
+      const metrics  = appState ? appState.get('metrics') : null;
+      const avail    = (metrics && metrics.available_reviews) || [];
+      if (avail.length) {
+        _renderReviewCheckboxes(listEl, avail, anchorRid, uid);
+        return;
+      }
+      listEl.innerHTML = '<p class="rc-empty-note">No other reviews found for this version.</p>';
+      return;
+    }
+
+    _renderReviewCheckboxes(listEl, reviews, anchorRid, uid);
+  }
+
+  function _renderReviewCheckboxes(listEl, reviews, anchorRid, uid) {
+    const items = reviews.map(rev => {
+      const rid       = rev.review_id || '';
+      const persona   = rev.persona || '';
+      const iterLabel = rev.iteration_number ? `R${rev.iteration_number}` : rid;
+      const isAnchor  = rid === anchorRid;
+      const cbId      = `${uid}-cb-${_esc(rid)}`;
+
+      return `<div class="rc-review-row ${isAnchor ? 'rc-review-row--anchor' : ''}">
+        <label class="rc-review-label" for="${cbId}">
+          <input type="checkbox"
+                 id="${cbId}"
+                 class="rc-review-cb"
+                 data-review-id="${_esc(rid)}"
+                 data-anchor-id="${_esc(anchorRid)}"
+                 data-panel-uid="${_esc(uid)}"
+                 ${isAnchor ? 'checked disabled' : ''}
+                 ${isAnchor ? '' : 'onchange="ReviewDetail.onReconciliationCheckboxChange(this)"'} />
+          <span class="rc-chip-id">${_esc(iterLabel)}</span>
+          ${isAnchor ? '<span class="rc-anchor-badge">Anchor</span>' : ''}
+          <span class="rc-chip-persona">${_esc(persona)}</span>
+        </label>
+      </div>`;
+    }).join('');
+
+    listEl.innerHTML = items || '<p class="rc-empty-note">No reviews available.</p>';
+  }
+
+  /**
+   * Called when user checks/unchecks a supplemental review checkbox.
+   * No auto-selection side effects.
+   */
+  function onReconciliationCheckboxChange(_cb) {
+    // Intentionally no-op beyond default browser checkbox behaviour.
+    // The selection is read from DOM checkboxes at submit time only.
+  }
+
+  // ── Sprint 3: Run reconciliation ─────────────────────────────────────────
+
+  /**
+   * Collect anchor + checked supplemental reviews, save the selection,
+   * run reconciliation, render the result panel.
+   */
+  async function onRunReconciliation(btn) {
+    const projectId = btn.dataset.projectId;
+    const versionId = btn.dataset.versionId;
+    const anchorRid = btn.dataset.reviewId;
+    const uid       = btn.dataset.panelUid;
+    if (!projectId || !versionId || !anchorRid) return;
+
+    // Collect checked review IDs (anchor always included)
+    const listEl     = document.getElementById(`${uid}-review-list`);
+    const checkboxes = listEl ? listEl.querySelectorAll('.rc-review-cb') : [];
+    const selectedIds = [anchorRid];
+    checkboxes.forEach(cb => {
+      const rid = cb.dataset.reviewId;
+      if (rid && rid !== anchorRid && cb.checked) {
+        selectedIds.push(rid);
+      }
+    });
+
+    const resultEl = document.getElementById(`${uid}-result`);
+    btn.disabled = true;
+    btn.textContent = '⏳ Reconciling…';
+    if (resultEl) { resultEl.style.display = ''; resultEl.innerHTML = _renderReconciliationLoading(); }
+
+    try {
+      // 1. Save selection
+      if (window.API && typeof window.API.saveReconciliationSelection === 'function') {
+        await window.API.saveReconciliationSelection(projectId, versionId, anchorRid, selectedIds);
+      }
+
+      // 2. Run reconciliation
+      const result = await window.API.runReconciliation(projectId, versionId, anchorRid, selectedIds);
+
+      if (result && result.error) {
+        if (resultEl) resultEl.innerHTML = `<div class="rc-result-error">⚠ ${_esc(result.error)}</div>`;
+      } else {
+        if (resultEl) resultEl.innerHTML = _renderReconciliationResult(result);
+        btn.textContent = '✓ Done';
+      }
+    } catch (err) {
+      if (resultEl) {
+        resultEl.innerHTML = `<div class="rc-result-error">⚠ ${_esc(err.message || 'Unknown error')}</div>`;
+      }
+    } finally {
+      btn.disabled = false;
+      if (btn.textContent === '⏳ Reconciling…') btn.textContent = '🔀 Run Reconciliation';
+    }
+  }
+
+  function _renderReconciliationLoading() {
+    return `<div class="rc-result-loading">
+      <span class="spin" aria-hidden="true">⟳</span>
+      <span>Reconciling reviews…</span>
+    </div>`;
+  }
+
+  /**
+   * Render the ReconciliationOutput as a structured result card.
+   * Shows consensus, divergent, open decisions, unresolved weaknesses, provenance.
+   */
+  function _renderReconciliationResult(r) {
+    if (!r || !r.reconciliation_id) {
+      return `<div class="rc-result-error">⚠ No reconciliation data returned.</div>`;
+    }
+
+    const anchorOnly   = r.anchor_only === true;
+    const selectedCount = (r.selected_review_ids || []).length;
+    const suppCount    = selectedCount - 1;
+
+    // ── Provenance header
+    const provRows = (r.provenance_summary || []).map(p => {
+      const label = p.is_anchor
+        ? `<span class="rc-anchor-badge">Anchor</span>`
+        : `<span class="rc-supp-badge">Supplemental</span>`;
+      return `<div class="rc-prov-row">
+        ${label}
+        <span class="rc-chip-id">${_esc(p.review_id)}</span>
+        <span class="rc-chip-persona">${_esc(p.persona || '')}</span>
+        <span class="rc-prov-count">${p.item_count || 0} items</span>
+      </div>`;
+    }).join('');
+
+    // ── Section renderer (collapsible)
+    const _section = (icon, title, items, emptyMsg) => {
+      if (!items || !items.length) {
+        return `<div class="rc-section">
+          <div class="rc-section-header">
+            <span class="rc-section-icon">${icon}</span>
+            <span class="rc-section-title">${_esc(title)}</span>
+            <span class="rc-count-badge">0</span>
+          </div>
+          <p class="rc-empty-note">${_esc(emptyMsg)}</p>
+        </div>`;
+      }
+      const rows = items.slice(0, 10).map(item => {
+        const prov = (item.source_reviews || [])
+          .map(p => `${_esc(p.review_id)}${p.is_anchor ? '⚓' : ''}`)
+          .join(', ');
+        const absent = item.absent_from_reviews && item.absent_from_reviews.length
+          ? `<span class="rc-absent-hint">absent from: ${_esc(item.absent_from_reviews.join(', '))}</span>`
+          : '';
+        return `<div class="rc-item">
+          <span class="rc-item-cat">${_esc(item.category || '')}</span>
+          <span class="rc-item-text">${_esc(item.text || '')}</span>
+          ${absent}
+          <span class="rc-item-prov">${prov}</span>
+        </div>`;
+      }).join('');
+      const more = items.length > 10
+        ? `<p class="rc-more-note">+${items.length - 10} more items</p>` : '';
+      return `<details class="rc-section rc-expandable" open>
+        <summary class="rc-section-header">
+          <span class="rc-section-icon">${icon}</span>
+          <span class="rc-section-title">${_esc(title)}</span>
+          <span class="rc-count-badge">${items.length}</span>
+          <span class="rc-expand-hint">▶</span>
+        </summary>
+        <div class="rc-section-body">${rows}${more}</div>
+      </details>`;
+    };
+
+    return `<div class="rc-result-card">
+      <div class="rc-result-header">
+        <span class="rc-result-icon" aria-hidden="true">✅</span>
+        <div class="rc-result-meta">
+          <span class="rc-result-title">Reconciliation Complete</span>
+          <span class="rc-result-sub">
+            Anchor: <strong>${_esc(r.anchor_review_id)}</strong>
+            · ${anchorOnly ? 'Anchor-only' : `${suppCount} supplemental review${suppCount !== 1 ? 's' : ''}`}
+          </span>
+        </div>
+      </div>
+
+      <div class="rc-prov-block">
+        <div class="rc-prov-label">Reviews reconciled</div>
+        ${provRows}
+      </div>
+
+      ${_section('✅', 'Consensus Points',     r.consensus_points,     'No consensus points identified.')}
+      ${_section('⚡', 'Divergent Points',     r.divergent_points,     'No divergent points found.')}
+      ${_section('🔷', 'Open Decisions',       r.open_decisions,       'No open decisions.')}
+      ${_section('✔',  'Confirmed Decisions',  r.confirmed_decisions,  'No confirmed decisions.')}
+      ${_section('⚠',  'Unresolved Weaknesses', r.unresolved_weaknesses, 'No unresolved weaknesses.')}
+
+      <p class="rc-result-note">
+        This pack is your proposal-ready intelligence base.
+        ${r.reconciliation_id ? `ID: <code>${_esc(r.reconciliation_id)}</code>` : ''}
+      </p>
+    </div>`;
+  }
+
   // ── Public: render a full review into the drawer ──────────────────────────
 
   /**
@@ -744,6 +1075,7 @@ const ReviewDetail = (() => {
       _renderDecisionPoints(r),
       _renderQuestions(r),
       _renderCreateIterationAction(r),   // Sprint 2: iteration form (explicit, not automatic)
+      _renderReconciliationPanel(r),     // Sprint 3: reconciliation selection + run
       _renderCompareAction(r),
     ].filter(Boolean).join('\n');
   }
@@ -815,8 +1147,11 @@ const ReviewDetail = (() => {
     renderReview,
     onWeaknessStatus,
     onWeaknessNote,
-    onToggleIterationForm,  // Sprint 2
-    onCreateIteration,      // Sprint 2
+    onToggleIterationForm,           // Sprint 2
+    onCreateIteration,               // Sprint 2
+    onToggleReconciliationPanel,     // Sprint 3
+    onReconciliationCheckboxChange,  // Sprint 3
+    onRunReconciliation,             // Sprint 3
   };
 
 })();

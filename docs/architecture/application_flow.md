@@ -27,6 +27,10 @@
 | Review iteration toggle | `static/v2/js/review_detail.js` | `ReviewDetail.onToggleIterationForm()` *(Sprint 2)* |
 | Review iteration submit | `static/v2/js/review_detail.js` | `ReviewDetail.onCreateIteration()` *(Sprint 2)* |
 | Review iteration API call | `static/v2/js/api.js` | `API.createReviewIteration()` *(Sprint 2)* |
+| Reconciliation panel toggle | `static/v2/js/review_detail.js` | `ReviewDetail.onToggleReconciliationPanel()` *(Sprint 3)* |
+| Reconciliation selection save | `static/v2/js/api.js` | `API.saveReconciliationSelection()` *(Sprint 3)* |
+| Reconciliation run | `static/v2/js/api.js` | `API.runReconciliation()` *(Sprint 3)* |
+| Reconciliation fetch | `static/v2/js/api.js` | `API.fetchReconciliation()` *(Sprint 3)* |
 
 ---
 
@@ -172,4 +176,44 @@ stateDiagram-v2
     IterationFormOpen --> DrawerOpen: user cancels form
     IterationFormOpen --> IterationCreated: onCreateIteration() → POST /iterate
     IterationCreated --> DrawerOpen: result card shown; user refreshes list
+    DrawerOpen --> ReconciliationOpen: user clicks 'Select & Reconcile' *(Sprint 3)*
+    ReconciliationOpen --> DrawerOpen: user cancels reconciliation panel
+    ReconciliationOpen --> ReconciliationDone: onRunReconciliation() → POST /reconciliation/run
+    ReconciliationDone --> DrawerOpen: result card shown; intelligence pack ready
 ```
+
+
+---
+
+### Reconciliation Flow (Sprint 3)
+
+```mermaid
+flowchart LR
+    RC1["User opens Review\nFull Details drawer"] --> RC2["ReviewDetail.renderReview(r)\nrenders _renderReconciliationPanel(r)"]
+    RC2 --> RC3["User clicks\n'Select & Reconcile'"]
+    RC3 --> RC4["onToggleReconciliationPanel(rid)\nreveals panel body\n(explicit user action only)"]
+    RC4 --> RC5["_populateReconciliationReviewList()\nloads checkboxes from AppState.selectedVersion.reviews\nNO auto-selection"]
+    RC5 --> RC6["Anchor pre-populated\nwith currently open review\nUser checks supplemental reviews"]
+    RC6 --> RC7["User clicks\n'Run Reconciliation'"]
+    RC7 --> RC8["onRunReconciliation(btn)\ncollects anchor + checked supplemental IDs"]
+    RC8 --> RC9["API.saveReconciliationSelection(pid, vid,\nanchorRid, selectedIds)"]
+    RC9 --> RC10["POST /hierarchy/versions/{vid}/reconciliation/select"]
+    RC10 --> RC11["handle_save_selection()\nhandlers/reconciliation.py"]
+    RC11 --> RC12["save_reconciliation_selection()\nservices/reconciliation.py\nvalidates all IDs exist"]
+    RC12 --> RC13["API.runReconciliation(pid, vid,\nanchorRid, selectedIds)"]
+    RC13 --> RC14["POST /hierarchy/versions/{vid}/reconciliation/run"]
+    RC14 --> RC15["handle_run_reconciliation()\nhandlers/reconciliation.py"]
+    RC15 --> RC16["run_reconciliation()\nservices/reconciliation.py"]
+    RC16 --> RC17["Normalise reviews\ncompute consensus / divergent\ndecisions / weaknesses\nprovenance"]
+    RC17 --> RC18["store.save_reconciliation_output(output)\nSQLite reconciliation_outputs table"]
+    RC18 --> RC19["Returns ReconciliationOutput\nreconciliation_id, anchor_review_id,\nconsensus_points, divergent_points,\nopen_decisions, unresolved_weaknesses,\nmerged_findings, provenance_summary"]
+    RC19 --> RC20["_renderReconciliationResult(result)\nConfirmation card in drawer\nshows all sections + provenance"]
+```
+
+> **Sprint 3 rules:**
+> - Reconciliation is NOT the same as proposal generation.
+> - The anchor review is pre-populated but user must confirm the selection.
+> - No reviews are auto-selected — all selection is explicit.
+> - Original reviews are never modified by reconciliation.
+> - Output is deterministic (Jaccard token overlap, no LLM).
+> - Every output item carries `source_reviews` provenance.

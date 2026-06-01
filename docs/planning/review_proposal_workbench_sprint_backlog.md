@@ -134,13 +134,77 @@
 
 ---
 
-## Sprint 3 — Reconciliation (PLANNED)
+## Sprint 3 — Reconciliation ✅ COMPLETE
 
 **Goal:** Reconcile selected reviews into one proposal-ready decision pack.
 
-**Status:** Not started
+**Branch:** `sprint3/multi-review-reconciliation`
 
-**Module:** Review selection + reconciliation
+**Status:** Complete
+
+**Module:** Explicit review selection + reconciliation engine + output
+
+### Stories delivered
+
+| # | Story | Status |
+|---|-------|--------|
+| 3.1 | Explicit review selection — anchor + supplemental (no auto-select) | ✅ Done |
+| 3.2 | `ReconciliationSelection` model + persistence (`reconciliation_selections` table) | ✅ Done |
+| 3.3 | Reconciliation engine — consensus, divergent, decisions, weaknesses, merged findings | ✅ Done |
+| 3.4 | `ReconciliationOutput` model with all sections + `provenance_summary` | ✅ Done |
+| 3.5 | Provenance retention — every output item carries `source_reviews[]` | ✅ Done |
+| 3.6 | Reconciliation output persistence (`reconciliation_outputs` table) | ✅ Done |
+| 3.7 | Handler + 4 API routes (POST select, POST run, GET selection, GET output) | ✅ Done |
+| 3.8 | Frontend reconciliation panel in review drawer (explicit, not automatic) | ✅ Done |
+| 3.9 | Sprint 1 + Sprint 2 non-regression confirmed | ✅ Done |
+
+### Acceptance criteria — verified
+
+- [x] User explicitly selects anchor review and supplemental reviews — no auto-selection
+- [x] Active Review pre-populated as anchor in UI — user must confirm
+- [x] Reconciliation produces: consensus, divergent, open decisions, confirmed decisions, unresolved weaknesses, merged findings, provenance summary
+- [x] Every output item carries `source_reviews` with `is_anchor` flag
+- [x] Provenance preserves `review_id`, `persona`, artifact refs where available
+- [x] Original reviews unchanged after reconciliation
+- [x] Anchor-only mode works (single review)
+- [x] Old reviews without reconciliation fields render safely
+- [x] Sprint 1 features (weakness notes, provenance chips) still working
+- [x] Sprint 2 features (review iteration, lineage banner) still working
+- [x] v1 untouched
+
+### Files changed
+
+**New files:**
+- `models/reconciliation.py` — `ReconciliationSelection`, `ProvenanceRef`, `ReconciledItem`, `NormalisedReviewInput`, `ReconciliationOutput`
+- `services/reconciliation.py` — `save_reconciliation_selection`, `get_reconciliation_selection`, `run_reconciliation`, `get_reconciliation`; full engine
+- `handlers/reconciliation.py` — `handle_save_selection`, `handle_get_selection`, `handle_run_reconciliation`, `handle_get_reconciliation`
+- `tests/test_rw_sprint3_reconciliation.py` — 129 tests (sections A–L), all passing
+
+**Modified files:**
+- `db/database.py` — `reconciliation_selections` + `reconciliation_outputs` tables in schema + migration
+- `db/hierarchy_store_sql.py` — `save_reconciliation_selection`, `get_reconciliation_selection`, `save_reconciliation_output`, `get_reconciliation_output`
+- `models/hierarchy.py` — file-store reconciliation stubs (4 methods)
+- `project_manager.py` — Sprint 3 reconciliation functions re-exported
+- `server.py` — `import h_reconciliation`; 2 POST + 2 GET routes registered
+- `static/v2/js/api.js` — `saveReconciliationSelection`, `fetchReconciliationSelection`, `runReconciliation`, `fetchReconciliation` + mock data; exported on `window.API`
+- `static/v2/js/review_detail.js` — `_renderReconciliationPanel`, `onToggleReconciliationPanel`, `onRunReconciliation`, `_renderReconciliationResult`, handlers exported; `renderReview` updated
+- `static/v2/css/components.css` — Sprint 3 `.rc-*` CSS classes appended
+
+**Docs:**
+- `docs/architecture/data_model.md` — Sprint 3 entities, ERD, schema examples, relationship rules
+- `docs/architecture/application_flow.md` — Reconciliation Flow diagram, state machine updated
+- `docs/architecture/logic_flow.md` — §9 Reconciliation Selection + Engine Logic
+- `docs/architecture/traceability_map.md` — §1.9, §2–§6 updated
+- `docs/planning/review_proposal_workbench_sprint_backlog.md` — Sprint 3 marked complete
+
+### New API endpoints (Sprint 3)
+
+| Method | Path | Handler | Purpose |
+|--------|------|---------|---------|
+| POST | `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/select` | `handle_save_selection` | Save explicit anchor + supplemental selection |
+| POST | `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/run` | `handle_run_reconciliation` | Run reconciliation, return output |
+| GET  | `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/selection` | `handle_get_selection` | Fetch stored selection |
+| GET  | `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation` | `handle_get_reconciliation` | Fetch stored output |
 
 ---
 
