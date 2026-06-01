@@ -50,6 +50,7 @@ nav button.active{background:var(--surface2);color:var(--accent);}
   padding:5px 12px;border-radius:var(--radius);cursor:pointer;
   font-size:12px;font-weight:600;transition:all var(--transition);white-space:nowrap;}
 .btn-compare:hover{background:rgba(88,166,255,.1);border-color:var(--accent);}
+.btn-compare:disabled{opacity:.4;cursor:not-allowed;}
 .btn-compare .cmp-icon{font-size:13px;}
 </style>
 
@@ -494,7 +495,11 @@ async function api(method,path,body){
 
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
-const TABS=['dashboard','versions','reviews'];
+// All navigation tabs — dashboard is fully implemented; others show placeholder or route to existing view
+const TABS=[
+  'dashboard','ingest','intelligence','versions','reviews',
+  'diagrams','phases','pre-sales','proposals','admin','settings'
+];
 
 let state={
   projects:[],current:null,tab:'dashboard',
@@ -502,7 +507,14 @@ let state={
   _dashVersion:'',_dashReview:'',
   _versionSort:'newest',_reviewSort:'newest',
   _lastRenderedProject:null,
+  // Extended state (Tasks #5)
+  selectedReviewIds:[],   // review IDs checked for multi-review actions
 };
+
+// ── Derived helpers (read from inline state, mirrors spec shape) ─────────────
+function getProjectId(){ return state.current?.id||null; }
+function getVersionId(){ return state._dashVersion||null; }
+function getReviewId(){  return state._dashReview||null; }
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 function formatVersionOption(v){
@@ -585,6 +597,14 @@ function renderActivityStrip(hierarchy){
 
 
 <script>
+// ── Tab labels (friendly display names) ─────────────────────────────────────
+const TAB_LABELS={
+  'dashboard':'Dashboard','ingest':'Ingest','intelligence':'Intelligence',
+  'versions':'Versions','reviews':'Reviews','diagrams':'Diagrams',
+  'phases':'Phases','pre-sales':'Pre-sales','proposals':'Proposals',
+  'admin':'Admin','settings':'Settings'
+};
+
 // ── Header ───────────────────────────────────────────────────────────────────
 function renderHeader(){
   const proj=state.current;
@@ -593,6 +613,10 @@ function renderHeader(){
     `<option value="${p.id}" ${p.id===(proj?.id)?'selected':''}>${escHtml(p.name)}</option>`
   ).join('');
   const displayName=proj?proj.name:state.appName;
+
+  // Derive Generate Proposal disabled state: need a project + at least one review selected or dashReview set
+  const hasReview=!!(state._dashReview||(state.selectedReviewIds&&state.selectedReviewIds.length));
+  const canPropose=!!(proj&&hasReview);
 
   document.getElementById('header').innerHTML=`
     <span class="logo">⚡ <span>${escHtml(displayName)}</span></span>
@@ -603,7 +627,7 @@ function renderHeader(){
       :'<span style="color:var(--text-dim);font-size:12px">No projects</span>'}
     <nav>
       ${TABS.map(t=>`<button class="${state.tab===t?'active':''}"
-        onclick="switchTab('${t}')">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
+        onclick="switchTab('${t}')">${escHtml(TAB_LABELS[t]||t)}</button>`).join('')}
     </nav>
     <!-- ── Search widget ── -->
     <div id="v2-search-wrap"></div>
@@ -612,6 +636,15 @@ function renderHeader(){
       ?`<button class="btn-compare" onclick="openCompare()"
           title="Compare versions or reviews side-by-side">
           <span class="cmp-icon">⇄</span> Compare
+        </button>`
+      :''}
+    <!-- ── Generate Proposal CTA (Task #4) ── -->
+    ${proj
+      ?`<button class="btn-compare" id="btn-gen-proposal"
+          onclick="openProposalPanel()"
+          ${canPropose?'':'disabled'}
+          title="${canPropose?'Generate proposal from active review':'Select a review first to enable'}">
+          📄 Generate Proposal
         </button>`
       :''}`;
   // Mount/refresh QuickSearch with current hierarchy versions
@@ -709,14 +742,36 @@ function switchTab(tab){
   render();
 }
 
+// ── Placeholder for non-implemented tabs ─────────────────────────────────────
+function viewPlaceholder(tabName){
+  return`<div class="card" style="margin-top:20px">
+    <div class="empty" style="padding:48px 24px">
+      <div class="empty-icon" style="font-size:42px;margin-bottom:14px">🚧</div>
+      <p style="font-size:14px;font-weight:600;margin-bottom:6px">${escHtml(TAB_LABELS[tabName]||tabName)}</p>
+      <p style="font-size:12px;color:var(--text-dim)">This section is not yet available in v2.</p>
+    </div>
+  </div>`;
+}
+
 async function render(){
   renderHeader();
   if(state.current)state._lastRenderedProject=state.current.id;
   const main=document.getElementById('main');
   main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
-  const views={dashboard:viewDashboard,versions:viewVersions,reviews:viewReviews};
+
+  // Tab → view function map; missing tabs get placeholder
+  const views={
+    dashboard:  viewDashboard,
+    versions:   viewVersions,
+    reviews:    viewReviews,
+  };
+
   try{
-    main.innerHTML=await(views[state.tab]||viewDashboard)();
+    if(views[state.tab]){
+      main.innerHTML=await views[state.tab]();
+    }else{
+      main.innerHTML=viewPlaceholder(state.tab);
+    }
   }catch(e){
     console.error('render error:',e);
     main.innerHTML=`<div class="card">
@@ -729,7 +784,11 @@ async function render(){
 // ── Compare entry point ───────────────────────────────────────────────────────
 function openCompare(){
   if(!state.current){toast('Select a project first','err');return;}
-  Compare.open(state.current.id);
+  const pid=state.current.id;
+  console.log('[Compare] Opening for project:', pid,
+    '| dashVersion:', state._dashVersion,
+    '| dashReview:', state._dashReview);
+  Compare.open(pid);
 }
 </script>
 
@@ -866,6 +925,9 @@ async function viewDashboard(){
       <button class="btn" onclick="switchTab('versions')">📋 Versions</button>
       <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Reviews</button>
       <button class="btn-compare" onclick="openCompare()" style="margin-left:auto">⇄ Compare</button>
+      ${state._dashReview
+        ?`<button class="btn-compare" onclick="openProposalPanel()" style="color:var(--green);border-color:var(--green-dim)">📄 Generate Proposal</button>`
+        :''}
     </div>
   </div>`;
 
@@ -1280,7 +1342,7 @@ async function viewReviews(){
 async function selectProject(id){
   state.current=state.projects.find(x=>x.id===id)||state.current;
   try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
-  state._dashVersion='';state._dashReview='';
+  state._dashVersion='';state._dashReview='';state.selectedReviewIds=[];
   state.tab='dashboard';render();
 }
 
@@ -1327,6 +1389,428 @@ async function loadAppInfo(){
   await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);
   render();
 })();
+</script>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     PROPOSAL PANEL STYLES (scoped .pp- prefix)
+     ═══════════════════════════════════════════════════════════════════ -->
+<style>
+/* ── Drawer overlay (right side panel) ────────────────────────── */
+.pp-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);
+  z-index:1900;opacity:0;transition:opacity .25s ease;pointer-events:none;}
+.pp-overlay.pp-open{opacity:1;pointer-events:all;}
+
+.pp-drawer{position:fixed;top:0;right:0;height:100%;width:520px;max-width:95vw;
+  background:var(--surface);border-left:1px solid var(--border2);
+  z-index:1901;display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .28s ease;
+  box-shadow:-4px 0 20px rgba(0,0,0,.45);}
+.pp-overlay.pp-open .pp-drawer{transform:translateX(0);}
+
+/* ── Drawer header ────────────────────────────────────────────── */
+.pp-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:13px 16px;border-bottom:1px solid var(--border);
+  background:var(--surface2);flex-shrink:0;}
+.pp-title{font-size:14px;font-weight:700;color:var(--text);flex:1;}
+.pp-subtitle{font-size:11px;color:var(--text-dim);}
+.pp-close{background:transparent;border:none;color:var(--text-dim);
+  cursor:pointer;font-size:17px;padding:2px 6px;border-radius:var(--radius);
+  transition:all .15s;line-height:1;}
+.pp-close:hover{color:var(--text);background:var(--surface3);}
+
+/* ── Context bar (version + review) ──────────────────────────── */
+.pp-ctx{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:8px 16px;border-bottom:1px solid var(--border);
+  background:var(--bg);font-size:11px;flex-shrink:0;}
+.pp-ctx-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;
+  border-radius:20px;font-size:10px;font-weight:600;}
+.pp-ctx-ver{background:rgba(88,166,255,.12);border:1px solid var(--accent-dim);color:var(--accent);}
+.pp-ctx-rev{background:rgba(188,140,255,.12);border:1px solid var(--purple);color:var(--purple);}
+.pp-ctx-supp{background:rgba(63,185,80,.10);border:1px solid var(--green-dim);color:var(--green);}
+
+/* ── Generate action bar ──────────────────────────────────────── */
+.pp-action-bar{display:flex;align-items:center;gap:10px;
+  padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.pp-generate-btn{display:inline-flex;align-items:center;gap:6px;
+  background:var(--accent);color:#000;border:none;padding:7px 18px;
+  border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:700;
+  transition:opacity .15s;}
+.pp-generate-btn:hover{opacity:.85;}
+.pp-generate-btn:disabled{opacity:.45;cursor:not-allowed;}
+.pp-force-label{display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;color:var(--text-dim);cursor:pointer;}
+.pp-err{color:var(--red);font-size:12px;padding:0 16px 8px;}
+
+/* ── Scroll body ──────────────────────────────────────────────── */
+.pp-body{flex:1;overflow-y:auto;padding:16px;}
+.pp-body::-webkit-scrollbar{width:5px;}
+.pp-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+
+/* ── Loading state ────────────────────────────────────────────── */
+.pp-loading{display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:48px 24px;gap:12px;color:var(--text-dim);}
+.pp-spin{animation:spin .8s linear infinite;display:inline-block;font-size:24px;}
+
+/* ── Empty / placeholder ──────────────────────────────────────── */
+.pp-empty{text-align:center;padding:48px 24px;color:var(--text-dim);}
+.pp-empty-icon{font-size:38px;margin-bottom:12px;opacity:.5;}
+
+/* ── Proposal sections ────────────────────────────────────────── */
+.pp-section{margin-bottom:18px;border:1px solid var(--border);
+  border-radius:var(--radius-lg);overflow:hidden;}
+.pp-section-head{display:flex;align-items:center;gap:8px;padding:10px 14px;
+  background:var(--surface2);cursor:pointer;user-select:none;
+  transition:background .15s;}
+.pp-section-head:hover{background:var(--surface3);}
+.pp-section-icon{font-size:15px;}
+.pp-section-title{font-size:12px;font-weight:700;color:var(--text);flex:1;}
+.pp-section-chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;}
+.pp-section.open .pp-section-chevron{transform:rotate(90deg);}
+.pp-section-body{padding:12px 14px;border-top:1px solid var(--border);
+  font-size:12px;color:var(--text-dim);line-height:1.7;display:none;}
+.pp-section.open .pp-section-body{display:block;}
+
+/* ── Decision / risk list items ───────────────────────────────── */
+.pp-list{list-style:none;margin:0;padding:0;}
+.pp-list li{padding:5px 0;border-bottom:1px solid var(--border);
+  font-size:12px;color:var(--text-dim);}
+.pp-list li:last-child{border-bottom:none;}
+.pp-list-marker{display:inline-block;width:6px;height:6px;border-radius:50%;
+  margin-right:8px;flex-shrink:0;vertical-align:middle;}
+.pp-confirmed{background:var(--green);}
+.pp-open{background:var(--yellow);}
+.pp-risk{background:var(--red);}
+.pp-action{background:var(--accent);}
+
+/* ── Coverage grid ────────────────────────────────────────────── */
+.pp-coverage-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
+.pp-coverage-item{background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius);padding:8px 10px;}
+.pp-coverage-label{font-size:10px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
+.pp-coverage-val{font-size:12px;color:var(--text-dim);}
+
+/* ── Metadata footer ──────────────────────────────────────────── */
+.pp-meta-footer{margin-top:12px;padding-top:10px;border-top:1px solid var(--border);
+  font-size:10px;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:8px;}
+</style>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// PROPOSAL PANEL (Task #4)
+// In-context right-side drawer — no page navigation.
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Proposal panel state ──────────────────────────────────────
+const _pp = {
+  open: false,
+  loading: false,
+  error: null,
+  doc: null,       // last generated ProposalDocument
+  tracker: null,   // proposal tracker (contains current_version)
+};
+
+// ── Open the panel ────────────────────────────────────────────
+function openProposalPanel(){
+  const pid = getProjectId();
+  if(!pid){ toast('Select a project first','err'); return; }
+  const rid = getReviewId();
+  if(!rid){ toast('Select a review first to generate a proposal','err'); return; }
+
+  console.log('[Proposal] Opening panel | project:', pid,
+    '| version:', getVersionId(), '| review:', rid,
+    '| supplemental:', state.selectedReviewIds);
+
+  _pp.open = true;
+  _pp.error = null;
+  _pp.doc = null;
+  _buildProposalDrawer();
+}
+
+// ── Close the panel ───────────────────────────────────────────
+function closeProposalPanel(){
+  _pp.open = false;
+  const overlay = document.getElementById('pp-overlay');
+  if(overlay){
+    overlay.classList.remove('pp-open');
+    setTimeout(()=>{ if(overlay.parentNode) overlay.remove(); }, 300);
+  }
+}
+
+// ── Build / inject drawer DOM ─────────────────────────────────
+function _buildProposalDrawer(){
+  const existing = document.getElementById('pp-overlay');
+  if(existing) existing.remove();
+
+  const pid = getProjectId();
+  const vid = getVersionId();
+  const rid = getReviewId();
+  const suppIds = (state.selectedReviewIds||[]).filter(id=>id!==rid);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'pp-overlay';
+  overlay.className = 'pp-overlay';
+  overlay.innerHTML = `
+    <div class="pp-drawer" id="pp-drawer" role="dialog" aria-modal="true" aria-labelledby="pp-title">
+      <div class="pp-header">
+        <div>
+          <div class="pp-title" id="pp-title">📄 Generate Proposal</div>
+          <div class="pp-subtitle">In-context proposal from active review</div>
+        </div>
+        <button class="pp-close" onclick="closeProposalPanel()" aria-label="Close proposal panel">✕</button>
+      </div>
+
+      <div class="pp-ctx" id="pp-ctx-bar">
+        ${vid?`<span class="pp-ctx-chip pp-ctx-ver">📋 ${escHtml(vid)}</span>`:''}
+        ${rid?`<span class="pp-ctx-chip pp-ctx-rev">🔍 ${escHtml(rid)}</span>`:''}
+        ${suppIds.length?`<span class="pp-ctx-chip pp-ctx-supp">+${suppIds.length} supplemental</span>`:''}
+        ${!vid&&!rid?'<span style="font-size:11px;color:var(--text-muted)">No context selected</span>':''}
+      </div>
+
+      <div class="pp-action-bar">
+        <button class="pp-generate-btn" id="pp-gen-btn"
+          onclick="_runGenerateProposal()"
+          ${rid?'':'disabled'}>
+          ⚡ Generate
+        </button>
+        <label class="pp-force-label">
+          <input type="checkbox" id="pp-force-chk" style="width:auto;margin:0">
+          Force regenerate
+        </label>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:auto" id="pp-status"></span>
+      </div>
+
+      <div id="pp-error-bar"></div>
+
+      <div class="pp-body" id="pp-body">
+        <div class="pp-empty">
+          <div class="pp-empty-icon">📝</div>
+          <p style="font-size:12px">Click <strong>Generate</strong> to create a proposal document from the active review.</p>
+        </div>
+      </div>
+    </div>`;
+
+  // Close on backdrop click
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) closeProposalPanel(); });
+
+  // Close on Escape
+  overlay._keyHandler = e=>{ if(e.key==='Escape') closeProposalPanel(); };
+  document.addEventListener('keydown', overlay._keyHandler);
+
+  document.body.appendChild(overlay);
+  requestAnimationFrame(()=> overlay.classList.add('pp-open'));
+}
+
+// ── Run proposal generation ───────────────────────────────────
+async function _runGenerateProposal(){
+  const pid = getProjectId();
+  const vid = getVersionId();
+  const rid = getReviewId();
+
+  if(!pid||!rid){
+    _ppSetError('A project and review must be selected to generate a proposal.');
+    return;
+  }
+
+  const suppIds = (state.selectedReviewIds||[]).filter(id=>id!==rid);
+  const force   = document.getElementById('pp-force-chk')?.checked||false;
+
+  console.log('[Proposal] Generating | pid:', pid, '| vid:', vid,
+    '| rid:', rid, '| supp:', suppIds, '| force:', force);
+
+  _ppSetLoading(true);
+  _ppSetError(null);
+
+  try{
+    // Step 1: Ensure a proposal tracker exists (idempotent — create if missing)
+    let tracker = await api('GET', `/api/projects/${pid}/proposal`);
+    if(tracker.error){
+      // Create proposal tracker for this project
+      tracker = await api('POST', `/api/projects/${pid}/proposal`,{
+        proposal_name: `Proposal – ${pid}`,
+        hierarchy_version_id: vid||'',
+        review_id: rid,
+      });
+      if(tracker.error){
+        _ppSetError(`Failed to create proposal: ${tracker.error}`);
+        _ppSetLoading(false);
+        return;
+      }
+    }
+    _pp.tracker = tracker;
+
+    const proposalVerId = tracker.current_version||tracker.version_id||'';
+    console.log('[Proposal] Tracker ok | proposal_ver_id:', proposalVerId);
+
+    // Step 2: Generate document
+    const payload = {
+      proposal_ver_id:       proposalVerId,
+      hierarchy_version_id:  vid||'',
+      review_id:             rid,
+      ai_backend:            'files_only',
+      force:                 force,
+    };
+    if(suppIds.length) payload.supplemental_review_ids = suppIds;
+
+    console.log('[Proposal] POST /proposal/generate | payload:', payload);
+
+    const result = await api('POST', `/api/projects/${pid}/proposal/generate`, payload);
+
+    if(result.error){
+      _ppSetError(`Generation failed: ${result.error}`);
+      _ppSetLoading(false);
+      return;
+    }
+
+    _pp.doc = result.document || result;
+    console.log('[Proposal] Document received:', Object.keys(_pp.doc||{}));
+    _ppSetLoading(false);
+    _renderProposalDoc(_pp.doc);
+
+  }catch(err){
+    console.error('[Proposal] Exception:', err);
+    _ppSetError(`Unexpected error: ${escHtml(err.message)}`);
+    _ppSetLoading(false);
+  }
+}
+
+// ── Loading state ─────────────────────────────────────────────
+function _ppSetLoading(on){
+  _pp.loading = on;
+  const btn = document.getElementById('pp-gen-btn');
+  const status = document.getElementById('pp-status');
+  if(btn){ btn.disabled = on; btn.textContent = on?'⏳ Generating…':'⚡ Generate'; }
+  if(on){
+    const body = document.getElementById('pp-body');
+    if(body) body.innerHTML=`<div class="pp-loading">
+      <span class="pp-spin">⟳</span>
+      <span>Generating proposal document…</span>
+      <span style="font-size:11px;color:var(--text-muted)">This may take a moment</span>
+    </div>`;
+    if(status) status.textContent='Running…';
+  }else{
+    if(status) status.textContent='';
+    // Re-enable button only if review is still selected
+    if(btn&&getReviewId()) btn.disabled=false;
+  }
+}
+
+// ── Error display ─────────────────────────────────────────────
+function _ppSetError(msg){
+  _pp.error = msg;
+  const bar = document.getElementById('pp-error-bar');
+  if(!bar) return;
+  bar.innerHTML = msg
+    ? `<div class="pp-err">⚠ ${escHtml(msg)}</div>`
+    : '';
+}
+
+// ── Render proposal document ──────────────────────────────────
+function _renderProposalDoc(doc){
+  const body = document.getElementById('pp-body');
+  if(!body) return;
+  if(!doc){ body.innerHTML='<div class="pp-empty"><div class="pp-empty-icon">⚠</div><p>No document data returned.</p></div>'; return; }
+
+  // Normalise: doc may be nested under 'document' key or be flat
+  const d = doc.document || doc;
+
+  // ── Section helpers ───────────────────────────────────────
+  function _sec(id, icon, title, bodyHtml, defaultOpen=true){
+    return`<div class="pp-section ${defaultOpen?'open':''}" id="pp-sec-${id}">
+      <div class="pp-section-head" onclick="_ppToggleSec('pp-sec-${id}')">
+        <span class="pp-section-icon">${icon}</span>
+        <span class="pp-section-title">${title}</span>
+        <span class="pp-section-chevron">▶</span>
+      </div>
+      <div class="pp-section-body">${bodyHtml}</div>
+    </div>`;
+  }
+
+  function _list(items, markerClass, fallback='None recorded'){
+    if(!items||!items.length) return`<p style="font-size:12px;color:var(--text-muted);font-style:italic">${fallback}</p>`;
+    return`<ul class="pp-list">${items.map(i=>
+      `<li><span class="pp-list-marker ${markerClass}"></span>${escHtml(String(i))}</li>`
+    ).join('')}</ul>`;
+  }
+
+  function _text(val, fallback='Not available'){
+    if(!val) return`<p style="font-size:12px;color:var(--text-muted);font-style:italic">${fallback}</p>`;
+    return`<p style="white-space:pre-line;font-size:12px;color:var(--text-dim)">${escHtml(String(val))}</p>`;
+  }
+
+  // ── 1. Executive Summary ──────────────────────────────────
+  const execSummary = d.executive_summary || d.summary || '';
+  const sec1 = _sec('exec','📋','Executive Summary', _text(execSummary));
+
+  // ── 2. Solution Approach ──────────────────────────────────
+  const approach = d.solution_approach || d.approach || '';
+  const sec2 = _sec('approach','🏗','Solution Approach', _text(approach));
+
+  // ── 3. Coverage ───────────────────────────────────────────
+  const cov = d.coverage || d.proposal_coverage || {};
+  const covHtml = `<div class="pp-coverage-grid">
+    <div class="pp-coverage-item">
+      <div class="pp-coverage-label">🗂 Scope</div>
+      <div class="pp-coverage-val">${escHtml(cov.scope||cov.scope_coverage||'–')}</div>
+    </div>
+    <div class="pp-coverage-item">
+      <div class="pp-coverage-label">🏛 Architecture</div>
+      <div class="pp-coverage-val">${escHtml(cov.architecture||cov.architecture_coverage||'–')}</div>
+    </div>
+    <div class="pp-coverage-item">
+      <div class="pp-coverage-label">🚀 Delivery</div>
+      <div class="pp-coverage-val">${escHtml(cov.delivery||cov.delivery_coverage||'–')}</div>
+    </div>
+    <div class="pp-coverage-item">
+      <div class="pp-coverage-label">🔒 Security / Ops</div>
+      <div class="pp-coverage-val">${escHtml(cov.security||cov.security_coverage||cov.nfr||'–')}</div>
+    </div>
+    <div class="pp-coverage-item">
+      <div class="pp-coverage-label">💰 Commercials</div>
+      <div class="pp-coverage-val">${escHtml(cov.commercials||cov.commercial_coverage||'–')}</div>
+    </div>
+  </div>
+  ${(cov.overall_score!=null)?`<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Overall coverage score: <strong>${cov.overall_score}</strong></p>`:''}`;
+  const sec3 = _sec('coverage','📊','Coverage', covHtml);
+
+  // ── 4. Confirmed Decisions ────────────────────────────────
+  const ds = d.decision_summary || d.decisions || {};
+  const confirmed = ds.confirmed || d.confirmed_decisions || [];
+  const sec4 = _sec('confirmed','✅','Confirmed Decisions', _list(confirmed,'pp-confirmed'));
+
+  // ── 5. Open Decisions ─────────────────────────────────────
+  const openDec = ds.open || d.open_decisions || [];
+  const sec5 = _sec('open-dec','🔄','Open Decisions', _list(openDec,'pp-open'), false);
+
+  // ── 6. Risks / Sign-off Gaps ──────────────────────────────
+  const risks = d.risks || d.risk_items || [];
+  const gaps  = d.sign_off_gaps || d.gaps || [];
+  const riskHtml = _list(risks,'pp-risk','No risks recorded')
+    + (gaps.length?`<p style="font-size:11px;font-weight:600;color:var(--text-muted);margin-top:10px;margin-bottom:4px">Sign-off Gaps</p>`+_list(gaps,'pp-open'):'');
+  const sec6 = _sec('risks','⚠️','Risks / Sign-off Gaps', riskHtml, false);
+
+  // ── 7. Next Actions ───────────────────────────────────────
+  const actions = d.next_actions || d.action_items || ds.next_steps || [];
+  const sec7 = _sec('actions','🎯','Next Actions', _list(actions,'pp-action'), false);
+
+  // ── Metadata footer ───────────────────────────────────────
+  const created = d.generated_at || d.created_at || '';
+  const docId   = d.document_id  || d.proposal_version_id || '';
+  const metaFooter = `<div class="pp-meta-footer">
+    ${docId?`<span>ID: ${escHtml(docId)}</span>`:''}
+    ${created?`<span>Generated: ${fmtDate(created)}</span>`:''}
+    <span style="margin-left:auto">project: ${escHtml(getProjectId()||'–')} · review: ${escHtml(getReviewId()||'–')}</span>
+  </div>`;
+
+  body.innerHTML = sec1+sec2+sec3+sec4+sec5+sec6+sec7+metaFooter;
+}
+
+// ── Toggle a proposal section ─────────────────────────────────
+function _ppToggleSec(secId){
+  const el = document.getElementById(secId);
+  if(el) el.classList.toggle('open');
+}
 </script>
 </body>
 </html>
