@@ -136,6 +136,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._serve_static("index.html")
             return
 
+        if clean_path_early == "/favicon.ico":
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            return
+
         if self.path.startswith("/feedback"):
             self._serve_static("feedback.html")
             return
