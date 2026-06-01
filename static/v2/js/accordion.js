@@ -68,6 +68,64 @@ const VersionAccordion = (() => {
     return 'pending';
   }
 
+  // ── Review quality metrics block ──────────────────────────
+  /**
+   * Computes and renders the Issues / Resolved / Carry Forward metrics row.
+   *
+   * Source fields (all optional — degrades gracefully when absent):
+   *   review.total_findings      → Issues found
+   *   review.issues_resolved     → Resolved (explicit field, or derived)
+   *   review.issues_carry_forward→ Carry forward (explicit, or total − resolved)
+   *
+   * Derivation when explicit fields are absent:
+   *   - If neither resolved nor carry_forward is set, show only Issues found.
+   *   - If resolved is set but carry_forward is not, derive carry_forward.
+   *
+   * @param {object} review
+   * @returns {string} HTML — empty string when no metrics are available
+   */
+  function _renderReviewMetrics(review) {
+    const issues   = review.total_findings      != null ? Number(review.total_findings)       : null;
+    const resolved = review.issues_resolved     != null ? Number(review.issues_resolved)      : null;
+    let   carry    = review.issues_carry_forward != null ? Number(review.issues_carry_forward) : null;
+
+    // Nothing to show
+    if (issues == null && resolved == null && carry == null) return '';
+
+    // Derive carry forward when missing
+    if (resolved != null && carry == null && issues != null) {
+      carry = Math.max(0, issues - resolved);
+    }
+
+    const issuesHtml = issues != null
+      ? `<span class="review-metric" title="Issues found in this review">
+           <span class="review-metric-icon">🔍</span>
+           <span class="review-metric-label">Issues</span>
+           <span class="review-metric-value">${issues}</span>
+         </span>`
+      : '';
+
+    const resolvedHtml = resolved != null
+      ? `<span class="review-metric review-metric--resolved" title="Issues resolved since previous review">
+           <span class="review-metric-icon">✅</span>
+           <span class="review-metric-label">Resolved</span>
+           <span class="review-metric-value">${resolved}</span>
+         </span>`
+      : '';
+
+    const carryHtml = carry != null
+      ? `<span class="review-metric review-metric--carry" title="Issues carried forward to next review">
+           <span class="review-metric-icon">⏩</span>
+           <span class="review-metric-label">Carry fwd</span>
+           <span class="review-metric-value">${carry}</span>
+         </span>`
+      : '';
+
+    return `<div class="review-metrics" aria-label="Review quality metrics">
+      ${issuesHtml}${resolvedHtml}${carryHtml}
+    </div>`;
+  }
+
   // ── Render a single review row ────────────────────────────
   /**
    * TRACE: UI → ReviewItem → AppState.openDrawer()
@@ -78,6 +136,7 @@ const VersionAccordion = (() => {
   function _renderReviewItem(review, activeReviewId) {
     const isActive = review.review_id === activeReviewId;
     const iterLabel = review.iteration_number ? `R${review.iteration_number}` : review.review_id;
+    const metricsHtml = _renderReviewMetrics(review);
     return `
       <div class="review-item${isActive ? ' active-review' : ''}"
            role="button"
@@ -96,6 +155,7 @@ const VersionAccordion = (() => {
         <span class="badge ${_qualityClass(review.quality_status)}">${_qualityLabel(review.quality_status)}</span>
         ${isActive ? '<span class="badge badge-primary">Active</span>' : ''}
         <span class="review-item-date" title="${_esc(review.created_at || '')}">${_relTime(review.created_at)}</span>
+        ${metricsHtml}
       </div>`;
   }
 
