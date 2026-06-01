@@ -68,6 +68,30 @@ const VersionAccordion = (() => {
     return 'pending';
   }
 
+  // ── Phase tag ─────────────────────────────────────────────
+  /**
+   * Map phase_id → a coloured inline badge.
+   *
+   * Colours use CSS custom properties from theme.css.
+   * Unknown phase IDs fall back to a neutral badge.
+   *
+   * @param {string} phaseId  - e.g. 'pre-sales' | 'design' | 'delivery' | 'support'
+   * @returns {string} HTML span, or '' if phaseId is blank
+   */
+  const _PHASE_COLOURS = {
+    'pre-sales': 'phase-tag--presales',
+    'design':    'phase-tag--design',
+    'delivery':  'phase-tag--delivery',
+    'support':   'phase-tag--support',
+  };
+
+  function _phaseTag(phaseId) {
+    if (!phaseId) return '';
+    const cls  = _PHASE_COLOURS[phaseId] || 'phase-tag--default';
+    const label = phaseId.replace(/-/g, '\u2011');  // non-breaking hyphen for display
+    return `<span class="phase-tag ${_esc(cls)}" title="Phase: ${_esc(phaseId)}">${_esc(label)}</span>`;
+  }
+
   // ── Review quality metrics block ──────────────────────────
   /**
    * Computes and renders the Issues / Resolved / Carry Forward metrics row.
@@ -189,6 +213,7 @@ const VersionAccordion = (() => {
              onkeydown="if(event.key==='Enter'||event.key===' ')VersionAccordion.onVersionHeaderClick(this)">
           <span class="accordion-chevron" aria-hidden="true">▶</span>
           <span class="accordion-version-id">${_esc(vid)}</span>
+          ${_phaseTag(version.phase_id || '')}
           ${label ? `<span class="accordion-version-label">– ${_esc(label)}</span>` : ''}
           <div class="accordion-meta">
             <span class="badge badge-default">${reviewCount} review${reviewCount !== 1 ? 's' : ''}</span>
