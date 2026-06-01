@@ -845,3 +845,139 @@ input::placeholder, textarea::placeholder {
   margin-bottom: var(--space-2);
   width: 100%;
 }
+
+
+
+/* ── Recent Activity Strip (.activity-strip) ───────────────
+ * TRACE: UI → ActivityStrip → AppState (recentActivity)
+ * Component: dashboard.js → _renderActivityStrip()
+ * Mounted in: #v2-activity-strip (above snapshot grid)
+ */
+.activity-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-4);
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  /* Hide scrollbar on webkit but keep scroll behaviour */
+  scrollbar-width: none;
+}
+.activity-strip::-webkit-scrollbar { display: none; }
+
+.activity-strip-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.activity-items {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+}
+
+.activity-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.activity-item-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.activity-item-id {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--primary-dark);
+}
+
+.activity-item-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.activity-item-time {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.activity-sep {
+  color: var(--border);
+  font-size: 14px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* Per-type colour accents on the id chip */
+.activity-type--version  .activity-item-id { color: var(--primary-dark); }
+.activity-type--review   .activity-item-id { color: var(--purple); }
+.activity-type--complete .activity-item-id { color: var(--green); }
+
+
+/* ── Phase Tags (.phase-tag) ───────────────────────────────
+ * TRACE: UI → PhaseOverlay → accordion.js → _phaseTag()
+ * Shown next to version ID in accordion headers.
+ *
+ * Colour scheme matches standard project phases:
+ *   pre-sales → purple   design → blue
+ *   delivery  → green    support → amber
+ */
+.phase-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.phase-tag--presales {
+  background: var(--purple-dim);
+  border-color: var(--purple);
+  color: #6B5CA5;
+}
+
+.phase-tag--design {
+  background: var(--primary-dim);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.phase-tag--delivery {
+  background: var(--green-dim);
+  border-color: var(--green);
+  color: #2E7D5C;
+}
+
+.phase-tag--support {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: #92600A;
+}
+
+.phase-tag--default {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-muted);
+}

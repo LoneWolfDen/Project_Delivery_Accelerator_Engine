@@ -509,6 +509,74 @@ function formatVersionOption(v){
   const lbl=v.label?' – '+v.label:'';
   return`${v.version_id}${lbl} (${cnt} review${cnt===1?'':'s'}${aStr})`;
 }
+
+// ── Phase tag helper ─────────────────────────────────────────────────────────
+// Maps phase_id → coloured inline tag HTML.
+// Used in viewVersions() and viewReviews() to show phase context next to version.
+const PHASE_TAG_STYLES={
+  'pre-sales': 'background:rgba(155,142,209,.12);border:1px solid #9B8ED1;color:#6B5CA5',
+  'design':    'background:rgba(108,140,255,.10);border:1px solid #6C8CFF;color:#4A6AE0',
+  'delivery':  'background:rgba(76,175,130,.12);border:1px solid #4CAF82;color:#2E7D5C',
+  'support':   'background:rgba(245,158,11,.12); border:1px solid #F59E0B;color:#92600A',
+};
+function phaseTag(phaseId){
+  if(!phaseId)return'';
+  const s=PHASE_TAG_STYLES[phaseId]||'background:var(--surface2);border:1px solid var(--border);color:var(--text-muted)';
+  const lbl=phaseId.replace(/-/g,'\u2011');
+  return`<span style="display:inline-flex;align-items:center;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;${s};flex-shrink:0;white-space:nowrap">${escHtml(lbl)}</span>`;
+}
+
+// ── Activity strip builder ────────────────────────────────────────────────────
+// Derives recent activity events from the hierarchy tree.
+// Returns HTML for the horizontal activity strip (max 5 events, newest first).
+const ACTIVITY_MAX=5;
+const ACTIVITY_META={
+  version_created:  {icon:'📋',label:'created'},
+  review_created:   {icon:'🔍',label:'reviewed'},
+  review_completed: {icon:'✅',label:'completed'},
+};
+function buildActivityEvents(hierarchy){
+  const events=[];
+  for(const phase of((hierarchy&&hierarchy.tree)||[])){
+    const phaseId=phase.id||'';
+    for(const ver of(phase.versions||[])){
+      if(ver.created_at)events.push({type:'version_created',id:ver.version_id,
+        label:ver.label?`${ver.version_id} – ${ver.label}`:ver.version_id,
+        timestamp:ver.created_at,phase_id:phaseId});
+      for(const rev of(ver.reviews||[])){
+        if(rev.created_at)events.push({
+          type:rev.quality_status==='complete'?'review_completed':'review_created',
+          id:rev.review_id,
+          label:`${rev.review_id}${rev.persona?' · '+rev.persona:''}`,
+          timestamp:rev.created_at,phase_id:phaseId,version_id:ver.version_id});
+      }
+    }
+  }
+  events.sort((a,b)=>(b.timestamp||'').localeCompare(a.timestamp||''));
+  return events.slice(0,ACTIVITY_MAX);
+}
+function renderActivityStrip(hierarchy){
+  const events=buildActivityEvents(hierarchy);
+  if(!events.length)return'';
+  const items=events.map(ev=>{
+    const meta=ACTIVITY_META[ev.type]||{icon:'•',label:ev.type};
+    const rel=relativeTime(ev.timestamp);
+    return`<span style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0">
+      <span>${meta.icon}</span>
+      <strong style="font-size:12px;color:var(--accent)">${escHtml(ev.id)}</strong>
+      <span style="font-size:11px;color:var(--text-dim)">${meta.label}</span>
+      ${rel?`<span style="font-size:10px;color:var(--text-muted)">${escHtml(rel)}</span>`:''}
+    </span>`;
+  }).join('<span style="color:var(--border2);font-size:14px;user-select:none">·</span>');
+  return`<div style="display:flex;align-items:center;gap:12px;background:var(--surface);
+    border:1px solid var(--border);border-radius:var(--radius-lg);padding:7px 16px;
+    font-size:12px;overflow-x:auto;white-space:nowrap;margin-bottom:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);scrollbar-width:none">
+    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+      color:var(--text-muted);flex-shrink:0">Recent:</span>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap">${items}</div>
+  </div>`;
+}
 </script>
 
 
@@ -705,9 +773,26 @@ async function viewDashboard(){
   if(selR)ps.push(`review_id=${selR}`);
   if(ps.length)metricsUrl+='?'+ps.join('&');
 
-  let metrics={},versions=[];
-  try{[metrics]=await Promise.all([api('GET',metricsUrl)]);}catch(e){}
+  let metrics={},versions=[],hierarchy={};
+  try{[metrics,hierarchy]=await Promise.all([api('GET',metricsUrl),api('GET',`/api/projects/${pid}/hierarchy`)]);}catch(e){}
   try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions`);versions=r.versions||[];}catch(e){}
+
+  // ── Smart Defaulting: auto-select latest version + review when nothing chosen
+  if(!selV&&versions.length>0){
+    // Sort newest first (API should already do this, but guard)
+    const sorted=[...versions].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
+    const latest=sorted[0];
+    state._dashVersion=latest.version_id;
+    const revs=latest.reviews||[];
+    const active=revs.find(r=>r.review_id===latest.active_review_id)||revs[0]||null;
+    if(active&&!selR)state._dashReview=active.review_id;
+    // Re-build metrics URL with the defaulted selection
+    if(state._dashVersion){
+      metricsUrl=`/api/projects/${pid}/hierarchy/metrics?version_id=${state._dashVersion}`;
+      if(state._dashReview)metricsUrl+=`&review_id=${state._dashReview}`;
+      try{metrics=await api('GET',metricsUrl);}catch(e){}
+    }
+  }
 
   const avail=metrics.available_reviews||[];
   const ds=metrics.data_source||{};
@@ -723,12 +808,19 @@ async function viewDashboard(){
   const artifacts=metrics.artifact_count||0;
   const trend=metrics.trend||[];
 
+  // Use resolved defaults for dropdown selected state
+  const curV=state._dashVersion||'';
+  const curR=state._dashReview||'';
+
   const vOpts=versions.map(v=>`<option value="${v.version_id}"
-    ${v.version_id===selV?'selected':''}>${escHtml(v.version_id)}
+    ${v.version_id===curV?'selected':''}>${escHtml(v.version_id)}
     ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
   const rOpts=avail.map(r=>`<option value="${r.review_id}"
-    ${r.review_id===selR?'selected':''}>${r.review_id}
+    ${r.review_id===curR?'selected':''}>${r.review_id}
     – ${escHtml(r.persona)} (${fmtDateShort(r.created_at)})</option>`).join('');
+
+  // Activity strip (derived from hierarchy, no extra fetch)
+  const activityHtml=renderActivityStrip(hierarchy);
 
   // Context selector
   const ctxCard=versions.length?`<div class="card" style="padding:12px 16px">
@@ -801,7 +893,7 @@ async function viewDashboard(){
       </div>`:''}
   </div>`;
 
-  return ctxCard+overviewCard+insightCard;
+  return activityHtml+ctxCard+overviewCard+insightCard;
 }
 </script>
 
@@ -912,6 +1004,7 @@ async function viewVersions(){
             onmouseout="this.style.background=''">
             <span class="chevron">▶</span>
             <strong class="fs12">${escHtml(ver.version_id)}</strong>
+            ${phaseTag(ver.phase_id||'')}
             ${ver.label?`<span class="c-dim fs11">– ${escHtml(ver.label)}</span>`:''}
             <span class="fs10 c-muted">${fmtDateShort(ver.created_at)}</span>
             <span class="tag ${verRevs.length?'tag-blue':''}">${verRevs.length} review${verRevs.length===1?'':'s'}</span>

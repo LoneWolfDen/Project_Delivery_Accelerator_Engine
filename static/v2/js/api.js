@@ -330,6 +330,73 @@ async function fetchVersionDetail(projectId, versionId) {
   return _request('GET', `/api/projects/${projectId}/hierarchy/versions/${versionId}`);
 }
 
+/**
+ * Derive recent activity events from the hierarchy tree.
+ *
+ * TRACE: API → /api/projects/{pid}/hierarchy → Data: ActivityEvent[]
+ *
+ * Events are derived client-side from the hierarchy payload — no separate
+ * endpoint required. Each event has the shape:
+ *   { type, id, label, timestamp, phase_id, version_id? }
+ *
+ * Types:
+ *   'version_created'  — a Version was created
+ *   'review_created'   — a Review was run
+ *   'review_completed' — a Review reached quality_status 'complete'
+ *
+ * Returns the latest MAX_EVENTS events sorted newest-first.
+ *
+ * @param {string} projectId
+ * @returns {Promise<{events: Array}>}
+ */
+const _ACTIVITY_MAX = 5;
+
+async function fetchActivity(projectId) {
+  const hierarchy = await fetchHierarchy(projectId);
+  return { events: _deriveActivityEvents(hierarchy) };
+}
+
+/**
+ * Pure function: derive activity events from a HierarchyPayload.
+ * Exported so dashboard.js can call it synchronously when hierarchy is
+ * already in state (avoids a second fetch).
+ *
+ * @param {object} hierarchy
+ * @returns {Array<{type, id, label, timestamp, phase_id, version_id?}>}
+ */
+function _deriveActivityEvents(hierarchy) {
+  const events = [];
+  for (const phase of ((hierarchy && hierarchy.tree) || [])) {
+    const phaseId = phase.id || '';
+    for (const ver of (phase.versions || [])) {
+      if (ver.created_at) {
+        events.push({
+          type:      'version_created',
+          id:        ver.version_id,
+          label:     ver.label ? `${ver.version_id} – ${ver.label}` : ver.version_id,
+          timestamp: ver.created_at,
+          phase_id:  phaseId,
+        });
+      }
+      for (const rev of (ver.reviews || [])) {
+        if (rev.created_at) {
+          events.push({
+            type:       rev.quality_status === 'complete' ? 'review_completed' : 'review_created',
+            id:         rev.review_id,
+            label:      `${rev.review_id}${rev.persona ? ' · ' + rev.persona : ''}`,
+            timestamp:  rev.created_at,
+            phase_id:   phaseId,
+            version_id: ver.version_id,
+          });
+        }
+      }
+    }
+  }
+  // Sort newest first, cap at max
+  events.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  return events.slice(0, _ACTIVITY_MAX);
+}
+
 // ── Expose globally ───────────────────────────────────────────
 window.API = {
   fetchProjects,
@@ -339,4 +406,6 @@ window.API = {
   fetchReviews,
   fetchReviewDetail,
   fetchVersionDetail,
+  fetchActivity,
+  _deriveActivityEvents,
 };
