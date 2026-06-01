@@ -2095,7 +2095,7 @@ function _renderProposalDoc(doc){
   if(!body) return;
   if(!doc){ body.innerHTML='<div class="pp-empty"><div class="pp-empty-icon">⚠</div><p>No document data returned.</p></div>'; return; }
 
-  // Normalise: doc may be nested under 'document' key or be flat
+  // Normalise: response is {document:{...}} from POST /proposal/generate
   const d = doc.document || doc;
 
   // ── Section helpers ───────────────────────────────────────
@@ -2123,65 +2123,91 @@ function _renderProposalDoc(doc){
   }
 
   // ── 1. Executive Summary ──────────────────────────────────
-  const execSummary = d.executive_summary || d.summary || '';
-  const sec1 = _sec('exec','📋','Executive Summary', _text(execSummary));
+  // ProposalDocument field: exec_summary
+  const sec1 = _sec('exec','📋','Executive Summary', _text(d.exec_summary||''));
 
-  // ── 2. Solution Approach ──────────────────────────────────
-  const approach = d.solution_approach || d.approach || '';
-  const sec2 = _sec('approach','🏗','Solution Approach', _text(approach));
+  // ── 2. Scope ──────────────────────────────────────────────
+  // ProposalDocument field: scope (plain text)
+  const sec2 = _sec('approach','🏗','Scope', _text(d.scope||''));
 
-  // ── 3. Coverage ───────────────────────────────────────────
-  const cov = d.coverage || d.proposal_coverage || {};
-  const covHtml = `<div class="pp-coverage-grid">
-    <div class="pp-coverage-item">
-      <div class="pp-coverage-label">🗂 Scope</div>
-      <div class="pp-coverage-val">${escHtml(cov.scope||cov.scope_coverage||'–')}</div>
-    </div>
-    <div class="pp-coverage-item">
-      <div class="pp-coverage-label">🏛 Architecture</div>
-      <div class="pp-coverage-val">${escHtml(cov.architecture||cov.architecture_coverage||'–')}</div>
-    </div>
-    <div class="pp-coverage-item">
-      <div class="pp-coverage-label">🚀 Delivery</div>
-      <div class="pp-coverage-val">${escHtml(cov.delivery||cov.delivery_coverage||'–')}</div>
-    </div>
-    <div class="pp-coverage-item">
-      <div class="pp-coverage-label">🔒 Security / Ops</div>
-      <div class="pp-coverage-val">${escHtml(cov.security||cov.security_coverage||cov.nfr||'–')}</div>
-    </div>
-    <div class="pp-coverage-item">
-      <div class="pp-coverage-label">💰 Commercials</div>
-      <div class="pp-coverage-val">${escHtml(cov.commercials||cov.commercial_coverage||'–')}</div>
-    </div>
-  </div>
-  ${(cov.overall_score!=null)?`<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Overall coverage score: <strong>${cov.overall_score}</strong></p>`:''}`;
-  const sec3 = _sec('coverage','📊','Coverage', covHtml);
+  // ── 3. Delivery Phases ────────────────────────────────────
+  // ProposalDocument field: delivery_phases [{phase, description, duration_weeks}]
+  const phases = d.delivery_phases || [];
+  const phasesHtml = phases.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px">${phases.map(p=>`
+        <div style="background:var(--surface2);border-radius:var(--radius);padding:8px 10px">
+          <div style="font-weight:700;font-size:12px;color:var(--accent)">${escHtml(p.phase||'')}</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${escHtml(p.description||'')}
+            ${p.duration_weeks?`<span style="color:var(--text-muted);margin-left:6px">(${p.duration_weeks}w)</span>`:''}
+          </div>
+        </div>`).join('')}</div>`
+    : `<p style="font-size:12px;color:var(--text-muted);font-style:italic">No phases defined</p>`;
+  const sec3 = _sec('phases','🚀','Delivery Phases', phasesHtml);
 
-  // ── 4. Confirmed Decisions ────────────────────────────────
-  const ds = d.decision_summary || d.decisions || {};
-  const confirmed = ds.confirmed || d.confirmed_decisions || [];
-  const sec4 = _sec('confirmed','✅','Confirmed Decisions', _list(confirmed,'pp-confirmed'));
+  // ── 4. Risks ──────────────────────────────────────────────
+  // ProposalDocument field: risks [{risk, category, impact, probability, mitigation}]
+  const risks = d.risks || [];
+  const risksHtml = risks.length
+    ? `<div style="display:flex;flex-direction:column;gap:6px">${risks.map(r=>{
+        const impactColour = r.impact==='high'?'var(--red)':r.impact==='medium'?'var(--yellow)':'var(--green)';
+        return`<div style="background:var(--surface2);border-radius:var(--radius);padding:8px 10px;
+                  border-left:3px solid ${impactColour}">
+          <div style="font-size:12px;color:var(--text)">${escHtml(r.risk||String(r))}</div>
+          ${r.category||r.impact?`<div style="font-size:10px;color:var(--text-muted);margin-top:3px">
+            ${r.category?`<span style="text-transform:uppercase;letter-spacing:.4px">${escHtml(r.category)}</span>`:''}
+            ${r.impact?`· impact: <strong style="color:${impactColour}">${escHtml(r.impact)}</strong>`:''}
+            ${r.probability?`· prob: ${escHtml(r.probability)}`:''}
+          </div>`:''}
+          ${r.mitigation?`<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic">${escHtml(r.mitigation)}</div>`:''}
+        </div>`;}).join('')}</div>`
+    : `<p style="font-size:12px;color:var(--text-muted);font-style:italic">No risks recorded</p>`;
+  const sec4 = _sec('risks','⚠️','Risks', risksHtml, false);
 
-  // ── 5. Open Decisions ─────────────────────────────────────
-  const openDec = ds.open || d.open_decisions || [];
-  const sec5 = _sec('open-dec','🔄','Open Decisions', _list(openDec,'pp-open'), false);
+  // ── 5. Assumptions ────────────────────────────────────────
+  // ProposalDocument field: assumptions [{assumption, category}]
+  const assumptions = d.assumptions || [];
+  const assumptionTexts = assumptions.map(a=>
+    typeof a === 'string' ? a : (a.assumption ? `[${a.category||'general'}] ${a.assumption}` : String(a))
+  );
+  const sec5 = _sec('assumptions','💡','Assumptions', _list(assumptionTexts,'pp-confirmed','No assumptions recorded'), false);
 
-  // ── 6. Risks / Sign-off Gaps ──────────────────────────────
-  const risks = d.risks || d.risk_items || [];
-  const gaps  = d.sign_off_gaps || d.gaps || [];
-  const riskHtml = _list(risks,'pp-risk','No risks recorded')
-    + (gaps.length?`<p style="font-size:11px;font-weight:600;color:var(--text-muted);margin-top:10px;margin-bottom:4px">Sign-off Gaps</p>`+_list(gaps,'pp-open'):'');
-  const sec6 = _sec('risks','⚠️','Risks / Sign-off Gaps', riskHtml, false);
+  // ── 6. Exclusions & Acceptance Criteria ───────────────────
+  // ProposalDocument fields: exclusions [str], acceptance_criteria [str]
+  const exclusions = d.exclusions || [];
+  const acceptance = d.acceptance_criteria || [];
+  const exclHtml = `
+    ${exclusions.length?`<p style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px">Exclusions</p>`+_list(exclusions,'pp-risk'):''}
+    ${acceptance.length?`<p style="font-size:11px;font-weight:700;color:var(--text-muted);margin-top:${exclusions.length?10:0}px;margin-bottom:4px">Acceptance Criteria</p>`+_list(acceptance,'pp-action'):''}
+    ${!exclusions.length&&!acceptance.length?`<p style="font-size:12px;color:var(--text-muted);font-style:italic">None recorded</p>`:''}`;
+  const sec6 = _sec('excl','📋','Exclusions &amp; Acceptance Criteria', exclHtml, false);
 
-  // ── 7. Next Actions ───────────────────────────────────────
-  const actions = d.next_actions || d.action_items || ds.next_steps || [];
-  const sec7 = _sec('actions','🎯','Next Actions', _list(actions,'pp-action'), false);
+  // ── 7. Coverage (when present — multi-review path) ────────
+  // ProposalDocument field: proposal_coverage {scope:{status,matched_themes,gap_notes}, …}
+  const covObj = d.proposal_coverage;
+  const DOMAINS = ['scope','architecture','delivery','security_compliance','operations','commercials'];
+  const DOMAIN_LABELS = {scope:'Scope',architecture:'Architecture',delivery:'Delivery',
+    security_compliance:'Security/Compliance',operations:'Operations',commercials:'Commercials'};
+  const statusColour = s => s==='Addressed'?'var(--green)':s==='Partial'?'var(--yellow)':'var(--text-muted)';
+  const covHtml = covObj
+    ? `<div class="pp-coverage-grid">${DOMAINS.map(k=>{
+        const dom = covObj[k]||{};
+        const status = dom.status||'Not Yet Addressed';
+        return`<div class="pp-coverage-item">
+          <div class="pp-coverage-label">${escHtml(DOMAIN_LABELS[k])}</div>
+          <div class="pp-coverage-val" style="color:${statusColour(status)}">${escHtml(status)}</div>
+          ${dom.gap_notes?`<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${escHtml(dom.gap_notes)}</div>`:''}
+        </div>`;}).join('')}</div>
+        ${covObj.source_theme_count?`<p style="font-size:10px;color:var(--text-muted);margin-top:8px">${covObj.source_theme_count} source theme(s) analysed</p>`:''}`
+    : `<p style="font-size:12px;color:var(--text-muted);font-style:italic">Coverage analysis not available (single-review mode)</p>`;
+  const sec7 = _sec('coverage','📊','Coverage Analysis', covHtml, false);
 
   // ── Metadata footer ───────────────────────────────────────
-  const created = d.generated_at || d.created_at || '';
-  const docId   = d.document_id  || d.proposal_version_id || '';
+  const created  = d.generated_at || '';
+  const docId    = d.doc_id || '';
+  const backend  = d.ai_backend || '';
   const metaFooter = `<div class="pp-meta-footer">
-    ${docId?`<span>ID: ${escHtml(docId)}</span>`:''}
+    ${docId?`<span>doc: ${escHtml(docId)}</span>`:''}
+    ${backend?`<span>mode: ${escHtml(backend)}</span>`:''}
     ${created?`<span>Generated: ${fmtDate(created)}</span>`:''}
     <span style="margin-left:auto">project: ${escHtml(getProjectId()||'–')} · review: ${escHtml(getReviewId()||'–')}</span>
   </div>`;

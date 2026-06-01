@@ -21,7 +21,6 @@ from processors.proposals import (
     update_proposal_status as _update_proposal_status,
 )
 from processors.prompt_logger import link_outcome as _link_outcome
-from processors.review_quality import check_review_gate
 from services.intelligence import get_project_intelligence
 from services.project import PROJECTS_DIR, get_project
 
@@ -40,16 +39,9 @@ def create_proposal(
     if get_project(project_id) is None:
         raise ValueError(f"Project not found: {project_id}")
 
-    if active_review_id:
-        try:
-            gate = check_review_gate(project_id, active_review_id)
-            if not gate["can_set_active"]:
-                raise ValueError(
-                    f"Review {active_review_id} has not passed the quality gate. "
-                    f"Mark it as complete or interim first. Blockers: {'; '.join(gate['blockers'])}"
-                )
-        except ImportError:
-            pass
+    # Quality gate is enforced at document generation time (generate_proposal_doc),
+    # not at tracker creation. The tracker is a lightweight record that must always
+    # be creatable so the UI can progress to the generation step.
 
     project_dir = PROJECTS_DIR / project_id
     intel = get_project_intelligence(project_id)
