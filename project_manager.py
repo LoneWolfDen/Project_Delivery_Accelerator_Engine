@@ -66,6 +66,7 @@ from services.review import (  # noqa: F401
     get_review_diff,
     get_version_readiness,
     get_prompt_history,
+    create_review_iteration,
 )
 
 # ── hierarchy ──────────────────────────────────────────────────────────────────

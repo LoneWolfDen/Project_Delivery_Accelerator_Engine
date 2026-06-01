@@ -415,6 +415,55 @@ function _deriveActivityEvents(hierarchy) {
   return events.slice(0, _ACTIVITY_MAX);
 }
 
+// ── Review Iteration (Sprint 2) ──────────────────────────────
+
+/**
+ * Create a new review from an existing review (review iteration).
+ *
+ * TRACE: API → POST /hierarchy/reviews/{rid}/iterate → Data: Review (new, with lineage)
+ *
+ * Body:
+ *   new_persona   — optional; defaults to base review persona
+ *   custom_prompt — optional prompt suffix
+ *
+ * Returns the new review summary including:
+ *   review_id, version_id, persona_used, previous_review_id,
+ *   base_review_persona, persona_changed, iteration_number, created_at
+ *
+ * @param {string} projectId
+ * @param {string} baseReviewId   — the review being iterated from (user-selected)
+ * @param {string} [newPersona]   — optional new persona
+ * @param {string} [customPrompt] — optional custom prompt
+ * @returns {Promise<object>}
+ */
+async function createReviewIteration(projectId, baseReviewId, newPersona, customPrompt) {
+  if (_useMock()) {
+    // Simulate a newly created iteration review
+    const base = MOCK_DATA.reviewDetail;
+    const newRid = `r${Date.now()}`;
+    return {
+      review_id:           newRid,
+      version_id:          base.version_id,
+      persona_used:        newPersona || base.persona,
+      previous_review_id:  baseReviewId,
+      base_review_persona: base.persona,
+      persona_changed:     !!(newPersona && newPersona !== base.persona),
+      iteration_number:    (base.iteration_number || 1) + 1,
+      created_at:          new Date().toISOString(),
+      quality_status:      'pending',
+      summary:             `Iteration from ${baseReviewId}. Refined analysis with updated context.`,
+    };
+  }
+  const body = {};
+  if (newPersona)   body.new_persona   = newPersona;
+  if (customPrompt) body.custom_prompt = customPrompt;
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/reviews/${baseReviewId}/iterate`,
+    body,
+  );
+}
+
 // ── Weakness note + status (Sprint 1) ────────────────────────
 
 /**
@@ -466,4 +515,5 @@ window.API = {
   _deriveActivityEvents,
   updateWeaknessStatus,
   updateWeaknessNote,
+  createReviewIteration,
 };

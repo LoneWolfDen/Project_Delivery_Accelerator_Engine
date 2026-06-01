@@ -455,6 +455,267 @@ const ReviewDetail = (() => {
     </div>`;
   }
 
+  // ── Sprint 2: Iteration lineage banner ────────────────────────────────────
+
+  /**
+   * Renders a lineage banner when this review was built from a prior review.
+   * Shown only when previous_review_id is present — absent for original reviews.
+   * Backward-compatible: reviews without the field render cleanly.
+   *
+   * TRACE: ReviewDetail._renderIterationBanner → Review.previous_review_id
+   */
+  function _renderIterationBanner(r) {
+    const prevId = r.previous_review_id || '';
+    if (!prevId) return '';
+
+    const basePersona = r.base_review_persona || '';
+    const personaChanged = (r.persona_used || r.persona || '') !== basePersona && !!basePersona;
+
+    return `<div class="ri-lineage-banner">
+      <span class="ri-lineage-icon" aria-hidden="true">🔗</span>
+      <div class="ri-lineage-body">
+        <span class="ri-lineage-label">Iterated from</span>
+        <span class="ri-lineage-base-id">${_esc(prevId)}</span>
+        ${basePersona
+          ? `<span class="ri-lineage-persona">${_esc(basePersona)}</span>`
+          : ''}
+        ${personaChanged
+          ? `<span class="ri-lineage-changed">persona changed</span>`
+          : ''}
+      </div>
+    </div>`;
+  }
+
+  // ── Sprint 2: Create New Review from this Review ──────────────────────────
+
+  /**
+   * Renders the "Create New Review from this Review" action panel.
+   * Intentional UX: requires explicit user action — no auto-trigger.
+   * Persona selection is optional; defaults to this review's persona.
+   *
+   * TRACE: ReviewDetail._renderCreateIterationAction → API.createReviewIteration
+   */
+  const ITERATION_PERSONAS = [
+    'Solution Architect',
+    'Enterprise Architect',
+    'Delivery Manager',
+    'Product Owner',
+    'Resource Manager',
+    'DevOps Engineer',
+    'Cloud Architect',
+    'Platform Engineer',
+    'QA / Test Lead',
+    'Data Engineer',
+    'Security Architect',
+    'FinOps',
+  ];
+
+  function _renderCreateIterationAction(r) {
+    const proj = window.AppState ? window.AppState.get('selectedProject') : null;
+    if (!proj) return '';
+
+    const rid       = r.review_id || '';
+    const persona   = r.persona || r.persona_used || '';
+    const uid       = `ri-form-${_esc(rid)}`;
+
+    const personaOpts = ITERATION_PERSONAS.map(p =>
+      `<option value="${_esc(p)}" ${p === persona ? 'selected' : ''}>${_esc(p)}</option>`
+    ).join('');
+
+    return `<div class="ri-create-section" id="${uid}-section">
+      <div class="ri-create-header">
+        <span class="ri-create-icon" aria-hidden="true">➕</span>
+        <span class="ri-create-title">Create New Review from this Review</span>
+        <button class="ri-create-toggle btn btn-ghost btn-sm"
+                aria-expanded="false"
+                onclick="ReviewDetail.onToggleIterationForm('${_esc(rid)}')"
+                title="Open review iteration form">
+          New Iteration
+        </button>
+      </div>
+
+      <div class="ri-create-form" id="${uid}-form" style="display:none" aria-hidden="true">
+        <p class="ri-create-desc">
+          A new review will be created using <strong>${_esc(rid)}</strong> as context.
+          The original review is preserved and unchanged.
+        </p>
+
+        <div class="ri-form-row">
+          <label class="ri-form-label" for="${uid}-persona">Persona</label>
+          <select id="${uid}-persona" class="ri-persona-select"
+                  title="Choose same or different persona for the new review">
+            ${personaOpts}
+          </select>
+          ${persona
+            ? `<span class="ri-form-hint">Current: <em>${_esc(persona)}</em></span>`
+            : ''}
+        </div>
+
+        <div class="ri-form-row">
+          <label class="ri-form-label" for="${uid}-prompt">Custom Prompt <span class="ri-optional">(optional)</span></label>
+          <textarea id="${uid}-prompt" class="ri-prompt-input" rows="2"
+                    placeholder="Additional guidance for this iteration…"></textarea>
+        </div>
+
+        <div class="ri-form-actions">
+          <button class="btn btn-primary btn-sm"
+                  id="${uid}-submit"
+                  data-review-id="${_esc(rid)}"
+                  data-project-id="${_esc(proj.id)}"
+                  data-form-uid="${_esc(uid)}"
+                  onclick="ReviewDetail.onCreateIteration(this)">
+            ➕ Create New Review
+          </button>
+          <button class="btn btn-ghost btn-sm"
+                  onclick="ReviewDetail.onToggleIterationForm('${_esc(rid)}')">
+            Cancel
+          </button>
+        </div>
+
+        <div class="ri-result" id="${uid}-result" style="display:none" aria-live="polite"></div>
+      </div>
+    </div>`;
+  }
+
+  // ── Sprint 2: Event handlers ──────────────────────────────────────────────
+
+  /**
+   * Toggle the iteration form open/closed.
+   * Called by the "New Iteration" button — explicit user action only.
+   */
+  function onToggleIterationForm(reviewId) {
+    const uid   = `ri-form-${reviewId}`;
+    const form  = document.getElementById(`${uid}-form`);
+    const btn   = document.querySelector(`#ri-form-${reviewId}-section .ri-create-toggle`);
+    if (!form) return;
+    const isOpen = form.style.display !== 'none';
+    form.style.display  = isOpen ? 'none' : '';
+    form.setAttribute('aria-hidden', isOpen ? 'true' : 'false');
+    if (btn) btn.setAttribute('aria-expanded', String(!isOpen));
+    // Clear any prior result when toggling
+    if (!isOpen) {
+      const result = document.getElementById(`${uid}-result`);
+      if (result) { result.style.display = 'none'; result.innerHTML = ''; }
+    }
+  }
+
+  /**
+   * Submit the review iteration form.
+   * Creates a new review from the base, then renders a lineage confirmation card.
+   */
+  async function onCreateIteration(submitBtn) {
+    const projectId = submitBtn.dataset.projectId;
+    const reviewId  = submitBtn.dataset.reviewId;
+    const uid       = submitBtn.dataset.formUid;
+
+    if (!projectId || !reviewId) return;
+
+    const personaEl  = document.getElementById(`${uid}-persona`);
+    const promptEl   = document.getElementById(`${uid}-prompt`);
+    const resultEl   = document.getElementById(`${uid}-result`);
+
+    const newPersona   = personaEl  ? personaEl.value.trim()  : '';
+    const customPrompt = promptEl   ? promptEl.value.trim()   : '';
+
+    // Disable button while running
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Creating…';
+    if (resultEl) { resultEl.style.display = ''; resultEl.innerHTML = _renderIterationLoading(); }
+
+    try {
+      const result = await window.API.createReviewIteration(
+        projectId, reviewId, newPersona || undefined, customPrompt || undefined
+      );
+
+      if (result && result.error) {
+        if (resultEl) {
+          resultEl.innerHTML = `<div class="ri-result-error">⚠ ${_esc(result.error)}</div>`;
+        }
+      } else {
+        if (resultEl) {
+          resultEl.innerHTML = _renderIterationResult(result);
+        }
+        // Disable form controls — iteration created; user should close drawer
+        if (personaEl)  personaEl.disabled  = true;
+        if (promptEl)   promptEl.disabled   = true;
+        submitBtn.textContent = '✓ Created';
+      }
+    } catch (err) {
+      if (resultEl) {
+        resultEl.innerHTML = `<div class="ri-result-error">⚠ Unexpected error: ${_esc(err.message || 'Unknown')}</div>`;
+      }
+    } finally {
+      submitBtn.disabled = false;
+      if (submitBtn.textContent === '⏳ Creating…') {
+        submitBtn.textContent = '➕ Create New Review';
+      }
+    }
+  }
+
+  function _renderIterationLoading() {
+    return `<div class="ri-result-loading">
+      <span class="spin" aria-hidden="true">⟳</span>
+      <span>Running review…</span>
+    </div>`;
+  }
+
+  /**
+   * Renders the confirmation card shown after a successful iteration.
+   * Makes lineage clear: new ID, persona used, link to predecessor.
+   */
+  function _renderIterationResult(r) {
+    if (!r || !r.review_id) return `<div class="ri-result-error">⚠ No review data returned.</div>`;
+
+    const personaChanged = r.persona_changed === true;
+    const iterLabel      = r.iteration_number ? `R${r.iteration_number}` : r.review_id;
+
+    return `<div class="ri-result-card">
+      <div class="ri-result-header">
+        <span class="ri-result-icon" aria-hidden="true">✅</span>
+        <span class="ri-result-title">New review created</span>
+      </div>
+      <div class="ri-result-rows">
+        <div class="ri-result-row">
+          <span class="ri-result-label">New Review ID</span>
+          <span class="ri-result-value ri-result-value--id">
+            ${_esc(iterLabel)}
+            <span class="ri-result-raw-id">${_esc(r.review_id)}</span>
+          </span>
+        </div>
+        <div class="ri-result-row">
+          <span class="ri-result-label">Persona Used</span>
+          <span class="ri-result-value">
+            ${_esc(r.persona_used || r.persona || '–')}
+            ${personaChanged
+              ? `<span class="ri-persona-changed-badge">changed</span>`
+              : `<span class="ri-persona-same-badge">same</span>`}
+          </span>
+        </div>
+        <div class="ri-result-row">
+          <span class="ri-result-label">Builds on</span>
+          <span class="ri-result-value">
+            <span class="ri-lineage-base-id">${_esc(r.previous_review_id || '–')}</span>
+            ${r.base_review_persona
+              ? `<span class="ri-result-base-persona">${_esc(r.base_review_persona)}</span>`
+              : ''}
+          </span>
+        </div>
+        <div class="ri-result-row">
+          <span class="ri-result-label">Created</span>
+          <span class="ri-result-value">${_esc(_fmtDate(r.created_at))}</span>
+        </div>
+        ${r.summary ? `
+        <div class="ri-result-row ri-result-row--summary">
+          <span class="ri-result-label">Summary</span>
+          <span class="ri-result-value ri-result-summary">${_esc(r.summary.slice(0, 200))}</span>
+        </div>` : ''}
+      </div>
+      <p class="ri-result-note">
+        Refresh the review list to see the new iteration. The original review is unchanged.
+      </p>
+    </div>`;
+  }
+
   // ── Public: render a full review into the drawer ──────────────────────────
 
   /**
@@ -462,12 +723,17 @@ const ReviewDetail = (() => {
    * Consumes the full Review object (after async fetch).
    * Safe for partial data (summary-only) on first render.
    *
+   * Sprint 2 additions:
+   *   - _renderIterationBanner(r)      — lineage banner (shown when previous_review_id present)
+   *   - _renderCreateIterationAction(r) — "Create New Review" form (explicit user action)
+   *
    * @param {object} r  Review object (full or summary)
    * @returns {string}  HTML
    */
   function renderReview(r) {
     if (!r) return '<div class="rd-empty">No review data available.</div>';
     return [
+      _renderIterationBanner(r),        // Sprint 2: lineage banner (no-op when no previous_review_id)
       _renderHeader(r),
       _renderSummary(r),
       _renderTopRisks(r),
@@ -477,6 +743,7 @@ const ReviewDetail = (() => {
       _renderWeaknesses(r),
       _renderDecisionPoints(r),
       _renderQuestions(r),
+      _renderCreateIterationAction(r),   // Sprint 2: iteration form (explicit, not automatic)
       _renderCompareAction(r),
     ].filter(Boolean).join('\n');
   }
@@ -548,6 +815,8 @@ const ReviewDetail = (() => {
     renderReview,
     onWeaknessStatus,
     onWeaknessNote,
+    onToggleIterationForm,  // Sprint 2
+    onCreateIteration,      // Sprint 2
   };
 
 })();

@@ -69,24 +69,68 @@
 
 ---
 
-## Sprint 2 — Review Iteration (PLANNED)
+## Sprint 2 — Review Iteration ✅ COMPLETE
 
 **Goal:** Create a new review from one selected previous review.
 
-**Status:** Not started
+**Branch:** `sprint2/review-iteration-lineage`
+
+**Status:** Complete
 
 **Module:** Review lineage + controlled iteration
 
-**Stories:**
-- Add/select `previous_review_id` on review creation
-- Create new review from selected prior review as contextual input
-- Persona can be changed between iterations
-- Lineage visible in Review Full Details
+### Stories delivered
 
-**Acceptance criteria:**
-- No overwrite of prior review
-- New review clearly linked to predecessor
-- Prior review ID shown in Full Details drawer
+| # | Story | Status |
+|---|-------|--------|
+| 2.1 | Create new review from selected existing review (user-initiated) | ✅ Done |
+| 2.2 | Store `previous_review_id` on new review; base review unchanged | ✅ Done |
+| 2.3 | Pass base review content as context input to new review execution | ✅ Done |
+| 2.4 | Carry forward open decision points from base review | ✅ Done |
+| 2.5 | Optional persona change on iteration; `persona_used` stored on new review | ✅ Done |
+| 2.6 | Show lineage banner in Full Details drawer when `previous_review_id` present | ✅ Done |
+| 2.7 | "Create New Review" form in drawer — explicit toggle, not automatic | ✅ Done |
+| 2.8 | Result card confirms new review ID, persona, predecessor, created_at | ✅ Done |
+| 2.9 | Legacy reviews without `previous_review_id` render cleanly (no banner) | ✅ Done |
+
+### Acceptance criteria — verified
+
+- [x] No overwrite of prior review — original is immutable
+- [x] New review clearly linked to predecessor via `previous_review_id`
+- [x] Prior review ID shown in Full Details drawer lineage banner
+- [x] Persona selection is optional; defaults to base review persona
+- [x] Persona change clearly indicated (`persona_changed` flag + badge)
+- [x] Open decision points carried forward from base review
+- [x] Sprint 1 features (weakness notes, provenance chips) still working
+- [x] v1 untouched
+
+### Files changed
+
+**Backend:**
+- `services/review.py` — `create_review_iteration()` added (Sprint 2)
+- `handlers/review.py` — `handle_create_review_iteration()` added (Sprint 2)
+- `server.py` — `POST /hierarchy/reviews/{rid}/iterate` route added (Sprint 2)
+- `project_manager.py` — `create_review_iteration` re-exported
+
+**Frontend (v2 only):**
+- `static/v2/js/api.js` — `createReviewIteration()` added + exported; mock updated
+- `static/v2/js/review_detail.js` — `_renderIterationBanner()`, `_renderCreateIterationAction()`, `onToggleIterationForm()`, `onCreateIteration()`, `_renderIterationResult()` added; `renderReview()` updated
+- `static/v2/css/components.css` — Sprint 2 `.ri-*` CSS classes appended
+
+**Tests:**
+- `tests/test_rw_sprint2_review_iteration.py` — **NEW** 109 tests, all passing (sections A–K)
+
+**Docs:**
+- `docs/architecture/data_model.md` — Sprint 2 Review additions (previous_review_id schema, iteration lineage schema, key relationship rule)
+- `docs/architecture/application_flow.md` — Review Iteration Flow diagram added; Linked Components + State Machine updated
+- `docs/architecture/traceability_map.md` — §1.8 (Review Iteration) added; §2, §3, §4, §5, §6 updated
+- `docs/planning/review_proposal_workbench_sprint_backlog.md` — Sprint 2 marked complete
+
+### New API endpoints (Sprint 2)
+
+| Method | Path | Handler | Purpose |
+|--------|------|---------|---------|
+| POST | `/api/projects/{pid}/hierarchy/reviews/{rid}/iterate` | `handle_create_review_iteration` | Create new review from existing review with lineage |
 
 ---
 
