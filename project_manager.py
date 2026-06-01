@@ -69,6 +69,14 @@ from services.review import (  # noqa: F401
     create_review_iteration,
 )
 
+# ── reconciliation (Sprint 3) ──────────────────────────────────────────────────
+from services.reconciliation import (  # noqa: F401
+    save_reconciliation_selection,
+    get_reconciliation_selection,
+    run_reconciliation,
+    get_reconciliation,
+)
+
 # ── hierarchy ──────────────────────────────────────────────────────────────────
 from services.hierarchy import (  # noqa: F401
     get_hierarchy,

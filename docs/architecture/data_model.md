@@ -17,6 +17,8 @@
 | Artifact | `models/artifact.py` → `Artifact` | `processors/artifact_store.py` |
 | Proposal | `models/proposal.py` → `ProposalTracker` | `services/proposal.py` |
 | FeedbackItem | `models/proposal.py` → `FeedbackItem` | `services/presales.py` |
+| ReconciliationSelection | `models/reconciliation.py` → `ReconciliationSelection` | `db/hierarchy_store_sql.py` → `reconciliation_selections` *(Sprint 3)* |
+| ReconciliationOutput | `models/reconciliation.py` → `ReconciliationOutput` | `db/hierarchy_store_sql.py` → `reconciliation_outputs` *(Sprint 3)* |
 
 ---
 
@@ -150,8 +152,36 @@ erDiagram
 
     VERSION ||--o{ REVIEW         : "has reviews"
     VERSION ||--o{ ARTIFACT       : "includes artifacts (snapshot)"
+    VERSION ||--o| RECONCILIATION_SELECTION : "has selection (Sprint 3)"
+    VERSION ||--o| RECONCILIATION_OUTPUT    : "has output (Sprint 3)"
 
     REVIEW  ||--o| REVIEW         : "previous_review_id (chain)"
+
+    RECONCILIATION_SELECTION {
+        string project_id       FK
+        string version_id       FK
+        string anchor_review_id FK
+        json   selected_review_ids
+        string selected_at
+        string selected_by
+    }
+
+    RECONCILIATION_OUTPUT {
+        string reconciliation_id PK
+        string project_id        FK
+        string version_id        FK
+        string anchor_review_id  FK
+        json   selected_review_ids
+        string created_at
+        json   consensus_points
+        json   divergent_points
+        json   confirmed_decisions
+        json   open_decisions
+        json   unresolved_weaknesses
+        json   merged_findings
+        json   provenance_summary
+        bool   anchor_only
+    }
 
     PROPOSAL ||--o{ PROPOSAL_VERSION : "has versions"
     PROPOSAL_VERSION ||--|| VERSION  : "hierarchy_version_id"
@@ -243,6 +273,61 @@ Atomic unit of structured client feedback. Classified into: `accepted`, `rejecte
 
 ---
 
+## Sprint 3 — Reconciliation Entities
+
+### ReconciliationSelection
+Stores the user's **explicit** review selection for a version — one anchor review and zero or more supplemental reviews.  Never auto-populated.  Persisted once per `(project_id, version_id)` pair; upserted on each save.
+
+**Storage:** `accelerator.db → reconciliation_selections`
+
+**Rules:**
+- `anchor_review_id` is required.
+- `selected_review_ids` always includes `anchor_review_id` (service enforces this).
+- No auto-selection of "latest N reviews" — user must call `POST /reconciliation/select` explicitly.
+
+**Schema:**
+```json
+{
+  "project_id":          "p1",
+  "version_id":          "v2",
+  "anchor_review_id":    "r4",
+  "selected_review_ids": ["r4", "r3"],
+  "selected_at":         "2026-06-01T10:00:00Z",
+  "selected_by":         "user@example.com"
+}
+```
+
+### ReconciliationOutput
+The full reconciliation result produced by `run_reconciliation()`.  One row per `(project_id, version_id)` — overwritten on each re-run.
+
+**Storage:** `accelerator.db → reconciliation_outputs`
+
+**Sections:**
+
+| Field | Meaning |
+|-------|---------|
+| `consensus_points` | Findings present across **all** selected reviews (high token overlap ≥ 0.70) |
+| `divergent_points` | Findings present in some but not all reviews; carries `present_in_reviews` / `absent_from_reviews` |
+| `confirmed_decisions` | Decision points with `status != 'open'` (accepted / resolved) |
+| `open_decisions` | Decision points still `open` in at least one review |
+| `unresolved_weaknesses` | Weaknesses with `status == 'open'` across selected reviews |
+| `merged_findings` | De-duplicated flat list of all findings from all reviews |
+| `provenance_summary` | Per-review metadata: `review_id`, `persona`, `is_anchor`, `item_count`, `artifact_refs` |
+
+**Every item in the above lists** carries a `source_reviews` list of `ProvenanceRef` dicts:
+```json
+{
+  "review_id":        "r4",
+  "review_persona":   "Solution Architect",
+  "is_anchor":        true,
+  "artifact_id":      "a1",
+  "artifact_name":    "Solution_Architecture_v3.docx",
+  "section_reference": "§3 Technical Risks"
+}
+```
+
+---
+
 ## Key Relationship Rules
 
 | Rule | Detail |
@@ -253,6 +338,8 @@ Atomic unit of structured client feedback. Classified into: `accepted`, `rejecte
 | Version active review | `active_review_id` — validated against `review_ids`; defaults to latest |
 | Review chain | `previous_review_id` links iterations; `iteration_number` is 1-based per version |
 | Review iteration | `previous_review_id` is user-selected, never automatic; original review is immutable *(Sprint 2)* |
+| Reconciliation selection | `anchor_review_id` + `selected_review_ids` are always explicit user input; no auto-selection *(Sprint 3)* |
+| Reconciliation output | One output per `(project_id, version_id)`; overwritten on re-run; every item carries `source_reviews` provenance *(Sprint 3)* |
 | ProposalVersion traceability | Both `hierarchy_version_id` and `active_review_id` are required (DS-02 gate) |
 | Review provenance | `artifact_refs[]` links review findings back to source artifacts (Sprint 1) |
 | Weakness annotation | `weakness.user_note` persists free-text user annotation alongside `weakness.status` (Sprint 1) |

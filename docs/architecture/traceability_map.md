@@ -155,6 +155,43 @@
 
 ---
 
+### 1.9 Reconciliation — Select Reviews + Run (Sprint 3)
+
+| Layer | Component | File | Notes |
+|-------|-----------|------|-------|
+| **UI** | "Select & Reconcile" toggle button | `static/v2/js/review_detail.js` | Explicit user action — never automatic |
+| **UI** | Anchor chip + supplemental checkboxes | `static/v2/js/review_detail.js` | Anchor pre-populated; user checks supplementals |
+| **UI** | "Run Reconciliation" submit button | `static/v2/js/review_detail.js` | Triggers `onRunReconciliation()` |
+| **Logic** | `ReviewDetail.onToggleReconciliationPanel(rid)` | `static/v2/js/review_detail.js` | Shows/hides panel body |
+| **Logic** | `ReviewDetail._populateReconciliationReviewList()` | `static/v2/js/review_detail.js` | Loads review checkboxes from AppState |
+| **Logic** | `ReviewDetail.onRunReconciliation(btn)` | `static/v2/js/review_detail.js` | Collects selection, calls both APIs |
+| **Logic** | `API.saveReconciliationSelection(pid, vid, anchorRid, selectedIds)` | `static/v2/js/api.js` | POST to select endpoint |
+| **Logic** | `API.runReconciliation(pid, vid, anchorRid, selectedIds)` | `static/v2/js/api.js` | POST to run endpoint |
+| **API** | `POST /hierarchy/versions/{vid}/reconciliation/select` | `server.py → handlers/reconciliation.py` | Saves explicit selection *(Sprint 3)* |
+| **API** | `POST /hierarchy/versions/{vid}/reconciliation/run` | `server.py → handlers/reconciliation.py` | Runs reconciliation, returns output *(Sprint 3)* |
+| **API** | `GET /hierarchy/versions/{vid}/reconciliation/selection` | `server.py → handlers/reconciliation.py` | Returns stored selection *(Sprint 3)* |
+| **API** | `GET /hierarchy/versions/{vid}/reconciliation` | `server.py → handlers/reconciliation.py` | Returns stored output *(Sprint 3)* |
+| **Handler** | `handle_save_selection()` | `handlers/reconciliation.py` | Reads `anchor_review_id`, `selected_review_ids` from body |
+| **Handler** | `handle_run_reconciliation()` | `handlers/reconciliation.py` | Falls back to stored selection if body empty |
+| **Service** | `save_reconciliation_selection()` | `services/reconciliation.py` | Validates IDs; upserts to store |
+| **Service** | `run_reconciliation()` | `services/reconciliation.py` | Normalises reviews; computes all output sections |
+| **Data** | `{ReconciliationSelection}` | `models/reconciliation.py` | `anchor_review_id`, `selected_review_ids`, `selected_at` |
+| **Data** | `{ReconciliationOutput}` | `models/reconciliation.py` | All output sections + `provenance_summary` |
+| **Store** | `store.save_reconciliation_selection()` | `db/hierarchy_store_sql.py` | SQLite `reconciliation_selections` UPSERT |
+| **Store** | `store.save_reconciliation_output()` | `db/hierarchy_store_sql.py` | SQLite `reconciliation_outputs` UPSERT |
+| **UI** | Result card `.rc-result-card` | `static/v2/js/review_detail.js` | Shows all sections + provenance in drawer |
+| **Diagram** | Application Flow §Reconciliation | `docs/architecture/application_flow.md` | Reconciliation flow *(Sprint 3)* |
+| **Diagram** | Logic Flow §9 | `docs/architecture/logic_flow.md` | Selection + engine logic *(Sprint 3)* |
+
+> **Sprint 3 invariants:**
+> - No reviews are auto-selected — `anchor_review_id` and `selected_review_ids` must always come from explicit user action.
+> - Active Review may be pre-populated as anchor in the UI, but the user must confirm by clicking "Run Reconciliation".
+> - Reconciliation output is deterministic (Jaccard token overlap, no LLM involvement in this sprint).
+> - Every output item carries `source_reviews` provenance — reviews are never modified.
+> - `anchor_only = true` when only one review is selected.
+
+---
+
 ## 2. Component Mapping
 
 | V2 Component | File | Renders | Data Source | State Keys Read |
@@ -165,6 +202,7 @@
 | Cards | `ui/v2/components/Cards.js` | Snapshot metric tiles | MetricsPayload | metrics |
 | ReviewDetail *(Sprint 1)* | `static/v2/js/review_detail.js` | Review Full Details drawer | API response (full review) | drawerEntity |
 | ReviewDetail iteration form *(Sprint 2)* | `static/v2/js/review_detail.js` | Iteration form + lineage banner + result card | `API.createReviewIteration()` response | drawerEntity.previous_review_id |
+| ReviewDetail reconciliation panel *(Sprint 3)* | `static/v2/js/review_detail.js` | Reconciliation panel + result card | `API.runReconciliation()` response | drawerEntity.version_id |
 | MainLayout | `ui/v2/layout/MainLayout.js` | CSS class mutations only | AppState events | drawerOpen, loading |
 | Dashboard | `static/v2/js/dashboard.js` | Orchestrates all above | AppState + API | all |
 
@@ -186,6 +224,10 @@
 | `/api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/status` | POST | `API.updateWeaknessStatus()` | `{updated, status}` | ReviewDetail weakness dropdown *(Sprint 1)* |
 | `/api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/note` | POST | `API.updateWeaknessNote()` | `{updated, user_note}` | ReviewDetail note textarea *(Sprint 1)* |
 | `/api/projects/{pid}/hierarchy/reviews/{rid}/iterate` | POST | `API.createReviewIteration()` | `{review_id, previous_review_id, persona_used, persona_changed, iteration_number, created_at}` | ReviewDetail result card *(Sprint 2)* |
+| `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/select` | POST | `API.saveReconciliationSelection()` | `ReconciliationSelection` dict | ReconciliationPanel (saves selection) *(Sprint 3)* |
+| `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/run` | POST | `API.runReconciliation()` | `ReconciliationOutput` dict | ReconciliationPanel result card *(Sprint 3)* |
+| `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/selection` | GET | `API.fetchReconciliationSelection()` | `ReconciliationSelection` dict | ReconciliationPanel (loads stored selection) *(Sprint 3)* |
+| `/api/projects/{pid}/hierarchy/versions/{vid}/reconciliation` | GET | `API.fetchReconciliation()` | `ReconciliationOutput` dict | ReconciliationPanel (loads stored output) *(Sprint 3)* |
 
 ---
 
@@ -212,6 +254,13 @@
 | `{Review}` | `previous_review_id` | Lineage banner in Full Details drawer *(Sprint 2)* | ReviewDetail |
 | `{Review}` | `persona` | Persona used shown in lineage result card *(Sprint 2)* | ReviewDetail |
 | `{Review}` | `iteration_number` | Shown in result card after iteration *(Sprint 2)* | ReviewDetail |
+| `{ReconciliationSelection}` | `anchor_review_id` | Anchor chip in reconciliation panel *(Sprint 3)* | ReviewDetail |
+| `{ReconciliationSelection}` | `selected_review_ids` | Checkboxes pre-checked in reconciliation panel *(Sprint 3)* | ReviewDetail |
+| `{ReconciliationOutput}` | `consensus_points` | Consensus section in result card *(Sprint 3)* | ReviewDetail |
+| `{ReconciliationOutput}` | `divergent_points` | Divergent section in result card *(Sprint 3)* | ReviewDetail |
+| `{ReconciliationOutput}` | `open_decisions` | Open Decisions section in result card *(Sprint 3)* | ReviewDetail |
+| `{ReconciliationOutput}` | `unresolved_weaknesses` | Unresolved Weaknesses section in result card *(Sprint 3)* | ReviewDetail |
+| `{ReconciliationOutput}` | `provenance_summary` | Reviews reconciled block in result card *(Sprint 3)* | ReviewDetail |
 | `{MetricsPayload}` | `total_versions` | Snapshot card | Cards.js |
 | `{MetricsPayload}` | `total_reviews` | Snapshot card | Cards.js |
 | `{MetricsPayload}` | `risks_identified` | Snapshot card (red) | Cards.js |
@@ -246,6 +295,11 @@
 | `review_detail.js` — remove `_renderIterationBanner()` *(Sprint 2)* | Lineage link invisible | Users cannot see which review an iteration was built from |
 | `review_detail.js` — remove `_renderCreateIterationAction()` *(Sprint 2)* | Iteration form not rendered | Users cannot create new reviews from the drawer |
 | `api.js` — remove `createReviewIteration` *(Sprint 2)* | Iteration form submit errors silently | New review never created; no user feedback |
+| `services/reconciliation.py` — remove `run_reconciliation()` *(Sprint 3)* | POST /reconciliation/run returns 500 | Users cannot produce reconciliation output |
+| `handlers/reconciliation.py` — remove any handler *(Sprint 3)* | Route 404s | Reconciliation panel fails silently |
+| `review_detail.js` — remove `_renderReconciliationPanel()` *(Sprint 3)* | Panel not rendered | Users cannot select reviews or run reconciliation |
+| `api.js` — remove `runReconciliation` *(Sprint 3)* | Run button fails | No reconciliation output produced |
+| `db/hierarchy_store_sql.py` — remove `save_reconciliation_output()` *(Sprint 3)* | Output never persisted | GET /reconciliation always returns 404 |
 
 ---
 
@@ -268,3 +322,8 @@
 | Review iteration | `create_review_iteration()` (service) | `createReviewIteration()` (api.js) | `.ri-create-form` | `.ri-*` prefix *(Sprint 2)* |
 | Previous review link | `previous_review_id` (Review) | `previous_review_id` (JS result) | `.ri-lineage-banner` | `.ri-lineage-base-id` *(Sprint 2)* |
 | Persona used on iteration | `persona` (Review) | `persona_used` (result shape) | `.ri-persona-select` | `.ri-persona-changed-badge` *(Sprint 2)* |
+| Reconciliation selection | `ReconciliationSelection` (model) | `saveReconciliationSelection()` | `.rc-panel` | `.rc-*` prefix *(Sprint 3)* |
+| Anchor review | `anchor_review_id` (ReconciliationSelection) | `anchorReviewId` (JS) | `.rc-anchor-badge` | `.rc-review-chip--anchor` *(Sprint 3)* |
+| Supplemental reviews | `selected_review_ids` (ReconciliationSelection) | `selectedReviewIds` (JS) | `.rc-review-cb` checkboxes | `.rc-review-row` *(Sprint 3)* |
+| Reconciliation output | `ReconciliationOutput` (model) | `runReconciliation()` result | `.rc-result-card` | `.rc-item` *(Sprint 3)* |
+| Reconciliation provenance | `source_reviews[]` (ReconciledItem) | `source_reviews` (JS result) | `.rc-prov-block` | `.rc-item-prov` *(Sprint 3)* |

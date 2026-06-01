@@ -464,6 +464,181 @@ async function createReviewIteration(projectId, baseReviewId, newPersona, custom
   );
 }
 
+// ── Reconciliation (Sprint 3) ────────────────────────────────
+
+/**
+ * Save the user's explicit review selection for reconciliation.
+ *
+ * TRACE: API → POST /hierarchy/versions/{vid}/reconciliation/select
+ *
+ * Body:
+ *   anchor_review_id    — required; the primary anchor review
+ *   selected_review_ids — required list; must include anchor
+ *   selected_by         — optional
+ *
+ * @param {string} projectId
+ * @param {string} versionId
+ * @param {string} anchorReviewId
+ * @param {string[]} selectedReviewIds
+ * @param {string} [selectedBy]
+ * @returns {Promise<object>}  ReconciliationSelection dict or {error}
+ */
+async function saveReconciliationSelection(projectId, versionId, anchorReviewId, selectedReviewIds, selectedBy) {
+  if (_useMock()) {
+    return {
+      project_id:          projectId,
+      version_id:          versionId,
+      anchor_review_id:    anchorReviewId,
+      selected_review_ids: selectedReviewIds,
+      selected_at:         new Date().toISOString(),
+      selected_by:         selectedBy || '',
+    };
+  }
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation/select`,
+    {
+      anchor_review_id:    anchorReviewId,
+      selected_review_ids: selectedReviewIds,
+      selected_by:         selectedBy || '',
+    },
+  );
+}
+
+/**
+ * Fetch the stored review selection for a version.
+ *
+ * TRACE: API → GET /hierarchy/versions/{vid}/reconciliation/selection
+ *
+ * @param {string} projectId
+ * @param {string} versionId
+ * @returns {Promise<object>}  ReconciliationSelection dict, {error} when not found
+ */
+async function fetchReconciliationSelection(projectId, versionId) {
+  if (_useMock()) {
+    const hierarchy = MOCK_DATA.hierarchy;
+    const versions = [];
+    (hierarchy.tree || []).forEach(p => (p.versions || []).forEach(v => versions.push(v)));
+    const ver = versions.find(v => v.version_id === versionId) || versions[0] || {};
+    const reviews = ver.reviews || [];
+    const anchor  = ver.active_review_id || (reviews[0] && reviews[0].review_id) || '';
+    return {
+      project_id:          projectId,
+      version_id:          versionId,
+      anchor_review_id:    anchor,
+      selected_review_ids: reviews.map(r => r.review_id),
+      selected_at:         '2026-05-28T12:00:00Z',
+      selected_by:         '',
+    };
+  }
+  return _request(
+    'GET',
+    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation/selection`,
+  );
+}
+
+/**
+ * Run reconciliation across selected reviews for a version.
+ *
+ * TRACE: API → POST /hierarchy/versions/{vid}/reconciliation/run
+ *
+ * Body (optional when selection already saved via saveReconciliationSelection):
+ *   anchor_review_id    — overrides stored selection if provided
+ *   selected_review_ids — overrides stored selection if provided
+ *
+ * Returns a ReconciliationOutput dict with sections:
+ *   consensus_points, divergent_points, confirmed_decisions, open_decisions,
+ *   unresolved_weaknesses, merged_findings, provenance_summary
+ *
+ * @param {string} projectId
+ * @param {string} versionId
+ * @param {string} [anchorReviewId]      — optional override
+ * @param {string[]} [selectedReviewIds] — optional override
+ * @returns {Promise<object>}
+ */
+async function runReconciliation(projectId, versionId, anchorReviewId, selectedReviewIds) {
+  if (_useMock()) {
+    const base = MOCK_DATA.reviewDetail;
+    const rid  = base.review_id;
+    const _makeItem = (id, text, cat, reviews) => ({
+      id, text, category: cat, status: '', source_reviews: reviews,
+      anchor_text: text, supplemental_texts: [],
+    });
+    const anchor_prov = { review_id: rid, review_persona: base.persona, is_anchor: true,
+                          artifact_id: '', artifact_name: '', section_reference: '' };
+    const supp_prov   = { review_id: 'r6', review_persona: 'delivery_manager', is_anchor: false,
+                          artifact_id: '', artifact_name: '', section_reference: '' };
+    return {
+      reconciliation_id:       `rec_mock_${Date.now()}`,
+      project_id:              projectId,
+      version_id:              versionId,
+      anchor_review_id:        anchorReviewId || rid,
+      selected_review_ids:     selectedReviewIds || [rid, 'r6'],
+      created_at:              new Date().toISOString(),
+      anchor_only:             false,
+      total_consensus:         2,
+      total_divergent:         2,
+      total_open_decisions:    1,
+      total_unresolved_weaknesses: 1,
+      consensus_points: [
+        _makeItem('cons_1', 'No DR strategy defined for legacy data tier', 'risks', [anchor_prov, supp_prov]),
+        _makeItem('cons_2', 'Client has access to source environment',     'assumptions', [anchor_prov, supp_prov]),
+      ],
+      divergent_points: [
+        { ..._makeItem('div_1', 'Single-vendor dependency on primary cloud provider', 'risks', [anchor_prov]),
+          present_in_reviews: [rid], absent_from_reviews: ['r6'] },
+        { ..._makeItem('div_2', 'Data team availability for migration scripts', 'dependencies', [supp_prov]),
+          present_in_reviews: ['r6'], absent_from_reviews: [rid] },
+      ],
+      confirmed_decisions: [
+        _makeItem('dp_1', 'Identity provider vendor selection', 'security', [anchor_prov, supp_prov]),
+      ],
+      open_decisions: [
+        _makeItem('dp_2', 'Cloud provider selection (AWS vs Azure)', 'architecture', [anchor_prov, supp_prov]),
+      ],
+      unresolved_weaknesses: [
+        { ..._makeItem('uw_1', 'DR strategy not defined for legacy data tier', 'resilience', [anchor_prov]),
+          user_note: '' },
+      ],
+      merged_findings: [
+        _makeItem('mf_1', 'No DR strategy defined for legacy data tier', 'risks', [anchor_prov, supp_prov]),
+        _makeItem('mf_2', 'Single-vendor dependency on primary cloud provider', 'risks', [anchor_prov]),
+        _makeItem('mf_3', 'Client has access to source environment', 'assumptions', [anchor_prov, supp_prov]),
+        _makeItem('mf_4', 'Data team availability for migration scripts', 'dependencies', [supp_prov]),
+      ],
+      provenance_summary: [
+        { review_id: rid,  persona: base.persona,      is_anchor: true,  created_at: base.created_at, item_count: 14, artifact_refs: base.artifact_refs },
+        { review_id: 'r6', persona: 'delivery_manager', is_anchor: false, created_at: '2026-05-27T09:00:00Z', item_count: 9, artifact_refs: [] },
+      ],
+    };
+  }
+  const body = {};
+  if (anchorReviewId)    body.anchor_review_id    = anchorReviewId;
+  if (selectedReviewIds) body.selected_review_ids = selectedReviewIds;
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation/run`,
+    body,
+  );
+}
+
+/**
+ * Fetch the stored ReconciliationOutput for a version.
+ *
+ * TRACE: API → GET /hierarchy/versions/{vid}/reconciliation
+ *
+ * @param {string} projectId
+ * @param {string} versionId
+ * @returns {Promise<object>}  ReconciliationOutput dict or {error}
+ */
+async function fetchReconciliation(projectId, versionId) {
+  if (_useMock()) return runReconciliation(projectId, versionId);
+  return _request(
+    'GET',
+    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation`,
+  );
+}
+
 // ── Weakness note + status (Sprint 1) ────────────────────────
 
 /**
@@ -516,4 +691,9 @@ window.API = {
   updateWeaknessStatus,
   updateWeaknessNote,
   createReviewIteration,
+  // Sprint 3 — reconciliation
+  saveReconciliationSelection,
+  fetchReconciliationSelection,
+  runReconciliation,
+  fetchReconciliation,
 };
