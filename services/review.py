@@ -313,6 +313,29 @@ def update_weakness_status(
     return {"review_id": review_id, "weakness_id": weakness_id, "status": status, "updated": True}
 
 
+def update_weakness_note(
+    project_id: str, review_id: str, weakness_id: str, note: str
+) -> Dict[str, Any]:
+    """Persist an optional free-text user note against a weakness (Sprint 1)."""
+    store = _make_hierarchy_store(project_id)
+    review = store.get_review(review_id)
+    if review is None:
+        return {"error": f"Review not found: {review_id}"}
+    weaknesses = list(review.weaknesses or [])
+    target = next((w for w in weaknesses if w.get("id") == weakness_id), None)
+    if target is None:
+        return {"error": f"Weakness '{weakness_id}' not found in review {review_id}"}
+    # note is optional — empty string clears the note
+    target["user_note"] = str(note) if note is not None else ""
+    store.update_review_weaknesses(review_id, weaknesses)
+    return {
+        "review_id": review_id,
+        "weakness_id": weakness_id,
+        "user_note": target["user_note"],
+        "updated": True,
+    }
+
+
 def update_decision_status(
     project_id: str, review_id: str, decision_id: str, status: str
 ) -> Dict[str, Any]:

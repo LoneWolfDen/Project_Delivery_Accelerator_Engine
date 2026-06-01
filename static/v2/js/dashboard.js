@@ -423,8 +423,10 @@ const Dashboard = (() => {
         ? DetailPanel.renderVersion(entity.data)
         : _fallbackVersionDetail(entity.data);
     } else if (entity.type === 'review') {
-      _dom.drawerContent.innerHTML = window.DetailPanel
-        ? DetailPanel.renderReview(entity.data)
+      // Prefer ReviewDetail (Sprint 1), fall back to DetailPanel alias, then inline fallback
+      const renderer = window.ReviewDetail || window.DetailPanel;
+      _dom.drawerContent.innerHTML = renderer
+        ? renderer.renderReview(entity.data)
         : _fallbackReviewDetail(entity.data);
     }
     // Async: load full detail and update
@@ -440,8 +442,9 @@ const Dashboard = (() => {
       if (entity.type === 'review' && entity.data.review_id) {
         full = await API.fetchReviewDetail(proj.id, entity.data.review_id);
         if (full && !full.error && _dom.drawerContent) {
-          _dom.drawerContent.innerHTML = window.DetailPanel
-            ? DetailPanel.renderReview(full)
+          const renderer = window.ReviewDetail || window.DetailPanel;
+          _dom.drawerContent.innerHTML = renderer
+            ? renderer.renderReview(full)
             : _fallbackReviewDetail(full);
         }
       } else if (entity.type === 'version' && entity.data.version_id) {

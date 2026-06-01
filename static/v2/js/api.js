@@ -157,12 +157,15 @@ const MOCK_DATA = {
     quality_status: 'complete',
     completeness_score: 84,
     iteration_number: 3,
+    previous_review_id: 'r6',
+    prompt_used: 'Review this solution architecture from the perspective of a senior solution architect. Focus on technical risks, assumptions, and dependencies. Highlight the top 3 risks clearly.',
     summary: 'Comprehensive architecture review covering all risk areas. Key decisions around cloud strategy and data migration remain open.',
     findings: {
       risks: [
         'No DR strategy defined for the legacy data tier',
         'Single-vendor dependency on primary cloud provider',
         'Security posture unclear for API gateway layer',
+        'Data migration timeline underestimated by ~30%',
       ],
       constraints: [
         'Q4 freeze window limits deployment options',
@@ -184,6 +187,21 @@ const MOCK_DATA = {
     questions: [
       'What is the expected data volume for migration?',
       'Is there an existing monitoring solution to integrate with?',
+    ],
+    weaknesses: [
+      { id: 'w1', text: 'DR strategy not defined for legacy data tier', category: 'resilience',   status: 'open',      user_note: '' },
+      { id: 'w2', text: 'API gateway security posture is unclear',       category: 'security',    status: 'addressed', user_note: 'Flagged for follow-up with client security team in Week 2.' },
+      { id: 'w3', text: 'Migration timeline may be underestimated',      category: 'delivery',    status: 'validated', user_note: 'Added 2-week buffer in revised plan.' },
+    ],
+    artifact_refs: [
+      { artifact_id: 'a1', artifact_name: 'Solution_Architecture_v3.docx', artifact_type: 'document',   section_reference: 'Technical Assumptions', page_reference: '7' },
+      { artifact_id: 'a2', artifact_name: 'Client_Presentation_Dec.pptx',  artifact_type: 'slides',     slide_number: 12, slide_title: 'Migration Approach' },
+      { artifact_id: 'a3', artifact_name: 'Scope clarification',           artifact_type: 'email',      subject: 'RE: Scope Clarification v2', date: '2026-05-15', sender: 'client@example.com' },
+      { artifact_id: 'a4', artifact_name: 'Discovery Workshop Notes',      artifact_type: 'meeting_notes', meeting_name: 'Discovery Workshop', date: '2026-05-12', section_reference: 'Cloud Strategy' },
+    ],
+    decision_points: [
+      { id: 'd1', text: 'Cloud provider selection (AWS vs Azure)', status: 'open',     category: 'architecture' },
+      { id: 'd2', text: 'Identity provider vendor selection',      status: 'accepted', category: 'security' },
     ],
   },
 };
@@ -397,6 +415,44 @@ function _deriveActivityEvents(hierarchy) {
   return events.slice(0, _ACTIVITY_MAX);
 }
 
+// ── Weakness note + status (Sprint 1) ────────────────────────
+
+/**
+ * Persist a weakness status update.
+ * TRACE: API → POST /hierarchy/reviews/{rid}/weakness/{wid}/status
+ * @param {string} projectId
+ * @param {string} reviewId
+ * @param {string} weaknessId
+ * @param {string} status
+ * @returns {Promise<object>}
+ */
+async function updateWeaknessStatus(projectId, reviewId, weaknessId, status) {
+  if (_useMock()) return { review_id: reviewId, weakness_id: weaknessId, status, updated: true };
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`,
+    { status },
+  );
+}
+
+/**
+ * Persist a weakness user note.
+ * TRACE: API → POST /hierarchy/reviews/{rid}/weakness/{wid}/note
+ * @param {string} projectId
+ * @param {string} reviewId
+ * @param {string} weaknessId
+ * @param {string} note
+ * @returns {Promise<object>}
+ */
+async function updateWeaknessNote(projectId, reviewId, weaknessId, note) {
+  if (_useMock()) return { review_id: reviewId, weakness_id: weaknessId, user_note: note, updated: true };
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/note`,
+    { note },
+  );
+}
+
 // ── Expose globally ───────────────────────────────────────────
 window.API = {
   fetchProjects,
@@ -408,4 +464,6 @@ window.API = {
   fetchVersionDetail,
   fetchActivity,
   _deriveActivityEvents,
+  updateWeaknessStatus,
+  updateWeaknessNote,
 };

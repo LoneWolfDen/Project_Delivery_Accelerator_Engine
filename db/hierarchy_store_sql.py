@@ -267,6 +267,7 @@ class HierarchyStoreSQLite:
         prompt_builder_state: Optional[Dict[str, Any]] = None,
         weaknesses: Optional[List[Dict[str, Any]]] = None,
         decision_points: Optional[List[Dict[str, Any]]] = None,
+        artifact_refs: Optional[List[Dict[str, Any]]] = None,
     ):
         from models.hierarchy import Review  # noqa: PLC0415
         db = self._db
@@ -293,8 +294,8 @@ class HierarchyStoreSQLite:
                 included_files, categories, ai_metadata,
                 deep_dive, feedback, completeness_score, quality_status,
                 completed_by, completed_at, decided_by, previous_review_id,
-                prompt_builder_state, weaknesses, decision_points, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                prompt_builder_state, weaknesses, decision_points, artifact_refs, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 review_id, self.project_id, version_id, phase_id, persona, ai_backend,
                 prompt_used, custom_prompt,
@@ -312,6 +313,7 @@ class HierarchyStoreSQLite:
                 Database.jdump(prompt_builder_state) if prompt_builder_state is not None else None,
                 Database.jdump(weaknesses or []),
                 Database.jdump(decision_points or []),
+                Database.jdump(artifact_refs or []),
                 now,
             ),
         )
@@ -342,6 +344,7 @@ class HierarchyStoreSQLite:
             prompt_builder_state=prompt_builder_state,
             weaknesses=weaknesses or [],
             decision_points=decision_points or [],
+            artifact_refs=artifact_refs or [],
         )
         self._file_save_review(review)
         if version:
@@ -609,6 +612,7 @@ class HierarchyStoreSQLite:
             prompt_builder_state=Database.jload(row.get("prompt_builder_state"), None),
             weaknesses=Database.jload(row.get("weaknesses"), []),
             decision_points=Database.jload(row.get("decision_points"), []),
+            artifact_refs=Database.jload(row.get("artifact_refs"), []),
         )
 
     # ── File dual-write helpers ───────────────────────────────

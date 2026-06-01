@@ -87,6 +87,7 @@ erDiagram
         list   weaknesses
         list   missing_categories
         list   decision_points
+        json   artifact_refs
     }
 
     ARTIFACT {
@@ -182,6 +183,35 @@ An execution run against a Version. Contains the prompt used, AI-generated outpu
 **Iteration number:** 1-based per version (R1, R2 … within V1)  
 **Storage:** `projects_data/{pid}/hierarchy/reviews/{rid}.json`
 
+**Sprint 1 additions (backward-compatible):**
+- `artifact_refs[]` — structured provenance references. Each entry: `{artifact_id, artifact_name, artifact_type, section_reference, page_reference, slide_number, slide_title, subject, date, sender, meeting_name, timestamp, sheet, row_range, excerpt}`. Types: `document | slides | email | meeting_notes | spreadsheet`. Defaults to `[]` for existing records.
+- `weakness.user_note` — optional free-text note stored within each weakness dict alongside `status`. Defaults to `""` when absent.
+
+**Weakness schema (Sprint 1):**
+
+```json
+{
+  "id": "w1",
+  "text": "Weakness description",
+  "category": "risks",
+  "status": "open",
+  "user_note": "Optional free-text annotation by the user"
+}
+```
+
+**Artifact reference schema (Sprint 1):**
+
+```json
+{
+  "artifact_id": "a1",
+  "artifact_name": "Solution_Architecture.docx",
+  "artifact_type": "document",
+  "section_reference": "Technical Assumptions",
+  "page_reference": "7",
+  "excerpt": "Optional short excerpt"
+}
+```
+
 ### Artifact
 An ingested document (uploaded file or pasted text). Linked to a project and optionally included in a Version snapshot.  
 **Categories:** `project_artefact`, `meetings_comms`, `delivery_notes`, `client_context`, `architecture_design`, `external_data`  
@@ -205,6 +235,8 @@ Atomic unit of structured client feedback. Classified into: `accepted`, `rejecte
 | Version active review | `active_review_id` — validated against `review_ids`; defaults to latest |
 | Review chain | `previous_review_id` links iterations; `iteration_number` is 1-based per version |
 | ProposalVersion traceability | Both `hierarchy_version_id` and `active_review_id` are required (DS-02 gate) |
+| Review provenance | `artifact_refs[]` links review findings back to source artifacts (Sprint 1) |
+| Weakness annotation | `weakness.user_note` persists free-text user annotation alongside `weakness.status` (Sprint 1) |
 
 ---
 

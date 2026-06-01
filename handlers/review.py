@@ -140,6 +140,23 @@ def handle_weakness_status(
         respond(result)
 
 
+def handle_weakness_note(
+    project_id: str, review_id: str, weakness_id: str,
+    body: Dict[str, Any], respond: Callable
+) -> None:
+    """POST /api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/note
+
+    Body: { "note": "Free-text user annotation (optional)" }
+    An empty string clears the note.
+    """
+    note = body.get("note", "")
+    result = svc.update_weakness_note(project_id, review_id, weakness_id, note)
+    if result.get("error"):
+        respond(result, status=400)
+    else:
+        respond(result)
+
+
 def handle_decision_status(
     project_id: str, review_id: str, decision_id: str,
     body: Dict[str, Any], respond: Callable

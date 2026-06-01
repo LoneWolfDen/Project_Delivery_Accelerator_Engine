@@ -1411,3 +1411,472 @@ input::placeholder, textarea::placeholder {
 .score-band--maturing  .memory-score-value { color: var(--green); }
 .score-band--developing .memory-score-value { color: var(--amber); }
 .score-band--early     .memory-score-value { color: var(--text-muted); }
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   SPRINT 1 — Review Full Details Panel (.rd-*)
+   TRACE: UI → ReviewDetail → review_detail.js
+   Scoped with .rd- prefix; no overlap with existing classes.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Header block ──────────────────────────────────────────── */
+.rd-header {
+  padding: var(--space-3) 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-3);
+}
+
+.rd-header-top {
+  margin-bottom: var(--space-2);
+}
+
+.rd-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rd-review-id {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.rd-review-raw-id {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.rd-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+/* ── Meta grid (Version, Persona, Status, Date…) ───────────── */
+.rd-meta-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--space-2);
+}
+
+.rd-detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 12px;
+}
+
+.rd-detail-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.rd-detail-value {
+  color: var(--text);
+  flex: 1;
+}
+
+.rd-persona {
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+.rd-score {
+  font-weight: 700;
+  color: var(--green);
+}
+
+/* ── Summary text ──────────────────────────────────────────── */
+.rd-section {
+  margin-bottom: var(--space-3);
+}
+
+.rd-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.rd-summary-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.rd-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 5px;
+  color: var(--text-muted);
+  min-width: 18px;
+}
+
+/* ── Top Risks (always visible) ────────────────────────────── */
+.rd-risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rd-risk-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: color-mix(in srgb, var(--red) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--red) 25%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+.rd-risk-marker {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rd-risk-text {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.rd-empty-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Expandable sections (<details>) ───────────────────────── */
+.rd-expandable {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+}
+
+.rd-expandable-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  transition: background var(--transition);
+}
+.rd-expandable-summary:hover {
+  background: var(--surface-3);
+}
+.rd-expandable-summary::-webkit-details-marker { display: none; }
+
+.rd-expand-hint {
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform var(--transition);
+}
+details[open] .rd-expand-hint {
+  transform: rotate(90deg);
+}
+
+.rd-expandable-body {
+  padding: var(--space-3);
+  background: var(--surface);
+}
+
+/* ── Artifact provenance chips (.rd-prov-*) ─────────────────── */
+.rd-prov-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.rd-prov-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 3px 10px 3px 7px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: default;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color var(--transition), background var(--transition);
+}
+.rd-prov-chip:hover {
+  border-color: var(--primary);
+  background: var(--primary-dim);
+}
+
+.rd-prov-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rd-prov-detail {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+/* Type colour accents */
+.rd-prov-chip--document     { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); }
+.rd-prov-chip--slides       { border-color: color-mix(in srgb, var(--purple)  35%, var(--border)); }
+.rd-prov-chip--email        { border-color: color-mix(in srgb, var(--amber)   35%, var(--border)); }
+.rd-prov-chip--meeting_notes{ border-color: color-mix(in srgb, var(--green)   35%, var(--border)); }
+.rd-prov-chip--spreadsheet  { border-color: color-mix(in srgb, var(--secondary) 35%, var(--border)); }
+.rd-prov-chip--more         { color: var(--text-muted); font-style: italic; }
+
+/* ── Findings (.rd-finding-*) ───────────────────────────────── */
+.rd-finding-block {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.rd-finding-cat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.rd-finding-item {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 3px 0 3px 10px;
+  border-left: 2px solid var(--border);
+  margin-bottom: 3px;
+  line-height: 1.5;
+}
+
+.rd-finding-item--question {
+  border-left-color: var(--amber);
+}
+
+.rd-more-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* ── Weakness panel (.rd-weakness-*) ───────────────────────── */
+.rd-weakness-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.rd-weakness-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+.rd-weakness-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.rd-weakness-icon {
+  color: var(--red);
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rd-weakness-text {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.rd-weakness-cat {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.rd-weakness-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rd-ctrl-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.rd-ctrl-note-label {
+  margin-left: var(--space-1);
+}
+
+.rd-status-select {
+  width: auto;
+  min-width: 110px;
+  font-size: 11px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+
+/* Status colour variants */
+.rd-weakness-status--open     { border-color: var(--red);    color: var(--red); }
+.rd-weakness-status--resolved { border-color: var(--green);  color: var(--green); }
+.rd-weakness-status--mitigated{ border-color: var(--amber);  color: var(--amber); }
+.rd-weakness-status--other    { border-color: var(--border); }
+
+.rd-note-textarea {
+  flex: 1;
+  min-width: 180px;
+  font-size: 11px;
+  padding: 4px 8px;
+  resize: vertical;
+  min-height: 40px;
+  line-height: 1.5;
+}
+
+.rd-note-saved {
+  font-size: 10px;
+  color: var(--green);
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 50px;
+}
+
+/* ── Decision Points (.rd-dp-*) ─────────────────────────────── */
+.rd-dp-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rd-dp-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-2);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+
+.rd-dp-icon { flex-shrink: 0; font-size: 12px; line-height: 1.5; }
+
+.rd-dp-text { flex: 1; line-height: 1.5; }
+
+.rd-dp-status {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+.rd-dp-status--resolved { background: var(--green-dim); color: #2E7D5C; }
+.rd-dp-status--accepted { background: var(--primary-dim); color: var(--primary-dark); }
+.rd-dp-status--open     { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); }
+
+/* ── Prompt expandable ──────────────────────────────────────── */
+.rd-prompt-text,
+.rd-prompt-full {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  font-family: monospace;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+.rd-show-more-btn {
+  margin-top: var(--space-2);
+  font-size: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+.rd-show-more-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ── Compare action (secondary) ─────────────────────────────── */
+.rd-compare-action {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── Empty fallback ─────────────────────────────────────────── */
+.rd-empty {
+  padding: var(--space-6);
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}

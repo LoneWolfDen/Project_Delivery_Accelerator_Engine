@@ -374,6 +374,8 @@ class Database:
             ("weaknesses",          "TEXT DEFAULT '[]'"),
             # S5: decision intelligence
             ("decision_points",     "TEXT DEFAULT '[]'"),
+            # Sprint 1: artifact provenance references
+            ("artifact_refs",       "TEXT DEFAULT '[]'"),
         ]:
             if col not in rev_cols:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {definition}")
