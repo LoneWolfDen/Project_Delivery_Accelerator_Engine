@@ -306,6 +306,58 @@ input::placeholder, textarea::placeholder {
   flex-shrink: 0;
 }
 
+/* ── Review quality metrics (.review-metrics) ──────────────
+ * Rendered by VersionAccordion._renderReviewMetrics()
+ * Shows Issues / Resolved / Carry Forward inline in review card.
+ */
+.review-metrics {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-1) 0;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.review-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.review-metric-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.review-metric-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.review-metric-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Resolved: green value */
+.review-metric--resolved .review-metric-value {
+  color: var(--green);
+}
+
+/* Carry forward: amber value */
+.review-metric--carry .review-metric-value {
+  color: var(--amber);
+}
+
 /* ── Status dot ────────────────────────────────────────────── */
 .status-dot {
   width: 7px;

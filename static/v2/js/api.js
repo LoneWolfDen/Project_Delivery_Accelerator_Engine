@@ -61,9 +61,9 @@ const MOCK_DATA = {
             persona: 'solution_architect',
             active_review_id: 'r7',
             reviews: [
-              { review_id: 'r7', version_id: 'v3', persona: 'solution_architect', created_at: '2026-05-28T12:00:00Z', total_findings: 14, quality_status: 'complete',   iteration_number: 3, summary: 'Comprehensive architecture review covering all risk areas.' },
-              { review_id: 'r6', version_id: 'v3', persona: 'delivery_manager',   created_at: '2026-05-27T09:00:00Z', total_findings: 9,  quality_status: 'interim',    iteration_number: 2, summary: 'Delivery timeline risks identified, dependencies mapped.' },
-              { review_id: 'r5', version_id: 'v3', persona: 'product_owner',      created_at: '2026-05-26T14:00:00Z', total_findings: 6,  quality_status: 'pending',    iteration_number: 1, summary: 'Initial scope assessment for the new version.' },
+              { review_id: 'r7', version_id: 'v3', persona: 'solution_architect', created_at: '2026-05-28T12:00:00Z', total_findings: 14, issues_resolved: 4, issues_carry_forward: 10, quality_status: 'complete',   iteration_number: 3, summary: 'Comprehensive architecture review covering all risk areas.' },
+              { review_id: 'r6', version_id: 'v3', persona: 'delivery_manager',   created_at: '2026-05-27T09:00:00Z', total_findings: 9,  issues_resolved: 3, issues_carry_forward:  6, quality_status: 'interim',    iteration_number: 2, summary: 'Delivery timeline risks identified, dependencies mapped.' },
+              { review_id: 'r5', version_id: 'v3', persona: 'product_owner',      created_at: '2026-05-26T14:00:00Z', total_findings: 6,  issues_resolved: 0, issues_carry_forward:  6, quality_status: 'pending',    iteration_number: 1, summary: 'Initial scope assessment for the new version.' },
             ],
           },
           {
@@ -76,8 +76,8 @@ const MOCK_DATA = {
             persona: 'delivery_manager',
             active_review_id: 'r4',
             reviews: [
-              { review_id: 'r4', version_id: 'v2', persona: 'delivery_manager', created_at: '2026-05-21T11:00:00Z', total_findings: 11, quality_status: 'complete', iteration_number: 2, summary: 'Refined delivery approach after client feedback.' },
-              { review_id: 'r3', version_id: 'v2', persona: 'product_owner',    created_at: '2026-05-20T15:00:00Z', total_findings: 5,  quality_status: 'interim',  iteration_number: 1, summary: 'Product scope boundaries established.' },
+              { review_id: 'r4', version_id: 'v2', persona: 'delivery_manager', created_at: '2026-05-21T11:00:00Z', total_findings: 11, issues_resolved: 5, issues_carry_forward: 6, quality_status: 'complete', iteration_number: 2, summary: 'Refined delivery approach after client feedback.' },
+              { review_id: 'r3', version_id: 'v2', persona: 'product_owner',    created_at: '2026-05-20T15:00:00Z', total_findings: 5,  issues_resolved: 0, issues_carry_forward: 5, quality_status: 'interim',  iteration_number: 1, summary: 'Product scope boundaries established.' },
             ],
           },
           {
@@ -90,8 +90,8 @@ const MOCK_DATA = {
             persona: 'solution_architect',
             active_review_id: 'r2',
             reviews: [
-              { review_id: 'r2', version_id: 'v1', persona: 'solution_architect', created_at: '2026-05-11T10:00:00Z', total_findings: 8, quality_status: 'complete', iteration_number: 2, summary: 'Architecture baseline established. Key risks documented.' },
-              { review_id: 'r1', version_id: 'v1', persona: 'delivery_manager',   created_at: '2026-05-10T14:00:00Z', total_findings: 4, quality_status: 'pending',  iteration_number: 1, summary: 'First-pass delivery assessment.' },
+              { review_id: 'r2', version_id: 'v1', persona: 'solution_architect', created_at: '2026-05-11T10:00:00Z', total_findings: 8, issues_resolved: 3, issues_carry_forward: 5, quality_status: 'complete', iteration_number: 2, summary: 'Architecture baseline established. Key risks documented.' },
+              { review_id: 'r1', version_id: 'v1', persona: 'delivery_manager',   created_at: '2026-05-10T14:00:00Z', total_findings: 4, issues_resolved: 0, issues_carry_forward: 4, quality_status: 'pending',  iteration_number: 1, summary: 'First-pass delivery assessment.' },
             ],
           },
         ],

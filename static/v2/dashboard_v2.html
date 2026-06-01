@@ -54,6 +54,47 @@ nav button.active{background:var(--surface2);color:var(--accent);}
 </style>
 
 <style>
+/* ─── Quick Navigation Search (.qs-*) ─────────────────────────────── */
+.qs-wrap{position:relative;display:inline-flex;align-items:center;flex-shrink:0;}
+.qs-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);
+  color:var(--text-muted);font-size:14px;pointer-events:none;z-index:1;}
+.qs-input{width:170px;padding:5px 10px 5px 26px;font-size:12px;
+  background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+  color:var(--text);font-family:inherit;transition:width .2s ease,border-color var(--transition);
+  appearance:none;-webkit-appearance:none;}
+.qs-input:focus{outline:none;width:210px;border-color:var(--accent);
+  background:var(--surface);box-shadow:0 0 0 3px rgba(88,166,255,.12);}
+.qs-input::-webkit-search-cancel-button{display:none;}
+.qs-input::placeholder{color:var(--text-muted);}
+.qs-dropdown{position:absolute;top:calc(100% + 6px);left:0;min-width:250px;max-width:320px;
+  max-height:240px;overflow-y:auto;background:var(--surface);border:1px solid var(--border2);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow);z-index:200;padding:3px 0;}
+.qs-dropdown::-webkit-scrollbar{width:4px;}
+.qs-dropdown::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+.qs-item{display:flex;align-items:center;gap:7px;padding:6px 12px;cursor:pointer;
+  font-size:12px;color:var(--text);transition:background var(--transition);user-select:none;}
+.qs-item:hover,.qs-item-active{background:rgba(88,166,255,.08);}
+.qs-item-icon{font-size:13px;width:17px;text-align:center;flex-shrink:0;}
+.qs-item-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--text-dim);}
+.qs-highlight{color:var(--accent);font-weight:700;background:transparent;}
+.qs-type-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+  padding:1px 6px;border-radius:20px;flex-shrink:0;}
+.qs-type-version{background:rgba(88,166,255,.12);color:var(--accent);}
+.qs-type-review{background:rgba(188,140,255,.12);color:var(--purple);}
+.qs-empty{padding:10px 14px;font-size:11px;color:var(--text-muted);text-align:center;}
+.qs-empty em{font-style:normal;font-weight:600;color:var(--accent);}
+/* pulse on navigation target */
+@keyframes qs-pulse{
+  0%  {box-shadow:0 0 0 0   rgba(88,166,255,.55);}
+  50% {box-shadow:0 0 0 6px rgba(88,166,255,.18);}
+  100%{box-shadow:0 0 0 0   rgba(88,166,255,.00);}
+}
+.qs-active-target{animation:qs-pulse .7s ease-out 2;
+  border-color:var(--accent)!important;outline:2px solid rgba(88,166,255,.2);outline-offset:1px;}
+</style>
+
+<style>
 /* ─── Layout ──────────────────────────────────────────────────────── */
 main{max-width:1080px;margin:0 auto;padding:20px 16px;}
 
@@ -406,6 +447,8 @@ details[open] .chevron{transform:rotate(90deg);}
 
 <!-- Compare module — loaded before inline scripts so Compare is available globally -->
 <script src="/static/v2/js/compare.js"></script>
+<!-- Quick navigation search — auto-mounts into #v2-search-wrap when present -->
+<script src="/static/v2/js/search.js"></script>
 
 <script>
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -490,6 +533,8 @@ function renderHeader(){
       ${TABS.map(t=>`<button class="${state.tab===t?'active':''}"
         onclick="switchTab('${t}')">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
     </nav>
+    <!-- ── Search widget ── -->
+    <div id="v2-search-wrap"></div>
     <!-- ── Compare button ── -->
     ${proj
       ?`<button class="btn-compare" onclick="openCompare()"
@@ -497,6 +542,89 @@ function renderHeader(){
           <span class="cmp-icon">⇄</span> Compare
         </button>`
       :''}`;
+  // Mount/refresh QuickSearch with current hierarchy versions
+  _mountSearch();
+}
+
+// ── QuickSearch adapter ───────────────────────────────────────────────────────
+// search.js expects AppState (the modular v2 store) but dashboard_v2.html uses
+// its own inline state object. This adapter bridges the two by shimming a
+// minimal AppState-compatible interface on window and feeding the current
+// hierarchy versions into QuickSearch after every renderHeader() call.
+(function _initSearchAdapter(){
+  if(window._searchAdapterReady) return;
+  window._searchAdapterReady = true;
+
+  // Minimal AppState shim — QuickSearch only calls:
+  //   AppState.get('versions')   → returns flat version list with nested reviews
+  //   AppState.subscribe('versions', cb) → notified when versions change
+  //   AppState.selectVersion(v)  → no-op here (dashboard_v2 manages its own state)
+  //   AppState.selectReview(r)   → no-op
+  const _subs = new Set();
+  window.AppState = {
+    get(key){
+      if(key === 'versions') return window._qs_versions || [];
+      return null;
+    },
+    subscribe(keys, fn){
+      const ks = Array.isArray(keys) ? keys : [keys];
+      if(ks.includes('versions')) _subs.add(fn);
+      return () => _subs.delete(fn);
+    },
+    selectVersion(){ /* no-op */ },
+    selectReview(){ /* no-op */ },
+    /** Internal: called by _mountSearch() to push fresh data and notify subs. */
+    _setVersions(versions){
+      window._qs_versions = versions;
+      _subs.forEach(fn => { try{ fn('versions', versions); }catch(e){} });
+    }
+  };
+})();
+
+// Called after every renderHeader() — feeds the current project's version+review
+// tree into the QuickSearch index so navigation stays in sync with visible data.
+async function _mountSearch(){
+  // Mount the widget into the freshly-rendered #v2-search-wrap
+  if(window.QuickSearch) QuickSearch.mount();
+
+  if(!state.current) return;
+  try{
+    const h = await api('GET', `/api/projects/${state.current.id}/hierarchy`);
+    const versions = [];
+    for(const phase of (h.tree||[])){
+      for(const v of (phase.versions||[])) versions.push(v);
+    }
+    // Push into shim — notifies QuickSearch subscriber to rebuild index
+    if(window.AppState && window.AppState._setVersions) window.AppState._setVersions(versions);
+  } catch(e){}
+}
+
+// ── QuickSearch navigation override for dashboard_v2.html ────────────────────
+// search.js navigateTo() targets accordion DOM that exists in the modular v2
+// layout, not in this SPA. Override it to use tab-switching + URL-fragment
+// scroll so navigation still works meaningfully here.
+QuickSearch && (QuickSearch._origNavigateTo = QuickSearch.navigateTo);
+function _patchQuickSearchNav(){
+  if(!window.QuickSearch) return;
+  QuickSearch.navigateTo = function(type, id, versionId){
+    if(type === 'version'){
+      // Jump to Versions tab scoped to this version
+      state._dashVersion = id;
+      state._dashReview  = '';
+      switchTab('versions');
+    } else {
+      // Jump to Reviews tab scoped to the parent version, highlight the review
+      state._dashVersion = versionId;
+      state._dashReview  = id;
+      switchTab('reviews');
+    }
+  };
+}
+// Patch after DOM ready (search.js may not be loaded yet at parse time)
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', _patchQuickSearchNav);
+} else {
+  _patchQuickSearchNav();
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
