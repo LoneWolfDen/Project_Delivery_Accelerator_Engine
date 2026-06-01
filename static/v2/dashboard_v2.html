@@ -449,6 +449,10 @@ details[open] .chevron{transform:rotate(90deg);}
 <script src="/static/v2/js/compare.js"></script>
 <!-- Quick navigation search — auto-mounts into #v2-search-wrap when present -->
 <script src="/static/v2/js/search.js"></script>
+<!-- Sprint 9: Health Signal, Pinned Insights, Project Memory Score (v2-only) -->
+<script src="/static/v2/js/summary_health.js"></script>
+<script src="/static/v2/js/bookmarks.js"></script>
+<script src="/static/v2/js/metrics.js"></script>
 
 <script>
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -893,7 +897,23 @@ async function viewDashboard(){
       </div>`:''}
   </div>`;
 
-  return activityHtml+ctxCard+overviewCard+insightCard;
+  // ── Sprint 9: Health Signal, Pinned Insights, Memory Score ──────────────
+  // Health badge (RAG) — populated by HealthSignal.update() via AppState subscription
+  const healthBadgeSlot = `<div id="v2-health-badge" style="margin-bottom:10px"></div>`;
+
+  // Pinned section — populated by PinnedInsights.updateSection() via subscription
+  const pinnedSlot = `<div id="v2-pinned-section"></div>`;
+
+  // Memory score card — populated by ProjectMemoryScore.update() via subscription
+  const memoryScoreSlot = `<div id="v2-memory-score" style="margin-bottom:12px"></div>`;
+
+  // Trigger immediate renders now that metrics are available
+  // (auto-mount subscriptions fire on DOM ready, but the containers are new)
+  if(window.HealthSignal)       HealthSignal.update(metrics);
+  if(window.ProjectMemoryScore) ProjectMemoryScore.update(metrics);
+  if(window.PinnedInsights && state.current) PinnedInsights.updateSection(state.current.id);
+
+  return pinnedSlot+healthBadgeSlot+activityHtml+ctxCard+overviewCard+memoryScoreSlot+insightCard;
 }
 </script>
 
@@ -1018,6 +1038,10 @@ async function viewVersions(){
                 View on Dashboard</button>
               <button class="btn-compare btn-xs" style="font-size:10px;padding:2px 8px"
                 onclick="openCompare()">⇄ Compare</button>
+              ${window.PinnedInsights&&state.current
+                ?PinnedInsights.renderPinButton(ver.version_id,'version',
+                    ver.version_id+(ver.label?' – '+ver.label:''),state.current.id)
+                :''}
               <span class="fs10 c-dim">${ver.persona?escHtml(ver.persona)+' · ':''} ${escHtml(ver.ai_backend||'files_only')}</span>
             </div>`;
 
