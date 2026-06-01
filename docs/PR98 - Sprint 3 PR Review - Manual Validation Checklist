@@ -1,0 +1,229 @@
+Sprint 3 PR Review
+Manual Validation Checklist
+A — API / Server layer
+#	Check	How to verify	Risk if skipped
+A1	POST /reconciliation/select returns the saved ReconciliationSelection dict, including selected_at and selected_by	curl -X POST .../select -d '{"anchor_review_id":"r1","selected_review_ids":["r1","r2"]}'	Selection stored silently; no confirmation to caller
+A2	POST /reconciliation/run with an empty body falls back to the stored selection	POST with {} body after a prior /select call	Empty-body run silently fails instead of using stored state
+A3	POST /reconciliation/run with body overrides the stored selection	POST with {"anchor_review_id":"r2","selected_review_ids":["r2","r3"]} on a version that has a stored selection pointing at r1	Body-level override is ignored; stale stored selection used instead
+A4	GET /reconciliation/selection returns 404 before any selection has been saved	Fresh project, GET before any POST	Non-technical user sees 500 or empty response instead of clear 404
+A5	GET /reconciliation returns 404 before any run	Fresh version, GET before POST /run	Same as A4
+A6	GET /reconciliation after a re-run returns the latest output, not the first	Run twice with different selections; GET should match second reconciliation_id	Stale output served; user trusts wrong intelligence pack
+A7	Path index correctness: /api/projects/{pid}/hierarchy/versions/{vid}/reconciliation splits to parts[3]=pid, parts[6]=vid — verify manually with a realistic project ID that contains hyphens	URL: /api/projects/my-proj-1/hierarchy/versions/v1/reconciliation → parts = ['','api','projects','my-proj-1','hierarchy','versions','v1','reconciliation'] → parts[3]='my-proj-1' ✓, parts[6]='v1' ✓	If a project ID or version ID were to contain /, path parsing would silently extract wrong IDs
+A8	Passing a review ID that belongs to a different project is rejected	POST /select with anchor_review_id from project B on project A's version	Cross-project data leak; reconciliation runs with wrong review content
+A9	selected_review_ids containing a single entry (anchor-only) is accepted and sets anchor_only=true	POST /run with ["r1"] only	Anchor-only mode silently blocked
+B — Reconciliation engine behaviour
+#	Check	How to verify	Risk if skipped
+B1	Consensus output uses the anchor's exact text, not supplemental text	Create anchor with "No DR strategy defined"; supplemental with "DR strategy is undefined" (similar but not identical); verify text and anchor_text in consensus item	User sees supplemental wording instead of anchor-blessed canonical text
+B2	A finding that is in anchor + one supplemental but missing from a second supplemental is NOT consensus — it is divergent	Three reviews: anchor+supp1 share item X, supp2 does not; item X must be in divergent_points not consensus_points	Item incorrectly elevated to consensus, misleading proposal prep
+B3	Category boundary: a "risks" item in anchor does not match an identical text item filed under "assumptions" in supplemental	anchor: risks: ["No DR plan"]; supp: assumptions: ["No DR plan"] → should be divergent, not consensus	Cross-category false merge
+B4	Similarity threshold boundary: two items with exactly 0.70 overlap are treated as the same (≥ threshold)	Manually calculate Jaccard for a 7-token sentence with 7 shared, 3 extra tokens each	Items just below/above threshold handled inconsistently
+B5	Decisions whose status is "accepted" in anchor but "open" in supplemental land in confirmed_decisions, not open_decisions	Anchor status wins per code logic (lines in _reconcile_decisions)	Anchor authority over decisions is silently overridden
+B6	A weakness that is "addressed" in anchor but "open" in supplemental does NOT appear in unresolved_weaknesses	Create anchor weakness status=addressed, supp weakness status=open (same text)	Addressed weakness incorrectly surfaces as unresolved
+B7	merged_findings count ≤ sum of findings across all reviews (de-duplication working)	Two reviews, 5 findings each, 3 identical → merged_findings should have 7 items	Count inflation; proposal prep overestimates scope
+B8	merged_findings is not a superset of consensus + divergent (they are orthogonal structures)	Check that items appearing in consensus also appear in merged_findings, and that merged_findings has no items absent from both	Data integrity confusion downstream
+B9	total_consensus / total_divergent / total_open_decisions / total_unresolved_weaknesses in the response matches the actual list lengths	Compare response["total_consensus"] against len(response["consensus_points"])	Summary badge counts are wrong; non-technical user misled
+C — Selection rules and UI invariants
+#	Check	How to verify	Risk if skipped
+C1	The reconciliation panel body is hidden on first render — it only opens on click	Open a review drawer; panel toggle button visible but body not visible	User confused by two forms in the drawer at once
+C2	The anchor checkbox is disabled — user cannot uncheck it	Open panel; verify anchor row checkbox is disabled and checked	User accidentally unchecks anchor and runs without it
+C3	The hint "This review is pre-populated as anchor. You can change it below." appears — but there is no mechanism yet to actually change the anchor in the current UI	Open panel; read the hint text; find that the anchor chip is static with no edit control	Hint says "You can change it below" but user cannot — broken affordance
+C4	When AppState.selectedVersion.reviews is empty and metrics.available_reviews is also empty, the panel shows "No other reviews found" — not a JS error	Simulate empty state in mock mode	JS error in _populateReconciliationReviewList; panel blank
+C5	Running reconciliation with only the anchor checked (no supplementals) works and shows the anchor-only label in the result card	Open panel, don't check any supplementals, click Run	Error or misleading multi-review language when anchor-only
+C6	The "Run Reconciliation" button is re-enabled after a failed run (API error)	Trigger an error (pass a bad review ID); verify button becomes clickable again	Button permanently disabled; user cannot retry
+C7	The result card shows the reconciliation_id value in the footer	Check <code> tag in result footer matches response.reconciliation_id	No ID = no way to cross-reference stored output in support/debug
+C8	The ⚓ anchor icon appears in the provenance block for the anchor review and does not appear for supplemental reviews	Inspect rendered HTML in result card	Provenance display is ambiguous; user cannot identify which review was the anchor
+C9	The absent from hint only appears on divergent items, not on consensus items	Check rendered items in Consensus section vs Divergent section	Consensus items wrongly show "absent from" attribution
+C10	Long text in rc-item-text wraps cleanly — not clipped, not overflowing the drawer	Use a long finding string (80+ characters)	Text hidden or drawer layout broken
+D — Persistence round-trip
+#	Check	How to verify	Risk if skipped
+D1	selected_review_ids are stored and retrieved in the same order as submitted	POST with ["r3","r1","r2"]; GET /selection; verify order preserved	Order-sensitive downstream processing uses wrong anchor position
+D2	selected_by is stored and visible in the GET response	POST with selected_by: "qa-user", GET /selection	Attribution field silently dropped
+D3	Re-running reconciliation on the same version_id overwrites the previous output in SQLite	Run twice; GET /reconciliation; verify reconciliation_id matches second run	Stale output served as current; reconciliation_id mismatch in logs
+D4	Selection and output are scoped to (project_id, version_id) — a different version on the same project has no selection/output	GET /reconciliation on a version that has never run; expect 404	Cross-version data bleed
+E — Non-regression
+#	Check	How to verify
+E1	Opening a review that was created in Sprint 1 (no previous_review_id, no weaknesses, no decision_points) renders the drawer without errors	Use an old Sprint 1 fixture
+E2	The Sprint 2 iteration form is still present below the reconciliation panel in the drawer	Open any review; scroll drawer
+E3	The v1 UI is unchanged	Load /?ui=v1; confirm no reconciliation panel present
+Test Scenarios: Anchor vs Supplemental Reviews
+These are manual/scenario-level tests, distinct from the unit tests already in the suite.
+
+Scenario 1 — Single anchor, no supplementals (anchor-only mode)
+Setup: One version, one review (Solution Architect) with 5 risks, 2 decisions (1 open, 1 accepted), 1 open weakness.
+
+Action: POST /run with selected_review_ids: [r1] only.
+
+Expected:
+
+anchor_only: true
+consensus_points contains all 5 risks (every anchor finding is consensus)
+divergent_points is empty []
+open_decisions contains the 1 open decision
+confirmed_decisions contains the 1 accepted decision
+unresolved_weaknesses contains the 1 open weakness
+Every item in consensus_points has exactly 1 entry in source_reviews with is_anchor: true
+provenance_summary has exactly 1 entry
+Specific checks for anchor role:
+
+The single review's review_id appears as the anchor in provenance_summary[0].is_anchor = true
+anchor_text on every consensus item equals text
+supplemental_texts is [] on every item
+Scenario 2 — Anchor + one supplemental, full overlap
+Setup: Two reviews for the same version. Both raise identical findings (same wording) across all categories.
+
+Action: POST /run with anchor_review_id: r1, selected_review_ids: [r1, r2].
+
+Expected:
+
+anchor_only: false
+All items are in consensus_points; divergent_points is empty
+Every consensus item has 2 entries in source_reviews — one with is_anchor: true, one with is_anchor: false
+text on each consensus item matches the anchor's wording, not supplemental's
+Specific anchor vs supplemental check:
+
+anchor_text = text from r1 (anchor)
+supplemental_texts[0] = text from r2 (may be identical or near-identical)
+If both have the same text, supplemental_texts[0] == anchor_text is acceptable
+Scenario 3 — Anchor + one supplemental, no overlap
+Setup: Two reviews, zero shared findings. Anchor has risks A, B. Supplemental has risks C, D.
+
+Action: POST /run with anchor_review_id: r1.
+
+Expected:
+
+consensus_points is empty []
+divergent_points has 4 items (A, B, C, D)
+A and B: present_in_reviews: [r1], absent_from_reviews: [r2]
+C and D: present_in_reviews: [r2], absent_from_reviews: [r1]
+A and B: anchor_text set, supplemental_texts: []
+C and D: anchor_text: "", supplemental_texts: ["C"] / ["D"]
+source_reviews on A/B has only the anchor prov; on C/D has only the supplemental prov
+Key anchor behaviour check: Anchor's own unique findings are still tagged is_anchor: true in their source_reviews entry, even in divergent.
+
+Scenario 4 — Anchor + one supplemental, partial overlap
+Setup: Anchor has [X, Y, Z]. Supplemental has [X, W]. X is shared; Y, Z are anchor-only; W is supplemental-only.
+
+Action: POST /run with anchor_review_id: r1.
+
+Expected:
+
+consensus_points: [X] — source_reviews has both reviews
+divergent_points: [Y, Z, W]
+Y: present_in_reviews: [r1], absent_from_reviews: [r2]
+Z: same as Y
+W: present_in_reviews: [r2], absent_from_reviews: [r1]
+merged_findings: [X, Y, Z, W] — 4 unique items, no duplicates
+X in merged_findings: source_reviews has both reviews
+Scenario 5 — Three reviews, strict consensus definition
+Setup: r1 (anchor), r2 (supplemental), r3 (supplemental). Item X is in r1 and r2 but NOT in r3.
+
+Action: POST /run with selected_review_ids: [r1, r2, r3].
+
+Expected:
+
+Item X is in divergent_points, NOT consensus_points
+present_in_reviews for X: [r1, r2]
+absent_from_reviews for X: [r3]
+This is the critical multi-supplemental test. Consensus requires presence in ALL selected reviews, not just a majority.
+
+Scenario 6 — Anchor status authority over decisions
+Setup: Same decision point "Cloud provider selection" appears in both anchor (r1, status: "accepted") and supplemental (r2, status: "open").
+
+Action: POST /run with anchor_review_id: r1.
+
+Expected:
+
+Decision appears in confirmed_decisions, NOT open_decisions
+status: "accepted" (anchor's status wins)
+source_reviews contains both r1 (anchor) and r2
+Why this matters: The anchor is the trusted reference. Supplemental opinions on decision status should not override it.
+
+Scenario 7 — Anchor vs supplemental on weakness status
+Setup: Same weakness "API gateway not rate-limited" in anchor (r1, status: "addressed") and supplemental (r2, status: "open").
+
+Action: POST /run with anchor_review_id: r1.
+
+Expected:
+
+Weakness does NOT appear in unresolved_weaknesses (anchor says addressed)
+The anchor's status: "addressed" takes precedence
+Contrast: If the anchor had status: "open" and supplemental had status: "addressed", the weakness SHOULD appear in unresolved_weaknesses (anchor says open).
+
+Scenario 8 — Switching the anchor between runs
+Setup: Version has r1 (Solution Architect) and r2 (Delivery Manager). First run uses r1 as anchor.
+
+Action 1: POST /run with anchor_review_id: r1, selected_review_ids: [r1, r2]. Note reconciliation_id = A.
+
+Action 2: POST /run with anchor_review_id: r2, selected_review_ids: [r1, r2]. Note reconciliation_id = B.
+
+Expected:
+
+Run 1: r1 items canonical, r1 decision statuses authoritative
+Run 2: r2 items canonical, r2 decision statuses authoritative; different output shape is expected if the two reviews have different text or status on shared items
+GET /reconciliation after Run 2 returns B, not A
+provenance_summary[0].is_anchor in Run 2 points to r2, not r1
+This validates the anchor selection has real semantic effect, not just label.
+
+Scenario 9 — Provenance detail on a consensus item
+Setup: Anchor r1 has artifact_refs: [{artifact_id: "a1", artifact_name: "arch.docx", section_reference: "§3"}]. Supplemental r2 has no artifact refs.
+
+Action: POST /run. Inspect a consensus item.
+
+Expected:
+
+source_reviews on the consensus item has 2 entries
+Entry for r1: is_anchor: true, review_persona set
+Entry for r2: is_anchor: false, review_persona set, artifact_id: "" (missing fields empty, not null, not error)
+provenance_summary[0].artifact_refs for r1 contains the arch.docx entry
+provenance_summary[1].artifact_refs for r2 is []
+Note: _make_provenance (used for consensus items) does NOT carry artifact refs — that is only in provenance_summary. This is a known design simplification. Validate it is consistent and documented.
+
+Scenario 10 — Re-selection and re-run
+Setup: Version has r1, r2, r3.
+
+Action 1: POST /select with anchor=r1, selected=[r1, r2]. Run reconciliation.
+
+Action 2: POST /select with anchor=r1, selected=[r1, r2, r3]. Run reconciliation.
+
+Expected:
+
+GET /selection returns the second selection (3 reviews)
+GET /reconciliation returns the second output (different reconciliation_id)
+First output is gone — it was overwritten. This is intentional; verify user understands this from the UI (result card updates in place).
+Risks Before Sprint 4
+Ordered by impact × likelihood.
+
+Risk 1 — Broken anchor-change affordance (UI)
+What: The anchor pre-population hint says "You can change it below" but the current UI provides no mechanism to actually change the anchor. The anchor chip is static and hardcoded to the currently open review. Impact: Non-technical users follow the hint, cannot find the control, lose trust in the panel. Likelihood: High — any user who reads the hint will try. Owner: Must be resolved before Sprint 4 or the hint must be reworded to "Currently open review is your anchor" with no reference to changing it.
+
+Risk 2 — merged_findings is not connected to the output sections in the UI
+What: The result card renders consensus_points, divergent_points, open_decisions, confirmed_decisions, unresolved_weaknesses — but merged_findings is computed and stored and never shown. Sprint 4 proposal prep will need to consume it. Impact: If Sprint 4 reads merged_findings and finds unexpected shape (e.g., items only from anchor because anchor was processed first in _merge_all_findings), proposals will silently miss supplemental-only findings. Likelihood: Medium — depends on how Sprint 4 consumes the output. Mitigation: Confirm that merged_findings order (anchor-first) is acceptable for downstream consumers. Document the processing order explicitly before Sprint 4.
+
+Risk 3 — Decision status conflict resolution may surprise users
+What: When the anchor says a decision is "accepted" and a supplemental says "open", the anchor wins (by design). However, there is no visible indicator in the result card that a status conflict was resolved. The user sees the confirmed decision with no record that the supplemental disagreed. Impact: Users may incorrectly believe there is full agreement on a decision that is actually contested. Likelihood: Medium in real usage (different personas frequently disagree on decision readiness). Mitigation before Sprint 4: Either surface conflict metadata in the result card, or add a status_conflict: bool field to confirmed decision items so Sprint 4's proposal layer can flag them.
+
+Risk 4 — Cross-project review ID validation only checks existence, not version membership
+What: save_reconciliation_selection validates that each review ID exists on the project (store.get_review(rid) is None), but does NOT validate that the review belongs to the specified version_id. A user could pass review IDs from a different version of the same project. Impact: Reconciliation runs across versions silently — the output will contain findings from version A mixed with version B. Likelihood: Low in current single-user flow, higher once multi-user or API-only usage grows. Mitigation before Sprint 4: Add a review.version_id == version_id check in save_reconciliation_selection or run_reconciliation.
+
+Risk 5 — Reconciliation output is overwritten on re-run with no history
+What: SQLite uses INSERT OR REPLACE — previous output is permanently gone after a re-run. There is no audit trail of past reconciliations. Impact: If a user runs reconciliation, shares the reconciliation_id with a colleague, then re-runs, the colleague's reference is broken. More importantly, Sprint 4's proposal layer will reference reconciliation_id from the output — if reconciliation is re-run after a proposal draft is created, the proposal will be based on a stale reconciliation that no longer exists. Likelihood: Medium — any iterative workflow triggers this. Mitigation before Sprint 4: At minimum, store reconciliation_id on the proposal record so it can be validated. Consider whether re-run should produce a new row or update in place. Decide and document the policy before Sprint 4 builds on top of it.
+
+Risk 6 — _token_overlap is sensitive to word order and punctuation
+What: "No DR strategy defined" and "DR strategy not defined" have 3/5 tokens in common = 0.60 Jaccard — below threshold. They would be treated as distinct and both appear in the output. The 0.70 threshold is conservative by design, but real review text is noisy — reviewers write the same concern differently. Impact: Consensus under-reported; divergence over-reported. Users conclude reviews disagree more than they do. Downstream proposal might be unnecessarily cautious. Likelihood: High in practice — review text comes from LLM persona outputs which use varied phrasing. Mitigation before Sprint 4: This is an acknowledged design tradeoff. The risk is: Sprint 4 builds proposal language on divergent findings that are actually the same concern. Flag this for the Sprint 4 implementer. Do not change the threshold without a data sample to calibrate against.
+
+Risk 7 — Checkbox state is read from DOM at submit time only (no intermediate validation)
+What: onRunReconciliation reads checkboxes at click time. If a user opens the panel, checks supplemental reviews, navigates away (causing a re-render), then returns — the checkboxes may be in a default state (unchecked), silently dropping the user's prior selection. Impact: User believes they are reconciling 3 reviews but only the anchor is submitted. Result is anchor-only with no warning. Likelihood: Low currently (single-drawer SPA), higher if drawer re-rendering is ever triggered mid-session. Mitigation before Sprint 4: Low priority now, but note that Sprint 4 should not assume the UI preserved the user's checkbox state across re-renders.
+
+Risk 8 — RECONCILABLE_CATEGORIES constant defined but not enforced
+What: models/reconciliation.py defines RECONCILABLE_CATEGORIES = ("risks", "assumptions", ...) but the service iterates all keys in review.findings regardless of that constant. A review with a custom category like "custom_risk_tier_2" will be reconciled silently. Impact: Minor now. Becomes a risk in Sprint 4 if the proposal template expects exactly the named categories and receives unexpected keys. Mitigation: Either enforce the constant in the engine or remove it from the model to avoid false documentation. Decide before Sprint 4 consumes the output shape.
+
+Summary table
+#	Risk	Impact	Likelihood	Must-fix before S4?
+1	Broken "change anchor" affordance hint	High	High	Yes — reword or implement
+2	merged_findings consumption undefined for S4	Medium	Medium	Yes — document shape contract
+3	Decision status conflict invisible to user	Medium	Medium	Recommended
+4	Selection not scoped to version_id	Medium	Low	Recommended
+5	Reconciliation output overwritten with no history	High	Medium	Yes — decide policy before S4 builds on it
+6	Text similarity threshold produces false divergence	Medium	High	Document + calibrate
+7	Checkbox state lost on re-render	Low	Low	Note for S4
+8	RECONCILABLE_CATEGORIES unenforced	Low	Low	Decide or delete
