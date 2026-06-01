@@ -187,6 +187,24 @@ An execution run against a Version. Contains the prompt used, AI-generated outpu
 - `artifact_refs[]` — structured provenance references. Each entry: `{artifact_id, artifact_name, artifact_type, section_reference, page_reference, slide_number, slide_title, subject, date, sender, meeting_name, timestamp, sheet, row_range, excerpt}`. Types: `document | slides | email | meeting_notes | spreadsheet`. Defaults to `[]` for existing records.
 - `weakness.user_note` — optional free-text note stored within each weakness dict alongside `status`. Defaults to `""` when absent.
 
+**Sprint 2 additions (backward-compatible):**
+- `previous_review_id` — FK to the review this was iterated from. Empty string `""` for original (non-iterated) reviews. Enables lineage traversal and diff computation. Existing records default to `""` — no migration required (column already existed from S1).
+- Review iteration is always **user-initiated**: no auto-chaining. The original review is never modified. Each iteration stores its own `prompt_used`, `persona`, and `created_at`.
+
+**Review iteration lineage schema (Sprint 2):**
+
+```json
+{
+  "review_id":          "r4",
+  "version_id":         "v2",
+  "previous_review_id": "r3",
+  "iteration_number":   2,
+  "persona":            "Delivery Manager",
+  "prompt_used":        "Refined delivery risks…",
+  "created_at":         "2026-06-01T10:00:00Z"
+}
+```
+
 **Weakness schema (Sprint 1):**
 
 ```json
@@ -234,6 +252,7 @@ Atomic unit of structured client feedback. Classified into: `accepted`, `rejecte
 | Version → Review | `review_ids: List[str]` on Version; `version_id` FK on Review |
 | Version active review | `active_review_id` — validated against `review_ids`; defaults to latest |
 | Review chain | `previous_review_id` links iterations; `iteration_number` is 1-based per version |
+| Review iteration | `previous_review_id` is user-selected, never automatic; original review is immutable *(Sprint 2)* |
 | ProposalVersion traceability | Both `hierarchy_version_id` and `active_review_id` are required (DS-02 gate) |
 | Review provenance | `artifact_refs[]` links review findings back to source artifacts (Sprint 1) |
 | Weakness annotation | `weakness.user_note` persists free-text user annotation alongside `weakness.status` (Sprint 1) |

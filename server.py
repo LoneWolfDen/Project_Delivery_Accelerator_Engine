@@ -465,6 +465,11 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             parts = self.path.split("/")
             h_review.handle_weakness_note(parts[3], parts[6], parts[8], body, R)
 
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/iterate"):
+            parts = self.path.split("/")
+            # path: /api/projects/{pid}/hierarchy/reviews/{rid}/iterate
+            h_review.handle_create_review_iteration(parts[3], parts[6], body, R)
+
         elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/decision/" in self.path and self.path.endswith("/status"):
             parts = self.path.split("/")
             h_review.handle_decision_status(parts[3], parts[6], parts[8], body, R)

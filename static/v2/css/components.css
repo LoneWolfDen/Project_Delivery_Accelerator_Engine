@@ -1880,3 +1880,337 @@ details[open] .rd-expand-hint {
   color: var(--text-muted);
   font-style: italic;
 }
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   SPRINT 2 — Review Iteration (.ri-*)
+   TRACE: UI → ReviewDetail → review_detail.js (Sprint 2)
+   Scoped with .ri- prefix; no overlap with existing .rd-* classes.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Lineage banner — shown when previous_review_id is present ─
+ * Appears at the top of the Full Details drawer.
+ * Backward-compatible: absent for reviews without a predecessor.
+ */
+.ri-lineage-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: 12px;
+}
+
+.ri-lineage-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.ri-lineage-body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.ri-lineage-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.ri-lineage-base-id {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  background: var(--primary-dim);
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.ri-lineage-persona {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.ri-lineage-changed {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1px solid var(--amber);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* ── Create Iteration section ──────────────────────────────────
+ * Placed at the bottom of the Full Details drawer.
+ * Intentionally restrained — one explicit toggle button.
+ */
+.ri-create-section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.ri-create-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.ri-create-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+  color: var(--primary-dark);
+}
+
+.ri-create-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.ri-create-toggle {
+  flex-shrink: 0;
+}
+
+/* ── Iteration form ────────────────────────────────────────────
+ * Hidden by default; revealed only on explicit button click.
+ */
+.ri-create-form {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.ri-create-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+  line-height: 1.5;
+}
+
+.ri-form-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.ri-form-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.ri-optional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.ri-persona-select {
+  flex: 1;
+  min-width: 160px;
+  font-size: 12px;
+}
+
+.ri-prompt-input {
+  flex: 1;
+  min-width: 200px;
+  font-size: 11px;
+  resize: vertical;
+  min-height: 48px;
+}
+
+.ri-form-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.ri-form-hint em {
+  font-style: normal;
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+.ri-form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Result area ───────────────────────────────────────────────
+ * Shown inline after successful or failed iteration.
+ */
+.ri-result {
+  margin-top: var(--space-3);
+}
+
+.ri-result-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: var(--space-2) 0;
+}
+
+.ri-result-error {
+  font-size: 12px;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--red) 25%, transparent);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* Success card */
+.ri-result-card {
+  background: color-mix(in srgb, var(--green) 6%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+  border-left: 3px solid var(--green);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.ri-result-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.ri-result-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.ri-result-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.ri-result-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: var(--space-2);
+}
+
+.ri-result-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.ri-result-row--summary {
+  align-items: flex-start;
+}
+
+.ri-result-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  min-width: 90px;
+  flex-shrink: 0;
+}
+
+.ri-result-value {
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.ri-result-value--id {
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.ri-result-raw-id {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.ri-result-base-persona {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ri-result-summary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  flex: 1;
+  min-width: 160px;
+}
+
+/* Persona change/same badges */
+.ri-persona-changed-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1px solid var(--amber);
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.ri-persona-same-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.ri-result-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: var(--space-1);
+}

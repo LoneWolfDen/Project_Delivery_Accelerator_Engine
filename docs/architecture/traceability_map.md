@@ -127,6 +127,34 @@
 
 ---
 
+### 1.8 Review Iteration — Create New Review from Existing (Sprint 2)
+
+| Layer | Component | File | Notes |
+|-------|-----------|------|-------|
+| **UI** | "New Iteration" toggle button | `static/v2/js/review_detail.js` | Explicit user action — never automatic |
+| **UI** | Persona select + prompt input | `static/v2/js/review_detail.js` | Inside `.ri-create-form` (hidden by default) |
+| **UI** | "Create New Review" submit button | `static/v2/js/review_detail.js` | Triggers `onCreateIteration()` |
+| **Logic** | `ReviewDetail.onToggleIterationForm(rid)` | `static/v2/js/review_detail.js` | Shows/hides iteration form |
+| **Logic** | `ReviewDetail.onCreateIteration(btn)` | `static/v2/js/review_detail.js` | Collects persona + prompt, calls API |
+| **Logic** | `API.createReviewIteration(pid, rid, persona, prompt)` | `static/v2/js/api.js` | POST to iterate endpoint |
+| **API** | `POST /hierarchy/reviews/{rid}/iterate` | `server.py → handlers/review.py` | Creates new review with lineage *(Sprint 2)* |
+| **Handler** | `handle_create_review_iteration()` | `handlers/review.py` | Reads `new_persona`, `custom_prompt` from body |
+| **Service** | `create_review_iteration()` | `services/review.py` | Creates new review; base review unchanged |
+| **Data** | `{Review}.previous_review_id` | `models/hierarchy.py → Review` | FK to base review; `""` for originals |
+| **Data** | `{Review}.persona` | `models/hierarchy.py → Review` | New persona stored on new review only |
+| **Data** | `{Review}.prompt_used` | `models/hierarchy.py → Review` | New prompt stored on new review only |
+| **UI** | Lineage banner `.ri-lineage-banner` | `static/v2/js/review_detail.js` | Shown in drawer when `previous_review_id` present |
+| **UI** | Result card `.ri-result-card` | `static/v2/js/review_detail.js` | Confirms new ID, persona, predecessor |
+| **Diagram** | Application Flow §Review Iteration | `docs/architecture/application_flow.md` | Review iteration flow *(Sprint 2)* |
+
+> **Sprint 2 invariants:**
+> - `previous_review_id` is set **only** on the new review — the base is read-only.
+> - If `new_persona` is omitted, the base review's persona is reused (`persona_changed = false`).
+> - Open decision points from the base are carried forward into the new review.
+> - Legacy reviews with `previous_review_id == ""` render safely — no banner shown.
+
+---
+
 ## 2. Component Mapping
 
 | V2 Component | File | Renders | Data Source | State Keys Read |
@@ -136,6 +164,7 @@
 | VersionAccordion | `static/v2/js/accordion.js` | Accordion items + review rows | versions[] | versions (via render param) |
 | Cards | `ui/v2/components/Cards.js` | Snapshot metric tiles | MetricsPayload | metrics |
 | ReviewDetail *(Sprint 1)* | `static/v2/js/review_detail.js` | Review Full Details drawer | API response (full review) | drawerEntity |
+| ReviewDetail iteration form *(Sprint 2)* | `static/v2/js/review_detail.js` | Iteration form + lineage banner + result card | `API.createReviewIteration()` response | drawerEntity.previous_review_id |
 | MainLayout | `ui/v2/layout/MainLayout.js` | CSS class mutations only | AppState events | drawerOpen, loading |
 | Dashboard | `static/v2/js/dashboard.js` | Orchestrates all above | AppState + API | all |
 
@@ -156,6 +185,7 @@
 | `/api/projects/{pid}/hierarchy/versions/{vid}` | GET | `API.fetchVersionDetail()` | `Version (full)` | Detail Drawer (version) |
 | `/api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/status` | POST | `API.updateWeaknessStatus()` | `{updated, status}` | ReviewDetail weakness dropdown *(Sprint 1)* |
 | `/api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/note` | POST | `API.updateWeaknessNote()` | `{updated, user_note}` | ReviewDetail note textarea *(Sprint 1)* |
+| `/api/projects/{pid}/hierarchy/reviews/{rid}/iterate` | POST | `API.createReviewIteration()` | `{review_id, previous_review_id, persona_used, persona_changed, iteration_number, created_at}` | ReviewDetail result card *(Sprint 2)* |
 
 ---
 
@@ -179,6 +209,9 @@
 | `{Review}` | `weaknesses[].status` | Status dropdown per weakness *(Sprint 1)* | ReviewDetail |
 | `{Review}` | `weaknesses[].user_note` | Note textarea per weakness *(Sprint 1)* | ReviewDetail |
 | `{Review}` | `decision_points[]` | Expandable section in Full Details *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `previous_review_id` | Lineage banner in Full Details drawer *(Sprint 2)* | ReviewDetail |
+| `{Review}` | `persona` | Persona used shown in lineage result card *(Sprint 2)* | ReviewDetail |
+| `{Review}` | `iteration_number` | Shown in result card after iteration *(Sprint 2)* | ReviewDetail |
 | `{MetricsPayload}` | `total_versions` | Snapshot card | Cards.js |
 | `{MetricsPayload}` | `total_reviews` | Snapshot card | Cards.js |
 | `{MetricsPayload}` | `risks_identified` | Snapshot card (red) | Cards.js |
@@ -208,6 +241,11 @@
 | `review_detail.js` — remove `window.DetailPanel` alias *(Sprint 1)* | `dashboard.js` fallback call fails | Drawer shows empty on review click |
 | `api.js` — remove `updateWeaknessNote` *(Sprint 1)* | Weakness notes cannot be saved | User annotations lost (UI still renders) |
 | `db/database.py` — remove `artifact_refs` migration *(Sprint 1)* | New installs miss column; INSERT fails | Reviews with provenance cannot be stored |
+| `services/review.py` — remove `create_review_iteration()` *(Sprint 2)* | POST /iterate returns 500 | Users cannot create new reviews from existing ones |
+| `handlers/review.py` — remove `handle_create_review_iteration()` *(Sprint 2)* | Route silently 404s | Iteration form submit fails with no feedback |
+| `review_detail.js` — remove `_renderIterationBanner()` *(Sprint 2)* | Lineage link invisible | Users cannot see which review an iteration was built from |
+| `review_detail.js` — remove `_renderCreateIterationAction()` *(Sprint 2)* | Iteration form not rendered | Users cannot create new reviews from the drawer |
+| `api.js` — remove `createReviewIteration` *(Sprint 2)* | Iteration form submit errors silently | New review never created; no user feedback |
 
 ---
 
@@ -227,3 +265,6 @@
 | Weakness note | `weakness["user_note"]` | `user_note` | `rd-note-textarea` | `.rd-note-textarea` *(Sprint 1)* |
 | Weakness status | `weakness["status"]` | `status` | `rd-status-select` | `.rd-status-select` *(Sprint 1)* |
 | Review Full Details | `ReviewDetail` (JS module) | `window.ReviewDetail` | `review_detail.js` script | `.rd-*` prefix *(Sprint 1)* |
+| Review iteration | `create_review_iteration()` (service) | `createReviewIteration()` (api.js) | `.ri-create-form` | `.ri-*` prefix *(Sprint 2)* |
+| Previous review link | `previous_review_id` (Review) | `previous_review_id` (JS result) | `.ri-lineage-banner` | `.ri-lineage-base-id` *(Sprint 2)* |
+| Persona used on iteration | `persona` (Review) | `persona_used` (result shape) | `.ri-persona-select` | `.ri-persona-changed-badge` *(Sprint 2)* |

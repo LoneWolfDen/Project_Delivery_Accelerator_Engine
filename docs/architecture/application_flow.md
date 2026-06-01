@@ -24,6 +24,9 @@
 | Review drawer render | `static/v2/js/review_detail.js` | `ReviewDetail.renderReview()` *(Sprint 1)* |
 | Weakness note persist | `static/v2/js/api.js` | `API.updateWeaknessNote()` *(Sprint 1)* |
 | Weakness status persist | `static/v2/js/api.js` | `API.updateWeaknessStatus()` *(Sprint 1)* |
+| Review iteration toggle | `static/v2/js/review_detail.js` | `ReviewDetail.onToggleIterationForm()` *(Sprint 2)* |
+| Review iteration submit | `static/v2/js/review_detail.js` | `ReviewDetail.onCreateIteration()` *(Sprint 2)* |
+| Review iteration API call | `static/v2/js/api.js` | `API.createReviewIteration()` *(Sprint 2)* |
 
 ---
 
@@ -96,10 +99,35 @@ flowchart LR
     R6 --> R8["ReviewDetail.renderReview(summary)<br/>(Sprint 1 — full details panel)"]
     R8 --> R9["_loadDrawerDetail() async"]
     R9 --> R10["API.fetchReviewDetail(pid, rid)"]
-    R10 --> R11["ReviewDetail.renderReview(full)<br/>updates drawer with:<br/>• Version ID + Persona + Prompt<br/>• Top 3 Risks (always visible)<br/>• Artifact provenance chips<br/>• Weaknesses + status + note<br/>• Decision Points"]
+    R10 --> R11["ReviewDetail.renderReview(full)<br/>updates drawer with:<br/>• Version ID + Persona + Prompt<br/>• Top 3 Risks (always visible)<br/>• Artifact provenance chips<br/>• Weaknesses + status + note<br/>• Decision Points<br/>• Lineage banner (Sprint 2)<br/>• Create New Review form (Sprint 2)"]
 ```
 
 > **Sprint 1:** `ReviewDetail` (`static/v2/js/review_detail.js`) is the primary drawer renderer for reviews. It is aliased as `window.DetailPanel` for backward compatibility. Compare remains a secondary explicit button action — it does **not** open on review click.
+
+### Review Iteration Flow (Sprint 2)
+
+```mermaid
+flowchart LR
+    I1["User opens Review<br/>Full Details drawer"] --> I2["ReviewDetail.renderReview(r)<br/>renders lineage banner if<br/>previous_review_id present"]
+    I2 --> I3["User clicks<br/>'New Iteration' button"]
+    I3 --> I4["onToggleIterationForm(rid)<br/>reveals iteration form<br/>(explicit user action only)"]
+    I4 --> I5["User selects persona<br/>(same or different)<br/>+ optional custom prompt"]
+    I5 --> I6["User clicks<br/>'Create New Review'"]
+    I6 --> I7["onCreateIteration(btn)<br/>collects persona + prompt"]
+    I7 --> I8["API.createReviewIteration(pid, rid,<br/>newPersona, customPrompt)"]
+    I8 --> I9["POST /hierarchy/reviews/{rid}/iterate"]
+    I9 --> I10["handle_create_review_iteration()<br/>handlers/review.py"]
+    I10 --> I11["create_review_iteration()<br/>services/review.py"]
+    I11 --> I12["store.create_review()<br/>previous_review_id = rid<br/>persona = new or base<br/>artifact_refs = base refs"]
+    I12 --> I13["Returns new review summary<br/>review_id, persona_used,<br/>previous_review_id, persona_changed"]
+    I13 --> I14["_renderIterationResult(result)<br/>confirmation card in drawer<br/>shows new ID + lineage"]
+```
+
+> **Sprint 2 rules:**
+> - The original review is **never modified**. A new review is always created.
+> - Persona selection is **optional** — defaults to base review persona when omitted.
+> - Base review becomes **context input** for the new review execution.
+> - Open decision points from the base review are **carried forward** into the new review.
 
 ### Refresh Loop (no page reload)
 
@@ -140,4 +168,8 @@ stateDiagram-v2
 
     DrawerOpen --> ReviewSelected: closeDrawer()
     DrawerOpen --> DrawerOpen: fetchReviewDetail() resolves → update content
+    DrawerOpen --> IterationFormOpen: user clicks 'New Iteration' button *(Sprint 2)*
+    IterationFormOpen --> DrawerOpen: user cancels form
+    IterationFormOpen --> IterationCreated: onCreateIteration() → POST /iterate
+    IterationCreated --> DrawerOpen: result card shown; user refreshes list
 ```
