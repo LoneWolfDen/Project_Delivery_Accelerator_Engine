@@ -61,6 +61,7 @@ from services.review import (  # noqa: F401
     complete_review_gate,
     set_active_review_gated,
     update_weakness_status,
+    update_weakness_note,
     update_decision_status,
     get_review_diff,
     get_version_readiness,

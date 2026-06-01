@@ -125,7 +125,7 @@ flowchart TD
     A["AppState.openDrawer(type, data)"] --> B["_syncDrawer() fires<br/>(subscriber)"]
     B --> C["CSS: drawer.open, main.drawer-open"]
     C --> D{"entity.type?"}
-    D -->|'review'| E["DetailPanel.renderReview(summary data)<br/>(fast — shows immediately)"]
+    D -->|'review'| E["ReviewDetail.renderReview(summary data)<br/>(Sprint 1 — fast, shows immediately)"]
     D -->|'version'| F["DetailPanel.renderVersion(summary data)<br/>(fast — shows immediately)"]
     E --> G["_loadDrawerDetail(entity) async"]
     F --> G
@@ -134,7 +134,7 @@ flowchart TD
     H -->|'version'| J["API.fetchVersionDetail(pid, vid)"]
     I --> K{"full data returned?"}
     J --> K
-    K -->|yes| L["DetailPanel.renderReview/Version(full)<br/>replaces drawer content"]
+    K -->|yes| L["ReviewDetail.renderReview(full)<br/>replaces drawer — shows provenance,<br/>weakness notes, all findings"]
     K -->|error/404| M["Drawer keeps summary view<br/>(non-blocking — no error shown)"]
 ```
 
@@ -161,3 +161,41 @@ flowchart TD
 ```
 
 **Location:** `services/hierarchy.py → get_metrics()` and `models/hierarchy.py → HierarchyStore.get_metrics()`
+
+---
+
+## 8. Weakness Note + Status Persistence Logic (Sprint 1)
+
+```mermaid
+flowchart TD
+    A["User changes weakness status dropdown<br/>ReviewDetail.onWeaknessStatus(el)"] --> B["Optimistic UI: update CSS class<br/>(immediate — no wait)"]
+    B --> C["API.updateWeaknessStatus(pid, rid, wid, status)"]
+    C --> D["POST /hierarchy/reviews/{rid}/weakness/{wid}/status"]
+    D --> E["handlers/review.handle_weakness_status()"]
+    E --> F["services/review.update_weakness_status()"]
+    F --> G{"status in DECISION_STATUSES?"}
+    G -->|no| H["Return {error: 'Invalid status'}"]
+    G -->|yes| I["store.get_review(rid)"]
+    I --> J["Find weakness by id"]
+    J --> K["weakness['status'] = status<br/>(preserves user_note)"]
+    K --> L["store.update_review_weaknesses(rid, weaknesses)"]
+    L --> M["SQLite UPDATE + file dual-write"]
+
+    N["User blurs weakness note textarea<br/>ReviewDetail.onWeaknessNote(el)"] --> O["API.updateWeaknessNote(pid, rid, wid, note)"]
+    O --> P["POST /hierarchy/reviews/{rid}/weakness/{wid}/note"]
+    P --> Q["handlers/review.handle_weakness_note()"]
+    Q --> R["services/review.update_weakness_note()"]
+    R --> S["store.get_review(rid)"]
+    S --> T["Find weakness by id"]
+    T --> U["weakness['user_note'] = note<br/>(preserves status)"]
+    U --> V["store.update_review_weaknesses(rid, weaknesses)"]
+    V --> W["SQLite UPDATE + file dual-write"]
+    W --> X["Return {updated: true, user_note: note}"]
+    X --> Y["Show '✓ Saved' next to textarea<br/>(2 s then clear)"]
+```
+
+**Rules:**
+- Status and note updates are independent — each preserves the other field.
+- Note is optional — empty string clears it; field is never required.
+- Persisted within the weakness dict alongside `status`.
+- No separate table required — stored as JSON within the `weaknesses` column.

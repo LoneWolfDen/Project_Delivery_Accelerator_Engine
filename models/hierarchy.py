@@ -187,6 +187,13 @@ class Review:
     # S5: decision intelligence
     decision_points: List[Dict[str, Any]] = field(default_factory=list)
 
+    # Sprint 1: structured artifact provenance references
+    # Each entry: {artifact_id, artifact_name, artifact_type, section_reference,
+    #              page_reference, slide_number, slide_title, subject, date, sender,
+    #              meeting_name, timestamp, sheet, row_range, excerpt}
+    # artifact_type: document | slides | email | meeting_notes | spreadsheet
+    artifact_refs: List[Dict[str, Any]] = field(default_factory=list)
+
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -219,6 +226,8 @@ class Review:
             "weaknesses":         self.weaknesses,
             "missing_categories": self.missing_categories,
             "decision_points":    self.decision_points,
+            "artifact_refs":      self.artifact_refs,
+            "prompt_used":        self.prompt_used,
         }
 
 

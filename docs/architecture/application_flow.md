@@ -21,7 +21,9 @@
 | Full render | `static/v2/js/dashboard.js` | `Dashboard.renderAll()` |
 | Accordion render | `static/v2/js/accordion.js` | `VersionAccordion.render()` |
 | Card render | `ui/v2/components/Cards.js` | `Cards.render()` |
-| Drawer render | `ui/v2/components/DetailPanel.js` | `DetailPanel.renderReview()` |
+| Review drawer render | `static/v2/js/review_detail.js` | `ReviewDetail.renderReview()` *(Sprint 1)* |
+| Weakness note persist | `static/v2/js/api.js` | `API.updateWeaknessNote()` *(Sprint 1)* |
+| Weakness status persist | `static/v2/js/api.js` | `API.updateWeaknessStatus()` *(Sprint 1)* |
 
 ---
 
@@ -91,11 +93,13 @@ flowchart LR
     R4 --> R5["State subscriber fires:<br/>'drawerOpen' changed"]
     R5 --> R6["Dashboard._syncDrawer()"]
     R6 --> R7["CSS: #v2-drawer.open<br/>#v2-main.drawer-open"]
-    R6 --> R8["DetailPanel.renderReview(summary)"]
+    R6 --> R8["ReviewDetail.renderReview(summary)<br/>(Sprint 1 — full details panel)"]
     R8 --> R9["_loadDrawerDetail() async"]
     R9 --> R10["API.fetchReviewDetail(pid, rid)"]
-    R10 --> R11["DetailPanel.renderReview(full)<br/>updates drawer content"]
+    R10 --> R11["ReviewDetail.renderReview(full)<br/>updates drawer with:<br/>• Version ID + Persona + Prompt<br/>• Top 3 Risks (always visible)<br/>• Artifact provenance chips<br/>• Weaknesses + status + note<br/>• Decision Points"]
 ```
+
+> **Sprint 1:** `ReviewDetail` (`static/v2/js/review_detail.js`) is the primary drawer renderer for reviews. It is aliased as `window.DetailPanel` for backward compatibility. Compare remains a secondary explicit button action — it does **not** open on review click.
 
 ### Refresh Loop (no page reload)
 

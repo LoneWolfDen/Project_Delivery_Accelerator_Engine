@@ -49,21 +49,23 @@
 
 ---
 
-### 1.3 Review Selection → Drawer
+### 1.3 Review Selection → Drawer (Sprint 1: Full Details)
 
 | Layer | Component | File | Notes |
 |-------|-----------|------|-------|
-| **UI** | Review row click | `static/v2/js/accordion.js` `onReviewClick()` | Inside accordion |
+| **UI** | Review row click | `static/v2/js/accordion.js` `onReviewClick()` | Inside accordion — opens Full Details |
 | **UI** | Sidebar review click | `static/v2/js/dashboard.js` `onSidebarReviewClick()` | Left panel |
 | **Logic** | `AppState.selectReview()` | `static/v2/js/state.js` | Updates selectedReview |
 | **Logic** | `AppState.openDrawer('review', data)` | `static/v2/js/state.js` | Sets drawerOpen=true |
 | **Logic** | `Dashboard._syncDrawer()` | `static/v2/js/dashboard.js` | CSS class mutations |
-| **Logic** | `DetailPanel.renderReview(summary)` | `ui/v2/components/DetailPanel.js` | Immediate render |
+| **Logic** | `ReviewDetail.renderReview(summary)` | `static/v2/js/review_detail.js` | Immediate render (Sprint 1) |
 | **Logic** | `Dashboard._loadDrawerDetail()` | `static/v2/js/dashboard.js` | Async full fetch |
 | **API** | `GET /hierarchy/reviews/{rid}` | `server.py → services/hierarchy.py` | Full review object |
-| **Data** | `{Review}` | `models/hierarchy.py → Review` | findings, weaknesses, questions |
-| **Diagram** | Sequence 3 | `docs/architecture/sequence_flows.md` | Drawer open sequence |
+| **Data** | `{Review}` | `models/hierarchy.py → Review` | findings, weaknesses, artifact_refs, prompt_used |
+| **Diagram** | Application Flow §Review Selection | `docs/architecture/application_flow.md` | Drawer open flow |
 | **Diagram** | Logic Flow §6 | `docs/architecture/logic_flow.md` | Drawer loading logic |
+
+> **Sprint 1 rule:** clicking a review always opens Full Details. Compare is a secondary explicit button only — it never opens on review click.
 
 ---
 
@@ -108,6 +110,23 @@
 
 ---
 
+### 1.7 Weakness Note Persistence (Sprint 1)
+
+| Layer | Component | File | Notes |
+|-------|-----------|------|-------|
+| **UI** | Note textarea (blur) | `static/v2/js/review_detail.js` `onWeaknessNote()` | Per-weakness in Full Details drawer |
+| **UI** | Status dropdown (change) | `static/v2/js/review_detail.js` `onWeaknessStatus()` | Per-weakness in Full Details drawer |
+| **Logic** | `API.updateWeaknessNote()` | `static/v2/js/api.js` | POST to note endpoint |
+| **Logic** | `API.updateWeaknessStatus()` | `static/v2/js/api.js` | POST to status endpoint |
+| **API** | `POST /hierarchy/reviews/{rid}/weakness/{wid}/note` | `server.py → handlers/review.py` | Persists free-text note (Sprint 1) |
+| **API** | `POST /hierarchy/reviews/{rid}/weakness/{wid}/status` | `server.py → handlers/review.py` | Persists status update |
+| **Handler** | `handle_weakness_note()` | `handlers/review.py` | Reads `body["note"]` |
+| **Service** | `update_weakness_note()` | `services/review.py` | Updates weakness dict in store |
+| **Data** | `weakness.user_note` | `models/hierarchy.py → Review.weaknesses[]` | Stored within weakness JSON |
+| **Diagram** | Logic Flow §8 | `docs/architecture/logic_flow.md` | Note + status persistence flow |
+
+---
+
 ## 2. Component Mapping
 
 | V2 Component | File | Renders | Data Source | State Keys Read |
@@ -116,9 +135,11 @@
 | Sidebar | `ui/v2/components/Sidebar.js` | Version + review list | AppState | versions, selectedVersion, selectedReview |
 | VersionAccordion | `static/v2/js/accordion.js` | Accordion items + review rows | versions[] | versions (via render param) |
 | Cards | `ui/v2/components/Cards.js` | Snapshot metric tiles | MetricsPayload | metrics |
-| DetailPanel | `ui/v2/components/DetailPanel.js` | Version or review detail | API response | drawerEntity |
+| ReviewDetail *(Sprint 1)* | `static/v2/js/review_detail.js` | Review Full Details drawer | API response (full review) | drawerEntity |
 | MainLayout | `ui/v2/layout/MainLayout.js` | CSS class mutations only | AppState events | drawerOpen, loading |
 | Dashboard | `static/v2/js/dashboard.js` | Orchestrates all above | AppState + API | all |
+
+> `ReviewDetail` is exposed as `window.ReviewDetail` and aliased as `window.DetailPanel` for backward compatibility with any remaining call sites.
 
 ---
 
@@ -131,8 +152,10 @@
 | `/api/projects/{pid}/hierarchy/metrics` | GET | `API.fetchMetrics()` | `MetricsPayload` | Snapshot Cards, Context Banner |
 | `/api/projects/{pid}/hierarchy/versions` | GET | `API.fetchVersions()` | `Version[]` | Header version dropdown |
 | `/api/projects/{pid}/hierarchy/reviews` | GET | `API.fetchReviews()` | `Review[]` | Header review dropdown |
-| `/api/projects/{pid}/hierarchy/reviews/{rid}` | GET | `API.fetchReviewDetail()` | `Review (full)` | Detail Drawer (review) |
+| `/api/projects/{pid}/hierarchy/reviews/{rid}` | GET | `API.fetchReviewDetail()` | `Review (full)` | Detail Drawer — ReviewDetail |
 | `/api/projects/{pid}/hierarchy/versions/{vid}` | GET | `API.fetchVersionDetail()` | `Version (full)` | Detail Drawer (version) |
+| `/api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/status` | POST | `API.updateWeaknessStatus()` | `{updated, status}` | ReviewDetail weakness dropdown *(Sprint 1)* |
+| `/api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/note` | POST | `API.updateWeaknessNote()` | `{updated, user_note}` | ReviewDetail note textarea *(Sprint 1)* |
 
 ---
 
@@ -145,16 +168,25 @@
 | `{Version}` | `review_count` | Accordion header badge, Sidebar badge | VersionAccordion |
 | `{Version}` | `active_review_id` | Accordion review "Active" badge | VersionAccordion |
 | `{Review}` | `review_id`, `persona` | Accordion review row, Header review dropdown | Review rows |
-| `{Review}` | `quality_status` | Status dot, badge | Review rows + DetailPanel |
+| `{Review}` | `quality_status` | Status dot, badge | Review rows + ReviewDetail |
 | `{Review}` | `total_findings` | Amber badge on review row | VersionAccordion |
+| `{Review}` | `version_id` | Always-visible header in Full Details *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `persona` | Always-visible header in Full Details *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `prompt_used` | Expandable section in Full Details *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `findings.risks[0..2]` | Top 3 Risks — always visible *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `artifact_refs[]` | Provenance chips in Full Details *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `included_files[]` | Provenance fallback when artifact_refs absent *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `weaknesses[].status` | Status dropdown per weakness *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `weaknesses[].user_note` | Note textarea per weakness *(Sprint 1)* | ReviewDetail |
+| `{Review}` | `decision_points[]` | Expandable section in Full Details *(Sprint 1)* | ReviewDetail |
 | `{MetricsPayload}` | `total_versions` | Snapshot card | Cards.js |
 | `{MetricsPayload}` | `total_reviews` | Snapshot card | Cards.js |
 | `{MetricsPayload}` | `risks_identified` | Snapshot card (red) | Cards.js |
 | `{MetricsPayload}` | `gaps_identified` | Snapshot card (amber) | Cards.js |
 | `{MetricsPayload}` | `data_source` | Context banner | ContextBanner |
-| `{Review}` | `findings{}` | Findings blocks | DetailPanel.js |
-| `{Review}` | `weaknesses[]` | Open weaknesses section | DetailPanel.js |
-| `{Review}` | `questions[]` | Open questions section | DetailPanel.js |
+| `{Review}` | `findings{}` | Findings blocks (expandable) | ReviewDetail |
+| `{Review}` | `weaknesses[]` | Weakness panel (expandable) | ReviewDetail |
+| `{Review}` | `questions[]` | Open questions section | ReviewDetail |
 
 ---
 
@@ -172,6 +204,10 @@
 | `services/hierarchy.py` — change `get_metrics()` response shape | MetricsPayload shape mismatch | Cards.js renders 0 for all values |
 | `models/hierarchy.py` — rename `review_ids` | HierarchyStore breaks version→review links | Reviews not linked, active_review_id invalid |
 | `theme.css` — remove `--primary` token | All primary-coloured elements lose colour | Accordion chevrons, badges, snapshot values |
+| `review_detail.js` — remove `renderReview()` *(Sprint 1)* | Review Full Details drawer renders nothing | Users cannot see version/persona/risks/provenance |
+| `review_detail.js` — remove `window.DetailPanel` alias *(Sprint 1)* | `dashboard.js` fallback call fails | Drawer shows empty on review click |
+| `api.js` — remove `updateWeaknessNote` *(Sprint 1)* | Weakness notes cannot be saved | User annotations lost (UI still renders) |
+| `db/database.py` — remove `artifact_refs` migration *(Sprint 1)* | New installs miss column; INSERT fails | Reviews with provenance cannot be stored |
 
 ---
 
@@ -187,3 +223,7 @@
 | Drawer open | `drawerOpen` (state) | `drawerOpen` | `#v2-drawer.open` | `.open` class |
 | Loading | `loading` (state) | `loading` | `#v2-refresh-btn[disabled]` | `.spin` class |
 | Version label | `label` | `label` | option text | `.accordion-version-label` |
+| Artifact provenance | `artifact_refs` (Review) | `artifact_refs` | — | `.rd-prov-chip` *(Sprint 1)* |
+| Weakness note | `weakness["user_note"]` | `user_note` | `rd-note-textarea` | `.rd-note-textarea` *(Sprint 1)* |
+| Weakness status | `weakness["status"]` | `status` | `rd-status-select` | `.rd-status-select` *(Sprint 1)* |
+| Review Full Details | `ReviewDetail` (JS module) | `window.ReviewDetail` | `review_detail.js` script | `.rd-*` prefix *(Sprint 1)* |
