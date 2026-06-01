@@ -981,3 +981,433 @@ input::placeholder, textarea::placeholder {
   border-color: var(--border);
   color: var(--text-muted);
 }
+
+
+
+/* ══════════════════════════════════════════════════════════════
+   SPRINT 9 — Health Signal, Pinned Insights, Memory Score
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Health Badge (.health-badge) ──────────────────────────────
+ * TRACE: UI → HealthSignal → summary_health.js
+ * Inline badge placed inside Version card headers and sidebar.
+ */
+.health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.health-badge-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.health-badge-label {
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+
+/* RAG colour variants */
+.health-badge--green {
+  background: var(--green-dim);
+  border-color: var(--green);
+  color: #2E7D5C;
+}
+.health-badge--amber {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: #92600A;
+}
+.health-badge--red {
+  background: var(--red-dim);
+  border-color: var(--red);
+  color: #C0392B;
+}
+
+/* ── Health Card (#v2-health-badge → .health-card) ─────────────
+ * TRACE: UI → HealthSignal.renderCard() → #v2-health-badge
+ * Placed in the snapshot/overview area of the dashboard.
+ */
+.health-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-medium);
+}
+.health-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.health-card-icon {
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.health-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.health-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.health-card-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.health-card-detail {
+  display: flex;
+  gap: var(--space-1);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Colour border accent per level */
+.health-card.health-badge--green { border-left: 3px solid var(--green); }
+.health-card.health-badge--amber { border-left: 3px solid var(--amber); }
+.health-card.health-badge--red   { border-left: 3px solid var(--red);   }
+
+.health-card--loading {
+  opacity: 0.6;
+  min-height: 48px;
+}
+
+
+/* ── Pin Button (.pin-btn) ─────────────────────────────────────
+ * TRACE: UI → PinnedInsights.renderPinButton() → bookmarks.js
+ * Embedded in Version / Review / Risk card headers.
+ */
+.pin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition), border-color var(--transition),
+              transform var(--transition);
+  line-height: 1;
+  padding: 0;
+}
+.pin-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--amber);
+  transform: scale(1.1);
+}
+.pin-btn--active {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: #92600A;
+}
+.pin-btn--active:hover {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+}
+
+
+/* ── Pinned Section (.pinned-section) ──────────────────────────
+ * TRACE: UI → PinnedInsights.renderSection() → #v2-pinned-section
+ * Rendered at the top of the dashboard when pins exist.
+ */
+.pinned-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.pinned-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.pinned-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.pinned-section-count {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--amber-dim);
+  color: #92600A;
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+.pinned-clear-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+
+.pinned-items-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Single pinned chip */
+.pinned-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 3px 8px 3px 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 220px;
+  flex-shrink: 0;
+  transition: background var(--transition), border-color var(--transition);
+}
+.pinned-item:hover {
+  background: var(--surface-3);
+  border-color: var(--amber);
+}
+
+.pinned-item-icon {
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.pinned-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.pinned-item-type-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  padding: 0 3px;
+}
+
+.pin-remove-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+.pin-remove-btn:hover {
+  color: var(--red);
+}
+
+/* Type colour accents */
+.pin-type--version { border-color: color-mix(in srgb, var(--primary) 40%, var(--border)); }
+.pin-type--review  { border-color: color-mix(in srgb, var(--secondary) 40%, var(--border)); }
+.pin-type--risk    { border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+
+
+/* ── Project Memory Score (.memory-score-card) ─────────────────
+ * TRACE: UI → ProjectMemoryScore.render() → #v2-memory-score
+ * Rendered on the dashboard overview as a card with progress bar.
+ */
+.memory-score-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-medium);
+}
+.memory-score-card:hover {
+  box-shadow: var(--shadow-md);
+}
+.memory-score-card--loading {
+  opacity: 0.6;
+  min-height: 80px;
+}
+
+.memory-score-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.memory-score-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.memory-score-band-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--primary-dim);
+  color: var(--primary-dark);
+  border: 1px solid var(--primary);
+}
+
+.memory-score-value {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--primary);
+  margin-bottom: var(--space-3);
+}
+.memory-score-pct {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Progress bar */
+.memory-bar-wrap {
+  margin-bottom: var(--space-3);
+}
+
+.memory-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--surface-3);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  display: flex;
+}
+
+/* Segments — each coloured block inside the bar */
+.memory-seg {
+  height: 100%;
+  min-width: 2px;
+  transition: width var(--transition-slow);
+}
+.memory-seg--versions { background: var(--primary); }
+.memory-seg--reviews  { background: var(--secondary); }
+.memory-seg--risks    { background: var(--amber); }
+.memory-seg--depth    { background: var(--purple); }
+
+/* Legend row */
+.memory-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.memory-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.memory-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.memory-legend-dot--versions { background: var(--primary); }
+.memory-legend-dot--reviews  { background: var(--secondary); }
+.memory-legend-dot--risks    { background: var(--amber); }
+.memory-legend-dot--depth    { background: var(--purple); }
+
+.memory-legend-label {
+  color: var(--text-muted);
+}
+.memory-legend-value {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Raw values row */
+.memory-raw-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.memory-raw-sep {
+  color: var(--border);
+}
+
+/* Band colour accents on card border */
+.score-band--expert    { border-left: 3px solid var(--primary); }
+.score-band--advanced  { border-left: 3px solid var(--secondary); }
+.score-band--maturing  { border-left: 3px solid var(--green); }
+.score-band--developing{ border-left: 3px solid var(--amber); }
+.score-band--early     { border-left: 3px solid var(--text-muted); }
+
+/* Band badge colour overrides per level */
+.score-band--expert    .memory-score-band-badge { background: var(--primary-dim); border-color: var(--primary); color: var(--primary-dark); }
+.score-band--advanced  .memory-score-band-badge { background: var(--secondary-dim); border-color: var(--secondary); color: #2E7D72; }
+.score-band--maturing  .memory-score-band-badge { background: var(--green-dim); border-color: var(--green); color: #2E7D5C; }
+.score-band--developing .memory-score-band-badge { background: var(--amber-dim); border-color: var(--amber); color: #92600A; }
+.score-band--early     .memory-score-band-badge { background: var(--surface-2); border-color: var(--border); color: var(--text-muted); }
+
+/* Score value colour matches band */
+.score-band--expert    .memory-score-value { color: var(--primary); }
+.score-band--advanced  .memory-score-value { color: var(--secondary); }
+.score-band--maturing  .memory-score-value { color: var(--green); }
+.score-band--developing .memory-score-value { color: var(--amber); }
+.score-band--early     .memory-score-value { color: var(--text-muted); }

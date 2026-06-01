@@ -200,6 +200,18 @@ const VersionAccordion = (() => {
       .map(r => _renderReviewItem(r, version.active_review_id || ''))
       .join('');
 
+    // RAG health badge — rendered only when HealthSignal is loaded
+    const healthBadgeHtml = (window.HealthSignal && version.stats != null)
+      ? HealthSignal.renderVersionBadge(version)
+      : '';
+
+    // Pin button — rendered only when PinnedInsights is loaded
+    const _proj = window.AppState ? window.AppState.get('selectedProject') : null;
+    const _projId = _proj ? _proj.id : '';
+    const pinBtnHtml = (window.PinnedInsights && _projId)
+      ? PinnedInsights.renderPinButton(vid, 'version', vid + (label ? ' – ' + label : ''), _projId)
+      : '';
+
     return `
       <div class="accordion-item${isExpandedByDefault ? ' expanded' : ''}"
            id="accordion-${_esc(vid)}"
@@ -215,11 +227,13 @@ const VersionAccordion = (() => {
           <span class="accordion-version-id">${_esc(vid)}</span>
           ${_phaseTag(version.phase_id || '')}
           ${label ? `<span class="accordion-version-label">– ${_esc(label)}</span>` : ''}
+          ${healthBadgeHtml}
           <div class="accordion-meta">
             <span class="badge badge-default">${reviewCount} review${reviewCount !== 1 ? 's' : ''}</span>
             ${version.artifact_count ? `<span class="badge badge-secondary">${version.artifact_count} artefacts</span>` : ''}
             <span class="badge badge-default fs-10">${_fmtDate(version.created_at)}</span>
           </div>
+          ${pinBtnHtml}
           <button class="btn-icon btn-sm"
                   title="View version details"
                   aria-label="Open version ${_esc(vid)} detail"
