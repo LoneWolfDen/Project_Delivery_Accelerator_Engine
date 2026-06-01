@@ -138,6 +138,8 @@ main{max-width:1080px;margin:0 auto;padding:20px 16px;}
 .btn-outline:hover{background:rgba(88,166,255,.08);}
 .btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border);}
 .btn-ghost:hover{color:var(--text);border-color:var(--border2);}
+.btn-green{background:var(--green-dim);color:#fff;}
+.btn-red{background:var(--red);color:#fff;}
 
 /* ─── Forms ───────────────────────────────────────────────────────── */
 input,select,textarea{background:var(--surface2);border:1px solid var(--border);
@@ -485,11 +487,20 @@ function toast(msg,type='ok'){
   _toastTimer=setTimeout(()=>el.className='',3000);
 }
 
-async function api(method,path,body){
+async function api(method,path,body,{timeout=18000}={}){
   const opts={method,headers:{'Content-Type':'application/json'}};
   if(body)opts.body=JSON.stringify(body);
-  try{const r=await fetch(path,opts);return r.json();}
-  catch(e){return{error:e.message};}
+  try{
+    const ctrl=new AbortController();
+    const tid=setTimeout(()=>ctrl.abort(),timeout);
+    opts.signal=ctrl.signal;
+    const r=await fetch(path,opts);
+    clearTimeout(tid);
+    return r.json();
+  }catch(e){
+    if(e.name==='AbortError')return{error:'Request timed out. Is the server running?'};
+    return{error:e.message||'Cannot connect to server'};
+  }
 }
 </script>
 
@@ -757,7 +768,10 @@ async function render(){
   renderHeader();
   if(state.current)state._lastRenderedProject=state.current.id;
   const main=document.getElementById('main');
-  main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
+  main.innerHTML=`<div style="padding:20px;text-align:center">
+    <div class="loading-bar"></div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:10px">Loading…</p>
+  </div>`;
 
   // Tab → view function map; missing tabs get placeholder
   const views={
@@ -766,13 +780,33 @@ async function render(){
     reviews:    viewReviews,
   };
 
+  // Hard timeout: if view takes >20s, show a helpful message instead of spinning forever
+  const _timeout=setTimeout(()=>{
+    if(document.getElementById('main')?.querySelector('.loading-bar')){
+      document.getElementById('main').innerHTML=`<div class="card" style="margin-top:20px">
+        <div class="empty" style="padding:32px 20px">
+          <div class="empty-icon">⚠️</div>
+          <p style="font-size:13px;font-weight:600;margin-bottom:6px">Could not connect to server</p>
+          <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
+            Make sure the Python server is running, then retry.
+          </p>
+          <button class="btn" onclick="render()">↻ Retry</button>
+        </div>
+      </div>`;
+    }
+  },20000);
+
   try{
     if(views[state.tab]){
-      main.innerHTML=await views[state.tab]();
+      const html=await views[state.tab]();
+      clearTimeout(_timeout);
+      main.innerHTML=html;
     }else{
+      clearTimeout(_timeout);
       main.innerHTML=viewPlaceholder(state.tab);
     }
   }catch(e){
+    clearTimeout(_timeout);
     console.error('render error:',e);
     main.innerHTML=`<div class="card">
       <p style="color:var(--red);font-size:12px">⚠ Page failed to load: ${escHtml(e.message)}</p>
@@ -1224,13 +1258,20 @@ async function runInlineVersionCompare(){
 
 
 <script>
-// ── Reviews view ──────────────────────────────────────────────────────────────
+// ── Reviews view (v1 feature parity + v2 UX) ─────────────────────────────────
 async function viewReviews(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
 
   let hierarchy={};
   try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
+  if(hierarchy.error){
+    return`<div class="card"><div class="empty">
+      <div class="empty-icon">⚠️</div>
+      <p style="color:var(--red)">${escHtml(hierarchy.error)}</p>
+      <button class="btn mt" onclick="render()">↻ Retry</button>
+    </div></div>`;
+  }
   const tree=hierarchy.tree||[];
 
   let versionsWithReviews=[];
@@ -1251,19 +1292,18 @@ async function viewReviews(){
         onclick="state._reviewSort='${s}';render()">${
           s==='newest'?'Newest First':s==='oldest'?'Oldest First':'Most Findings'
         }</button>`).join('')}
-    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">⇄ Compare Reviews</button>
+    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">⇄ Compare</button>
   </div>`;
 
   if(!versionsWithReviews.length){
     return`<div class="card">
       <div class="flex-between mb">
         <div class="card-title"><span class="icon">🔍</span>Review History</div>
-        <button class="btn-compare" onclick="openCompare()">⇄ Compare</button>
       </div>
       ${sortBar}
       <div class="empty" style="padding:24px 0">
         <div class="empty-icon">🔍</div>
-        <p>No reviews yet. Run a Persona Review from the main dashboard.</p>
+        <p>No reviews yet. Ingest artefacts and run Build Intelligence first.</p>
       </div>
     </div>`;
   }
@@ -1271,8 +1311,9 @@ async function viewReviews(){
   let listHtml=`<div class="card">
     <div class="flex-between mb">
       <div class="card-title"><span class="icon">🔍</span>Review History
-        ${state._dashVersion?`<span class="tag tag-blue fs10">v: ${escHtml(state._dashVersion)}</span>`:''}
+        ${state._dashVersion?`<span class="tag tag-blue" style="font-size:10px">v: ${escHtml(state._dashVersion)}</span>`:''}
       </div>
+      ${state._dashVersion?`<button class="btn btn-sm btn-ghost" onclick="state._dashVersion='';render()">✕ All versions</button>`:''}
     </div>
     ${sortBar}`;
 
@@ -1296,11 +1337,24 @@ async function viewReviews(){
       </summary>`;
 
     for(const rev of revs){
-      const rid=rev.review_id||'';if(!rid)continue;
+      const rid=rev.review_id||''; if(!rid)continue;
       const isActive=rid===activeId;
-      const qStatus=rev.quality_status||'pending';
-      const qCls=qStatus==='complete'?'tag-green':qStatus==='interim'?'tag-yellow':'';
-      const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'In Progress':'Draft';
+      const qs=rev.quality_status||'pending';
+      const qCls=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
+      const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
+      // Status action buttons — v1 parity
+      let sBtns='';
+      if(qs==='pending'){
+        sBtns=`<button class="btn btn-sm btn-ghost" title="Work in progress"
+          onclick="openMarkCompleteV2('${escHtml(rid)}','interim')">Mark Draft</button>
+          <button class="btn btn-sm btn-ghost" title="Ready for proposal"
+          onclick="openMarkCompleteV2('${escHtml(rid)}','complete')">Mark Final</button>`;
+      } else if(qs==='interim'){
+        sBtns=`<button class="btn btn-sm btn-ghost"
+          onclick="openMarkCompleteV2('${escHtml(rid)}','complete')">Mark Final</button>`;
+      } else {
+        sBtns=`<span style="font-size:10px;color:var(--green)">✓ Final</span>`;
+      }
 
       listHtml+=`<details style="margin:4px 0;background:var(--bg);
         border:1px solid ${isActive?'var(--accent)':'var(--border)'};
@@ -1312,7 +1366,7 @@ async function viewReviews(){
           <span class="chevron">▶</span>
           <span class="tag" style="font-size:10px;padding:1px 6px;font-weight:700;
             background:var(--surface3)">R${rev.iteration_number||'?'}</span>
-          <strong class="fs11">${rid}</strong>
+          <strong class="fs11">${escHtml(rid)}</strong>
           ${isActive?'<span class="tag tag-green">active</span>':''}
           <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
           <span class="tag ${qCls}" style="font-size:9px">${qLabel}</span>
@@ -1322,9 +1376,33 @@ async function viewReviews(){
         </summary>
         <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
           ${rev.summary?`<p class="fs12 c-dim" style="margin-bottom:8px">${escHtml(rev.summary.slice(0,200))}</p>`:''}
-          <div class="flex gap-sm">
-            <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
-              onclick="openCompare()">⇄ Compare Reviews</button>
+          <div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:6px">
+            <button class="btn btn-sm btn-outline"
+              onclick="openReviewDetail('${escHtml(rid)}','${escHtml(ver.version_id)}')">
+              🔍 Full Details</button>
+            ${!isActive?`<button class="btn btn-sm btn-ghost"
+              onclick="setActiveReviewV2('${escHtml(ver.version_id)}','${escHtml(rid)}')">
+              Set Active</button>`:''}
+            ${sBtns}
+            <button class="btn btn-sm btn-ghost" onclick="openCompare()">⇄ Compare</button>
+            <button class="btn btn-sm btn-ghost"
+              onclick="state._dashVersion='${escHtml(ver.version_id)}';state._dashReview='${escHtml(rid)}';openProposalPanel()"
+              style="color:var(--green);border-color:var(--green-dim)">📄 Proposal</button>
+            <button class="btn btn-sm" style="background:var(--red);color:#fff"
+              onclick="deleteReviewV2('${escHtml(rid)}')">Delete</button>
+          </div>
+          <div id="mcForm_${escHtml(rid)}" style="display:none;padding:8px 10px;
+            background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+            <p class="fs11 c-dim" style="margin-bottom:5px">Your name (required to record change)</p>
+            <div class="flex gap-sm">
+              <input id="mcName_${escHtml(rid)}" placeholder="Your name" style="flex:1;min-width:100px">
+              <button class="btn btn-sm btn-ghost"
+                onclick="submitMarkCompleteV2('${escHtml(rid)}','interim')">Save Draft</button>
+              <button class="btn btn-sm" style="background:var(--green-dim);color:#fff"
+                onclick="submitMarkCompleteV2('${escHtml(rid)}','complete')">Mark Final</button>
+              <button class="btn btn-xs btn-ghost"
+                onclick="document.getElementById('mcForm_${escHtml(rid)}').style.display='none'">✕</button>
+            </div>
           </div>
         </div>
       </details>`;
@@ -1333,6 +1411,230 @@ async function viewReviews(){
   }
   listHtml+=`</div>`;
   return listHtml;
+}
+</script>
+
+<script>
+// ── Review status helpers (v2, no reload) ────────────────────────────────────
+function openMarkCompleteV2(rid, suggestedStatus){
+  const el=document.getElementById('mcForm_'+rid);
+  if(el){ el.style.display=''; el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+}
+async function submitMarkCompleteV2(rid, qualityStatus){
+  const name=(document.getElementById('mcName_'+rid)?.value||'').trim();
+  if(!name){ toast('Enter your name first','err'); return; }
+  const pid=state.current?.id; if(!pid) return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/complete`,
+    {completed_by:name, quality_status:qualityStatus});
+  if(r.error){ toast(r.error,'err'); return; }
+  toast(`Review marked as ${qualityStatus==='complete'?'Final':'Draft'}`);
+  render();
+}
+async function setActiveReviewV2(versionId, reviewId){
+  const pid=state.current?.id; if(!pid) return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/versions/${versionId}/set-active-review`,
+    {review_id:reviewId});
+  if(r.error){ toast(r.error,'err'); return; }
+  toast('Active review updated'); render();
+}
+async function deleteReviewV2(rid){
+  if(!confirm('Delete this review? This cannot be undone.')) return;
+  const pid=state.current?.id; if(!pid) return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/delete`);
+  if(r.error){ toast(r.error,'err'); return; }
+  toast('Review deleted'); render();
+}
+</script>
+
+<script>
+// ── Review Full Detail — right-side drawer (v2 UX, no page reload) ────────────
+async function openReviewDetail(rid, versionId){
+  if(!rid||!state.current) return;
+  const pid=state.current.id;
+  _openReviewDrawerShell(rid);
+  const r=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${rid}`);
+  const body=document.getElementById('rd-body');
+  if(!body) return;
+  if(r.error){
+    body.innerHTML=`<div style="padding:20px;color:var(--red)">⚠ ${escHtml(r.error)}</div>`;
+    return;
+  }
+  _renderReviewDrawerContent(r, versionId||r.version_id||'');
+}
+
+function _openReviewDrawerShell(rid){
+  const existing=document.getElementById('rd-overlay');
+  if(existing) existing.remove();
+  const ov=document.createElement('div');
+  ov.id='rd-overlay';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1800;'+
+    'opacity:0;transition:opacity .25s ease;pointer-events:none;';
+  ov.innerHTML=`<div id="rd-drawer" style="position:fixed;top:0;right:0;height:100%;width:560px;
+    max-width:96vw;background:var(--surface);border-left:1px solid var(--border2);z-index:1801;
+    display:flex;flex-direction:column;transform:translateX(100%);
+    transition:transform .28s ease;box-shadow:-4px 0 24px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
+      border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;">
+      <span style="font-size:14px;font-weight:700;flex:1">🔍 Review Detail</span>
+      <button onclick="closeReviewDrawer()" style="background:transparent;border:none;
+        color:var(--text-dim);font-size:17px;cursor:pointer;padding:2px 7px;
+        border-radius:var(--radius);line-height:1">✕</button>
+    </div>
+    <div id="rd-body" style="flex:1;overflow-y:auto;padding:16px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--text-dim)">
+        <span class="spin">⟳</span> Loading…
+      </div>
+    </div>
+  </div>`;
+  ov.addEventListener('click',e=>{ if(e.target===ov) closeReviewDrawer(); });
+  ov._kh=e=>{ if(e.key==='Escape') closeReviewDrawer(); };
+  document.addEventListener('keydown',ov._kh);
+  document.body.appendChild(ov);
+  requestAnimationFrame(()=>{
+    ov.style.opacity='1'; ov.style.pointerEvents='all';
+    document.getElementById('rd-drawer').style.transform='translateX(0)';
+  });
+}
+
+function closeReviewDrawer(){
+  const ov=document.getElementById('rd-overlay');
+  if(!ov) return;
+  if(ov._kh) document.removeEventListener('keydown',ov._kh);
+  ov.style.opacity='0';
+  const dr=document.getElementById('rd-drawer');
+  if(dr) dr.style.transform='translateX(100%)';
+  setTimeout(()=>{ if(ov.parentNode) ov.remove(); },300);
+}
+
+function _renderReviewDrawerContent(r, versionId){
+  const body=document.getElementById('rd-body');
+  if(!body) return;
+  const pid=state.current?.id||'';
+  const rid=r.review_id||'';
+  const qs=r.quality_status||'pending';
+  const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
+  const qCls=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
+  const score=r.completeness_score||0;
+  const scoreCol=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
+  const findings=r.findings||{};
+  const FICONS={risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',
+    action_items:'✅',gaps:'🔍',recommendations:'💡',questions:'❓'};
+
+  let sBtns='';
+  if(qs==='pending'){
+    sBtns=`<button class="btn btn-sm btn-ghost" onclick="_rdMark('${escHtml(rid)}','interim')">Mark Draft</button>
+           <button class="btn btn-sm btn-ghost" onclick="_rdMark('${escHtml(rid)}','complete')">Mark Final</button>`;
+  } else if(qs==='interim'){
+    sBtns=`<button class="btn btn-sm btn-ghost" onclick="_rdMark('${escHtml(rid)}','complete')">Mark Final</button>`;
+  } else {
+    sBtns=`<span style="font-size:10px;color:var(--green)">✓ Final</span>`;
+  }
+
+  let html=`<div style="background:var(--surface2);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
+    <div class="flex" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
+      <span class="tag tag-blue">v: ${escHtml(r.version_id||versionId||'–')}</span>
+      <span class="tag tag-purple">${escHtml(r.persona||'–')}</span>
+      <span class="tag ${qCls}">${qLabel}</span>
+      ${r.iteration_number?`<span class="tag" style="font-weight:700">R${r.iteration_number}</span>`:''}
+      <span style="font-size:10px;color:${scoreCol};background:var(--surface3);
+        padding:1px 6px;border-radius:10px">${score}% complete</span>
+      <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${fmtDate(r.created_at)}</span>
+    </div>
+    ${r.summary?`<p style="font-size:12px;color:var(--text-dim);line-height:1.6">${escHtml(r.summary)}</p>`:''}
+  </div>
+  <div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:10px">
+    ${sBtns}
+    <button class="btn btn-sm btn-ghost" onclick="openCompare()">⇄ Compare</button>
+    <button class="btn btn-sm btn-ghost"
+      onclick="state._dashVersion='${escHtml(r.version_id||versionId||'')}';state._dashReview='${escHtml(rid)}';closeReviewDrawer();openProposalPanel()"
+      style="color:var(--green);border-color:var(--green-dim)">📄 Proposal</button>
+  </div>
+  <div id="rd-mc" style="display:none;margin-bottom:10px;padding:8px 10px;
+    background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+    <p class="fs11 c-dim" style="margin-bottom:5px">Your name</p>
+    <div class="flex gap-sm">
+      <input id="rd-mc-name" placeholder="Your name" style="flex:1">
+      <button class="btn btn-sm btn-ghost" id="rd-btn-d"
+        onclick="_rdSubmit('${escHtml(rid)}','interim')">Save Draft</button>
+      <button class="btn btn-sm" id="rd-btn-f" style="background:var(--green-dim);color:#fff"
+        onclick="_rdSubmit('${escHtml(rid)}','complete')">Mark Final</button>
+      <button class="btn btn-xs btn-ghost"
+        onclick="document.getElementById('rd-mc').style.display='none'">✕</button>
+    </div>
+  </div>`;
+
+  // Files included
+  if(r.included_files?.length){
+    html+=`<div style="margin-bottom:10px">
+      <p style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;
+        letter-spacing:.5px;margin-bottom:5px">Files Reviewed (${r.included_files.length})</p>
+      <div class="flex" style="flex-wrap:wrap;gap:4px">
+        ${r.included_files.map(f=>`<span class="tag tag-green" style="font-size:10px">${escHtml(f)}</span>`).join('')}
+      </div></div>`;
+  }
+
+  // Findings sections
+  const fKeys=Object.keys(findings).filter(k=>Array.isArray(findings[k])&&findings[k].length);
+  if(fKeys.length){
+    html+=`<p style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;
+      letter-spacing:.5px;margin-bottom:6px">Findings</p>`;
+    for(const sec of fKeys){
+      const items=findings[sec];
+      html+=`<details open style="border:1px solid var(--border);border-radius:var(--radius);
+        margin-bottom:5px;overflow:hidden">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
+          padding:7px 10px;background:var(--surface2)"
+          onmouseover="this.style.background='var(--surface3)'"
+          onmouseout="this.style.background='var(--surface2)'">
+          <span class="chevron">▶</span><span>${FICONS[sec]||'📌'}</span>
+          <strong style="font-size:11px;text-transform:capitalize">${escHtml(sec.replace(/_/g,' '))}</strong>
+          <span class="tag" style="margin-left:4px">${items.length}</span>
+        </summary>
+        <div style="padding:6px 10px 8px">
+          ${items.map(it=>`<div style="font-size:12px;padding:3px 0 3px 8px;color:var(--text-dim);
+            border-left:2px solid var(--border);margin-bottom:2px">${escHtml(String(it))}</div>`).join('')}
+        </div></details>`;
+    }
+  } else {
+    html+=`<p style="font-size:12px;color:var(--text-muted);font-style:italic">No findings recorded yet.</p>`;
+  }
+
+  if(r.questions?.length){
+    html+=`<details style="border:1px solid var(--border);border-radius:var(--radius);
+      margin-top:6px;overflow:hidden">
+      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
+        padding:7px 10px;background:var(--surface2)">
+        <span class="chevron">▶</span>
+        <strong style="font-size:11px">❓ Open Questions</strong>
+        <span class="tag" style="margin-left:4px">${r.questions.length}</span>
+      </summary>
+      <div style="padding:6px 10px 8px">
+        ${r.questions.map(q=>`<div style="font-size:12px;padding:3px 0 3px 8px;color:var(--text-dim);
+          border-left:2px solid var(--yellow);margin-bottom:2px">${escHtml(q)}</div>`).join('')}
+      </div></details>`;
+  }
+  body.innerHTML=html;
+}
+
+function _rdMark(rid, targetStatus){
+  const form=document.getElementById('rd-mc');
+  if(!form) return;
+  const bd=document.getElementById('rd-btn-d');
+  const bf=document.getElementById('rd-btn-f');
+  if(bd) bd.style.display=targetStatus==='interim'?'':'none';
+  if(bf) bf.style.display=targetStatus==='complete'?'':'none';
+  form.style.display='';
+  document.getElementById('rd-mc-name')?.focus();
+}
+async function _rdSubmit(rid, qualityStatus){
+  const name=(document.getElementById('rd-mc-name')?.value||'').trim();
+  if(!name){ toast('Enter your name first','err'); return; }
+  const pid=state.current?.id; if(!pid) return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/complete`,
+    {completed_by:name, quality_status:qualityStatus});
+  if(r.error){ toast(r.error,'err'); return; }
+  toast(`Review marked as ${qualityStatus==='complete'?'Final':'Draft'}`);
+  closeReviewDrawer(); render();
 }
 </script>
 
@@ -1616,55 +1918,53 @@ async function _runGenerateProposal(){
   const suppIds = (state.selectedReviewIds||[]).filter(id=>id!==rid);
   const force   = document.getElementById('pp-force-chk')?.checked||false;
 
-  console.log('[Proposal] Generating | pid:', pid, '| vid:', vid,
-    '| rid:', rid, '| supp:', suppIds, '| force:', force);
+  console.log('[Proposal] pid:', pid, '| vid:', vid, '| rid:', rid,
+    '| supp:', suppIds, '| force:', force);
 
   _ppSetLoading(true);
   _ppSetError(null);
 
   try{
-    // Step 1: Ensure a proposal tracker exists (idempotent — create if missing)
+    // Step 1: get or create proposal tracker
     let tracker = await api('GET', `/api/projects/${pid}/proposal`);
     if(tracker.error){
-      // Create proposal tracker for this project
       tracker = await api('POST', `/api/projects/${pid}/proposal`,{
         proposal_name: `Proposal – ${pid}`,
         hierarchy_version_id: vid||'',
         review_id: rid,
       });
-      if(tracker.error){
-        _ppSetError(`Failed to create proposal: ${tracker.error}`);
-        _ppSetLoading(false);
-        return;
-      }
     }
+    if(tracker.error){ _ppSetError(`Could not create proposal tracker: ${tracker.error}`); _ppSetLoading(false); return; }
     _pp.tracker = tracker;
 
-    const proposalVerId = tracker.current_version||tracker.version_id||'';
-    console.log('[Proposal] Tracker ok | proposal_ver_id:', proposalVerId);
+    // proposal_ver_id may be nested differently across versions
+    const proposalVerId = tracker.current_version
+      || tracker.proposal_ver_id
+      || (tracker.versions&&tracker.versions[0]?.version_id)
+      || '';
 
-    // Step 2: Generate document
+    console.log('[Proposal] tracker ok | proposal_ver_id:', proposalVerId);
+
+    // Step 2: generate document
     const payload = {
-      proposal_ver_id:       proposalVerId,
-      hierarchy_version_id:  vid||'',
-      review_id:             rid,
-      ai_backend:            'files_only',
-      force:                 force,
+      proposal_ver_id: proposalVerId,
+      hierarchy_version_id: vid||'',
+      review_id: rid,
+      ai_backend: 'files_only',
+      force: force,
     };
     if(suppIds.length) payload.supplemental_review_ids = suppIds;
-
-    console.log('[Proposal] POST /proposal/generate | payload:', payload);
 
     const result = await api('POST', `/api/projects/${pid}/proposal/generate`, payload);
 
     if(result.error){
-      _ppSetError(`Generation failed: ${result.error}`);
+      // ── Quality gate failure → guided UX (not raw error) ──────
       _ppSetLoading(false);
+      _ppShowQualityGateUX(rid, pid, vid, result.error);
       return;
     }
 
     _pp.doc = result.document || result;
-    console.log('[Proposal] Document received:', Object.keys(_pp.doc||{}));
     _ppSetLoading(false);
     _renderProposalDoc(_pp.doc);
 
@@ -1673,6 +1973,89 @@ async function _runGenerateProposal(){
     _ppSetError(`Unexpected error: ${escHtml(err.message)}`);
     _ppSetLoading(false);
   }
+}
+
+// ── Quality gate guided UX ────────────────────────────────────
+function _ppShowQualityGateUX(rid, pid, vid, rawError){
+  const body = document.getElementById('pp-body');
+  if(!body) return;
+
+  // Parse what's missing from the error message (backend lists missing cats)
+  const missingMatch = rawError.match(/missing[^:]*:\s*([^.]+)/i)
+    || rawError.match(/blockers[^:]*:\s*([^.]+)/i);
+  const missingText = missingMatch ? missingMatch[1] : '';
+  const missingItems = missingText
+    ? missingText.split(/[,;]+/).map(s=>s.trim()).filter(Boolean)
+    : [];
+
+  // Detect "not complete / not passed" wording
+  const isGateFail = /incomplete|not passed|quality gate|pending|blockers/i.test(rawError);
+
+  if(!isGateFail){
+    // Not a gate error — show it plainly
+    _ppSetError(rawError);
+    return;
+  }
+
+  body.innerHTML=`
+    <div style="border:1px solid var(--yellow);border-radius:var(--radius-lg);padding:16px;
+      background:rgba(210,153,34,.06);margin-bottom:12px">
+      <p style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:6px">
+        ⚠ Review is incomplete
+      </p>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
+        This review has not passed the quality gate. Before generating a proposal, you can:
+      </p>
+      ${missingItems.length?`
+      <div style="margin-bottom:12px">
+        <p style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px">Missing areas:</p>
+        <ul style="list-style:none;padding:0">
+          ${missingItems.map(m=>`<li style="font-size:12px;color:var(--text-dim);padding:2px 0 2px 14px;
+            border-left:2px solid var(--yellow)">• ${escHtml(m)}</li>`).join('')}
+        </ul>
+      </div>`:''}
+      <div class="flex gap-sm" style="flex-wrap:wrap">
+        <button class="btn btn-sm btn-ghost"
+          onclick="closeProposalPanel();switchTab('reviews')"
+          title="Go to Reviews tab to add more findings">
+          📝 Complete Review
+        </button>
+        <button class="btn btn-sm"
+          style="background:var(--yellow);color:#000"
+          onclick="_ppMarkInterimAndGenerate('${escHtml(rid)}','${escHtml(pid)}','${escHtml(vid||'')}')">
+          ⚡ Mark as Draft &amp; Generate
+        </button>
+      </div>
+      <p style="font-size:10px;color:var(--text-muted);margin-top:8px">
+        "Mark as Draft" acknowledges the review is partial. You can complete it later.
+      </p>
+    </div>`;
+}
+
+// Interim override: mark review as interim, then generate with force=true
+async function _ppMarkInterimAndGenerate(rid, pid, vid){
+  const body=document.getElementById('pp-body');
+
+  // Prompt for name
+  const name=prompt('Enter your name to save this review as Draft (interim):','');
+  if(!name||!name.trim()){ toast('Name required','err'); return; }
+
+  // Mark as interim
+  const mc=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/complete`,
+    {completed_by:name.trim(), quality_status:'interim'});
+  if(mc.error){ toast(mc.error,'err'); return; }
+  toast('Review marked as Draft');
+
+  // Update state so header CTA stays enabled
+  state._dashReview=rid;
+  state._dashVersion=vid||state._dashVersion;
+
+  // Now regenerate with force=true
+  document.getElementById('pp-force-chk').checked=true;
+  _ppSetLoading(true);
+  if(body) body.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:20px;color:var(--text-dim)">
+    <span class="spin">⟳</span> Generating with Draft status…</div>`;
+  await _runGenerateProposal();
 }
 
 // ── Loading state ─────────────────────────────────────────────
