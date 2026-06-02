@@ -45,7 +45,6 @@ import handlers.intelligence as h_intel
 import handlers.presales as h_presales
 import handlers.project as h_project
 import handlers.proposal as h_proposal
-import handlers.reconciliation as h_reconciliation  # Sprint 3
 import handlers.review as h_review
 import services.hierarchy as svc_hierarchy
 import services.intelligence as svc_intel
@@ -137,14 +136,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
                 self._serve_static("index.html")
             return
 
-        if clean_path_early == "/favicon.ico":
-            self.send_response(204)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            return
-
         if self.path.startswith("/feedback"):
             self._serve_static("feedback.html")
+            return
+        if clean_path_early == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
             return
         if self.path.startswith("/static/") or self.path.endswith((".html", ".css", ".js")):
             filename = self.path.lstrip("/")
@@ -212,19 +209,6 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             pid, vid = parts[3], parts[6]
             result = svc_review.get_version_readiness(pid, vid)
             R(result, status=404 if result.get("error") else 200)
-
-        # ── Reconciliation GET routes (Sprint 3) ──────────────────────────────
-        elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path and clean_path.endswith("/reconciliation/selection"):
-            parts = clean_path.split("/")
-            # /api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/selection
-            pid, vid = parts[3], parts[6]
-            h_reconciliation.handle_get_selection(pid, vid, R)
-
-        elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path and clean_path.endswith("/reconciliation"):
-            parts = clean_path.split("/")
-            # /api/projects/{pid}/hierarchy/versions/{vid}/reconciliation
-            pid, vid = parts[3], parts[6]
-            h_reconciliation.handle_get_reconciliation(pid, vid, R)
 
         elif clean_path.startswith("/api/projects/") and "/hierarchy/versions/" in clean_path:
             parts = clean_path.split("/")
@@ -474,26 +458,6 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/weakness/" in self.path and self.path.endswith("/status"):
             parts = self.path.split("/")
             h_review.handle_weakness_status(parts[3], parts[6], parts[8], body, R)
-
-        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/weakness/" in self.path and self.path.endswith("/note"):
-            parts = self.path.split("/")
-            h_review.handle_weakness_note(parts[3], parts[6], parts[8], body, R)
-
-        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/iterate"):
-            parts = self.path.split("/")
-            # path: /api/projects/{pid}/hierarchy/reviews/{rid}/iterate
-            h_review.handle_create_review_iteration(parts[3], parts[6], body, R)
-
-        # ── Reconciliation POST routes (Sprint 3) ─────────────────────────────
-        elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path and self.path.endswith("/reconciliation/select"):
-            parts = self.path.split("/")
-            # /api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/select
-            h_reconciliation.handle_save_selection(parts[3], parts[6], body, R)
-
-        elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path and self.path.endswith("/reconciliation/run"):
-            parts = self.path.split("/")
-            # /api/projects/{pid}/hierarchy/versions/{vid}/reconciliation/run
-            h_reconciliation.handle_run_reconciliation(parts[3], parts[6], body, R)
 
         elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/decision/" in self.path and self.path.endswith("/status"):
             parts = self.path.split("/")

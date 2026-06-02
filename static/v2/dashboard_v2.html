@@ -50,49 +50,7 @@ nav button.active{background:var(--surface2);color:var(--accent);}
   padding:5px 12px;border-radius:var(--radius);cursor:pointer;
   font-size:12px;font-weight:600;transition:all var(--transition);white-space:nowrap;}
 .btn-compare:hover{background:rgba(88,166,255,.1);border-color:var(--accent);}
-.btn-compare:disabled{opacity:.4;cursor:not-allowed;}
 .btn-compare .cmp-icon{font-size:13px;}
-</style>
-
-<style>
-/* ─── Quick Navigation Search (.qs-*) ─────────────────────────────── */
-.qs-wrap{position:relative;display:inline-flex;align-items:center;flex-shrink:0;}
-.qs-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);
-  color:var(--text-muted);font-size:14px;pointer-events:none;z-index:1;}
-.qs-input{width:170px;padding:5px 10px 5px 26px;font-size:12px;
-  background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
-  color:var(--text);font-family:inherit;transition:width .2s ease,border-color var(--transition);
-  appearance:none;-webkit-appearance:none;}
-.qs-input:focus{outline:none;width:210px;border-color:var(--accent);
-  background:var(--surface);box-shadow:0 0 0 3px rgba(88,166,255,.12);}
-.qs-input::-webkit-search-cancel-button{display:none;}
-.qs-input::placeholder{color:var(--text-muted);}
-.qs-dropdown{position:absolute;top:calc(100% + 6px);left:0;min-width:250px;max-width:320px;
-  max-height:240px;overflow-y:auto;background:var(--surface);border:1px solid var(--border2);
-  border-radius:var(--radius-lg);box-shadow:var(--shadow);z-index:200;padding:3px 0;}
-.qs-dropdown::-webkit-scrollbar{width:4px;}
-.qs-dropdown::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
-.qs-item{display:flex;align-items:center;gap:7px;padding:6px 12px;cursor:pointer;
-  font-size:12px;color:var(--text);transition:background var(--transition);user-select:none;}
-.qs-item:hover,.qs-item-active{background:rgba(88,166,255,.08);}
-.qs-item-icon{font-size:13px;width:17px;text-align:center;flex-shrink:0;}
-.qs-item-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap;color:var(--text-dim);}
-.qs-highlight{color:var(--accent);font-weight:700;background:transparent;}
-.qs-type-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
-  padding:1px 6px;border-radius:20px;flex-shrink:0;}
-.qs-type-version{background:rgba(88,166,255,.12);color:var(--accent);}
-.qs-type-review{background:rgba(188,140,255,.12);color:var(--purple);}
-.qs-empty{padding:10px 14px;font-size:11px;color:var(--text-muted);text-align:center;}
-.qs-empty em{font-style:normal;font-weight:600;color:var(--accent);}
-/* pulse on navigation target */
-@keyframes qs-pulse{
-  0%  {box-shadow:0 0 0 0   rgba(88,166,255,.55);}
-  50% {box-shadow:0 0 0 6px rgba(88,166,255,.18);}
-  100%{box-shadow:0 0 0 0   rgba(88,166,255,.00);}
-}
-.qs-active-target{animation:qs-pulse .7s ease-out 2;
-  border-color:var(--accent)!important;outline:2px solid rgba(88,166,255,.2);outline-offset:1px;}
 </style>
 
 <style>
@@ -138,8 +96,6 @@ main{max-width:1080px;margin:0 auto;padding:20px 16px;}
 .btn-outline:hover{background:rgba(88,166,255,.08);}
 .btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border);}
 .btn-ghost:hover{color:var(--text);border-color:var(--border2);}
-.btn-green{background:var(--green-dim);color:#fff;}
-.btn-red{background:var(--red);color:#fff;}
 
 /* ─── Forms ───────────────────────────────────────────────────────── */
 input,select,textarea{background:var(--surface2);border:1px solid var(--border);
@@ -450,316 +406,6 @@ details[open] .chevron{transform:rotate(90deg);}
 
 <!-- Compare module — loaded before inline scripts so Compare is available globally -->
 <script src="/static/v2/js/compare.js"></script>
-<!-- Quick navigation search — auto-mounts into #v2-search-wrap when present -->
-<script src="/static/v2/js/search.js"></script>
-<!-- Sprint 9: Health Signal, Pinned Insights, Project Memory Score (v2-only) -->
-<script src="/static/v2/js/summary_health.js"></script>
-<script src="/static/v2/js/bookmarks.js"></script>
-<script src="/static/v2/js/metrics.js"></script>
-<!-- Sprint 1: Review Full Details panel — must load before dashboard scripts -->
-<script src="/static/v2/js/review_detail.js"></script>
-
-<style>
-/* ═══════════════════════════════════════════════════════════════════
-   REVIEW DETAIL STYLES  (rd-*, ri-*, rc-*)
-   Scoped to the Review Detail drawer rendered by review_detail.js.
-   Sprint 1: header, prompt, top-risks, artifact provenance, findings,
-             weaknesses (F3 status+note), decision points.
-   Sprint 2: iteration lineage banner, create-iteration form + result.
-   Sprint 3: reconciliation panel, review checkboxes, result card.
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* ── Layout / wrapper ──────────────────────────────────────────── */
-#rd-body { font-size: 13px; }
-
-/* ── F1: Header ────────────────────────────────────────────────── */
-.rd-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
-.rd-header-top { margin-bottom: 6px; }
-.rd-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-.rd-review-id { font-size: 18px; font-weight: 700; color: var(--text); }
-.rd-review-raw-id { font-size: 10px; color: var(--text-muted); font-family: monospace; }
-.rd-badges { display: flex; gap: 5px; flex-wrap: wrap; }
-.rd-meta-grid { display: flex; flex-direction: column; gap: 3px; }
-.rd-detail-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.rd-detail-label { color: var(--text-muted); min-width: 90px; font-size: 11px; font-weight: 600; }
-.rd-detail-value { color: var(--text-dim); }
-.rd-persona { color: var(--purple); font-weight: 600; }
-.rd-score { color: var(--green); font-weight: 700; }
-
-/* ── Badges (reused across sections) ──────────────────────────── */
-.badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
-.badge-secondary { background: var(--surface3); color: var(--text-dim); border: 1px solid var(--border2); }
-.badge-green  { background: rgba(63,185,80,.12); color: var(--green); border: 1px solid var(--green-dim); }
-.badge-amber  { background: rgba(210,153,34,.12); color: var(--yellow); border: 1px solid var(--yellow); }
-.badge-default{ background: var(--surface3); color: var(--text-muted); border: 1px solid var(--border); }
-.badge-primary{ background: rgba(88,166,255,.12); color: var(--accent); border: 1px solid var(--accent-dim); }
-
-/* ── F1: Expandable sections (shared) ─────────────────────────── */
-.rd-expandable { border: 1px solid var(--border); border-radius: var(--radius); margin: 8px 16px; overflow: hidden; }
-.rd-expandable-summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px; background: var(--surface2); transition: background .15s; }
-.rd-expandable-summary:hover { background: var(--surface3); }
-.rd-expandable-summary::-webkit-details-marker { display: none; }
-.rd-section-label { font-size: 11px; font-weight: 700; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .5px; }
-.rd-expand-hint { font-size: 9px; color: var(--text-muted); margin-left: auto; transition: transform .2s; }
-details[open] .rd-expand-hint { transform: rotate(90deg); }
-.rd-expandable-body { padding: 8px 12px 10px; }
-.rd-count-badge { font-size: 10px; background: var(--surface3); border-radius: 20px;
-  padding: 1px 6px; color: var(--text-dim); font-weight: 600; }
-.rd-empty-note { font-size: 11px; color: var(--text-muted); padding: 4px 0; font-style: italic; }
-.rd-section { margin: 8px 16px; }
-.rd-more-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-
-/* ── F1: Summary ───────────────────────────────────────────────── */
-.rd-summary-text { font-size: 12px; color: var(--text-dim); line-height: 1.65; padding: 2px 0; }
-
-/* ── F1: Top Risks ─────────────────────────────────────────────── */
-.rd-risk-list { display: flex; flex-direction: column; gap: 5px; }
-.rd-risk-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
-.rd-risk-marker { flex-shrink: 0; }
-.rd-risk-text { color: var(--text-dim); line-height: 1.5; }
-
-/* ── F1: Prompt used ───────────────────────────────────────────── */
-.rd-prompt-text { font-size: 11px; color: var(--text-dim); line-height: 1.6; font-family: monospace;
-  white-space: pre-wrap; word-break: break-word; }
-.rd-prompt-full { font-size: 11px; color: var(--text-dim); line-height: 1.6; font-family: monospace;
-  white-space: pre-wrap; word-break: break-word; }
-.rd-show-more-btn { font-size: 11px; color: var(--accent); background: transparent; border: none;
-  cursor: pointer; padding: 2px 0; margin-top: 4px; }
-
-/* ── F2: Artifact provenance chips ────────────────────────────── */
-.rd-prov-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.rd-prov-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
-  border: 1px solid var(--border2); border-radius: 20px; font-size: 11px; cursor: default;
-  background: var(--surface2); transition: border-color .15s; }
-.rd-prov-chip:hover { border-color: var(--accent); }
-.rd-prov-chip--document { border-color: var(--border2); }
-.rd-prov-chip--slides   { border-color: rgba(188,140,255,.4); }
-.rd-prov-chip--email    { border-color: rgba(88,166,255,.4);  }
-.rd-prov-chip--meeting_notes { border-color: rgba(63,185,80,.4); }
-.rd-prov-chip--spreadsheet   { border-color: rgba(210,153,34,.4); }
-.rd-prov-chip--more  { color: var(--text-muted); font-size: 10px; }
-.rd-prov-name   { font-weight: 600; color: var(--text); max-width: 160px; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.rd-prov-detail { color: var(--text-muted); font-size: 10px; }
-
-/* ── F1: Findings ──────────────────────────────────────────────── */
-.rd-finding-block { margin-bottom: 8px; }
-.rd-finding-cat { font-size: 11px; font-weight: 700; color: var(--text-dim);
-  text-transform: capitalize; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
-.rd-finding-item { font-size: 12px; padding: 3px 0 3px 8px; color: var(--text-dim);
-  border-left: 2px solid var(--border); margin-bottom: 2px; line-height: 1.5; }
-.rd-finding-item--question { border-left-color: var(--yellow); }
-
-/* ── F3: Weakness status + note ────────────────────────────────── */
-.rd-weakness-list { display: flex; flex-direction: column; gap: 10px; }
-.rd-weakness-item { background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 10px 12px; }
-.rd-weakness-header { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 8px; }
-.rd-weakness-icon { color: var(--yellow); flex-shrink: 0; margin-top: 1px; }
-.rd-weakness-text { font-size: 12px; color: var(--text-dim); flex: 1; line-height: 1.5; }
-.rd-weakness-cat { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
-  color: var(--text-muted); background: var(--surface3); border-radius: 20px;
-  padding: 1px 6px; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
-.rd-weakness-controls { display: flex; flex-direction: column; gap: 5px; }
-.rd-ctrl-label { font-size: 10px; font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .4px; }
-.rd-ctrl-note-label { margin-top: 4px; }
-.rd-status-select { width: auto; min-width: 110px; font-size: 11px; padding: 4px 8px;
-  border-radius: var(--radius); cursor: pointer; }
-.rd-weakness-status--open      { border-color: var(--red);     color: var(--red);    }
-.rd-weakness-status--resolved  { border-color: var(--green);   color: var(--green);  }
-.rd-weakness-status--mitigated { border-color: var(--yellow);  color: var(--yellow); }
-.rd-weakness-status--other     { border-color: var(--border2); color: var(--text-dim); }
-.rd-note-textarea { font-size: 11px; resize: vertical; min-height: 44px; }
-.rd-note-saved { font-size: 10px; color: var(--green); height: 14px; display: block; }
-
-/* ── Decision points ───────────────────────────────────────────── */
-.rd-dp-list { display: flex; flex-direction: column; gap: 6px; }
-.rd-dp-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
-.rd-dp-icon { flex-shrink: 0; }
-.rd-dp-text { flex: 1; color: var(--text-dim); line-height: 1.5; }
-.rd-dp-status { font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1px 6px;
-  border-radius: 20px; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
-.rd-dp-status--resolved { background: rgba(63,185,80,.12); color: var(--green); }
-.rd-dp-status--accepted  { background: rgba(88,166,255,.12); color: var(--accent); }
-.rd-dp-status--open      { background: rgba(210,153,34,.12); color: var(--yellow); }
-
-/* ── Compare action ────────────────────────────────────────────── */
-.rd-compare-action { padding: 8px 16px; border-top: 1px solid var(--border); }
-
-/* ══════════════════════════════════════════════════════════════════
-   SPRINT 2 — Iteration lineage + create-iteration form (ri-*)
-   ══════════════════════════════════════════════════════════════════ */
-
-/* ── Lineage banner ────────────────────────────────────────────── */
-.ri-lineage-banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
-  background: rgba(88,166,255,.06); border-bottom: 1px solid rgba(88,166,255,.15);
-  font-size: 12px; }
-.ri-lineage-icon { font-size: 14px; flex-shrink: 0; }
-.ri-lineage-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.ri-lineage-label { color: var(--text-muted); font-size: 11px; }
-.ri-lineage-base-id { font-weight: 700; color: var(--accent); font-size: 12px; }
-.ri-lineage-persona { color: var(--text-dim); font-size: 11px; }
-.ri-lineage-changed { font-size: 9px; font-weight: 700; text-transform: uppercase;
-  color: var(--yellow); background: rgba(210,153,34,.12); padding: 1px 6px; border-radius: 20px; }
-
-/* ── Create iteration section ──────────────────────────────────── */
-.ri-create-section { margin: 8px 16px; border: 1px solid var(--border);
-  border-radius: var(--radius-lg); overflow: hidden; }
-.ri-create-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
-  background: var(--surface2); }
-.ri-create-icon { font-size: 14px; flex-shrink: 0; }
-.ri-create-title { font-size: 12px; font-weight: 700; color: var(--text); flex: 1; }
-.ri-create-toggle { flex-shrink: 0; }
-
-/* ── Create iteration form ─────────────────────────────────────── */
-.ri-create-form { padding: 12px 14px; border-top: 1px solid var(--border); }
-.ri-create-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; }
-.ri-form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.ri-form-label { font-size: 11px; font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .4px; }
-.ri-optional { font-weight: 400; color: var(--text-muted); text-transform: none; font-size: 10px; }
-.ri-form-hint { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
-.ri-persona-select { font-size: 12px; }
-.ri-prompt-input  { font-size: 11px; resize: vertical; min-height: 48px; }
-.ri-form-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-
-/* ── Iteration result card ─────────────────────────────────────── */
-.ri-result { margin-top: 10px; }
-.ri-result-card { background: rgba(63,185,80,.06); border: 1px solid var(--green-dim);
-  border-radius: var(--radius-lg); padding: 12px 14px; }
-.ri-result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.ri-result-icon { font-size: 16px; }
-.ri-result-title { font-size: 13px; font-weight: 700; color: var(--green); }
-.ri-result-rows { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
-.ri-result-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
-.ri-result-row--summary { flex-direction: column; gap: 3px; }
-.ri-result-label { color: var(--text-muted); min-width: 90px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
-.ri-result-value { color: var(--text-dim); }
-.ri-result-value--id { font-weight: 700; color: var(--accent); font-family: monospace; }
-.ri-result-raw-id { font-size: 9px; color: var(--text-muted); font-family: monospace; margin-left: 4px; }
-.ri-result-base-persona { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
-.ri-result-summary { display: block; color: var(--text-dim); font-size: 11px; line-height: 1.5; }
-.ri-result-note { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
-.ri-persona-changed-badge { font-size: 9px; font-weight: 700; color: var(--yellow);
-  background: rgba(210,153,34,.12); padding: 1px 5px; border-radius: 10px; margin-left: 4px; }
-.ri-persona-same-badge { font-size: 9px; font-weight: 700; color: var(--text-muted);
-  background: var(--surface3); padding: 1px 5px; border-radius: 10px; margin-left: 4px; }
-.ri-result-loading { display: flex; align-items: center; gap: 8px;
-  padding: 10px; color: var(--text-dim); font-size: 12px; }
-.ri-result-error { padding: 8px 12px; color: var(--red); font-size: 12px;
-  background: rgba(248,81,73,.06); border: 1px solid var(--red); border-radius: var(--radius); }
-
-/* ══════════════════════════════════════════════════════════════════
-   SPRINT 3 — Reconciliation panel (rc-*)
-   ══════════════════════════════════════════════════════════════════ */
-
-/* ── Panel shell ───────────────────────────────────────────────── */
-.rc-panel { margin: 8px 16px; border: 1px solid var(--border);
-  border-radius: var(--radius-lg); overflow: hidden; }
-.rc-panel-header { display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; background: var(--surface2); }
-.rc-panel-icon  { font-size: 14px; flex-shrink: 0; }
-.rc-panel-title { font-size: 12px; font-weight: 700; color: var(--text); flex: 1; }
-.rc-toggle { flex-shrink: 0; }
-
-/* ── Panel body ────────────────────────────────────────────────── */
-.rc-body { padding: 12px 14px; border-top: 1px solid var(--border); }
-.rc-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.55; }
-.rc-section-label { font-size: 10px; font-weight: 700; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .5px; margin: 8px 0 4px; }
-.rc-required { color: var(--red); }
-
-/* ── Anchor chip ───────────────────────────────────────────────── */
-.rc-anchor-row { margin-bottom: 10px; }
-.rc-review-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-  border: 1px solid var(--border2); border-radius: 20px; font-size: 11px; background: var(--surface2); }
-.rc-review-chip--anchor { border-color: var(--accent); background: rgba(88,166,255,.08); }
-.rc-chip-icon   { font-size: 12px; }
-.rc-chip-id     { font-weight: 700; color: var(--accent); font-size: 11px; }
-.rc-chip-persona{ color: var(--text-muted); font-size: 10px; }
-.rc-anchor-badge { font-size: 9px; font-weight: 700; text-transform: uppercase;
-  background: rgba(88,166,255,.15); color: var(--accent); padding: 1px 5px; border-radius: 10px; }
-.rc-supp-badge { font-size: 9px; font-weight: 700; text-transform: uppercase;
-  background: rgba(63,185,80,.12); color: var(--green); padding: 1px 5px; border-radius: 10px; }
-.rc-anchor-hint { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
-
-/* ── Review checkbox list ──────────────────────────────────────── */
-.rc-review-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;
-  max-height: 160px; overflow-y: auto; padding-right: 4px; }
-.rc-review-list::-webkit-scrollbar { width: 4px; }
-.rc-review-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
-.rc-review-row { padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--bg); transition: border-color .15s; }
-.rc-review-row--anchor { border-color: var(--accent-dim); background: rgba(88,166,255,.04); }
-.rc-review-row:hover { border-color: var(--border2); }
-.rc-review-label { display: flex; align-items: center; gap: 7px; cursor: pointer;
-  font-size: 11px; color: var(--text-dim); }
-.rc-review-label input[type="checkbox"] { width: auto; min-width: unset;
-  accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
-.rc-loading-reviews { font-size: 11px; color: var(--text-muted); padding: 6px 0; }
-.rc-empty-note { font-size: 11px; color: var(--text-muted); padding: 4px 0; font-style: italic; }
-
-/* ── Form actions ──────────────────────────────────────────────── */
-.rc-form-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
-
-/* ── Result card ───────────────────────────────────────────────── */
-.rc-result { margin-top: 10px; }
-.rc-result-card { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-.rc-result-header { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
-  background: rgba(63,185,80,.06); border-bottom: 1px solid var(--border); }
-.rc-result-icon  { font-size: 18px; flex-shrink: 0; }
-.rc-result-meta  { display: flex; flex-direction: column; gap: 2px; }
-.rc-result-title { font-size: 13px; font-weight: 700; color: var(--green); }
-.rc-result-sub   { font-size: 11px; color: var(--text-muted); }
-.rc-result-note  { font-size: 10px; color: var(--text-muted); padding: 8px 14px;
-  border-top: 1px solid var(--border); }
-
-/* ── Provenance block ──────────────────────────────────────────── */
-.rc-prov-block { padding: 8px 14px; border-bottom: 1px solid var(--border);
-  background: var(--surface2); }
-.rc-prov-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
-  color: var(--text-muted); margin-bottom: 5px; }
-.rc-prov-row { display: flex; align-items: center; gap: 7px; font-size: 11px;
-  padding: 3px 0; color: var(--text-dim); }
-.rc-prov-count { font-size: 10px; color: var(--text-muted); margin-left: auto; }
-
-/* ── Result sections (collapsible) ────────────────────────────── */
-.rc-section { border-bottom: 1px solid var(--border); }
-.rc-section:last-of-type { border-bottom: none; }
-.rc-expandable summary { list-style: none; cursor: pointer; }
-.rc-expandable summary::-webkit-details-marker { display: none; }
-.rc-section-header { display: flex; align-items: center; gap: 8px;
-  padding: 9px 14px; background: var(--surface2); transition: background .15s; }
-.rc-section-header:hover { background: var(--surface3); }
-.rc-section-icon  { font-size: 13px; flex-shrink: 0; }
-.rc-section-title { font-size: 11px; font-weight: 700; color: var(--text); flex: 1; }
-.rc-count-badge { font-size: 10px; background: var(--surface3); border-radius: 20px;
-  padding: 1px 6px; color: var(--text-dim); font-weight: 600; }
-.rc-expand-hint { font-size: 9px; color: var(--text-muted); margin-left: 4px; transition: transform .2s; }
-details[open] .rc-expand-hint { transform: rotate(90deg); }
-.rc-section-body { padding: 6px 14px 10px; }
-
-/* ── Reconciled items ──────────────────────────────────────────── */
-.rc-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 0;
-  border-bottom: 1px solid var(--border); font-size: 12px; }
-.rc-item:last-child { border-bottom: none; }
-.rc-item-cat  { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
-  color: var(--text-muted); }
-.rc-item-text { color: var(--text-dim); line-height: 1.5; }
-.rc-item-prov { font-size: 10px; color: var(--text-muted); font-style: italic; }
-.rc-absent-hint { font-size: 10px; color: var(--yellow); }
-.rc-more-note  { font-size: 10px; color: var(--text-muted); margin-top: 4px; font-style: italic; }
-
-/* ── Loading / error states ────────────────────────────────────── */
-.rc-result-loading { display: flex; align-items: center; gap: 8px;
-  padding: 12px 14px; color: var(--text-dim); font-size: 12px; }
-.rc-result-error { padding: 8px 12px; color: var(--red); font-size: 12px;
-  background: rgba(248,81,73,.06); border: 1px solid var(--red);
-  border-radius: var(--radius); margin: 8px 0; }
-</style>
 
 <script>
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -791,30 +437,17 @@ function toast(msg,type='ok'){
   _toastTimer=setTimeout(()=>el.className='',3000);
 }
 
-async function api(method,path,body,{timeout=18000}={}){
+async function api(method,path,body){
   const opts={method,headers:{'Content-Type':'application/json'}};
   if(body)opts.body=JSON.stringify(body);
-  try{
-    const ctrl=new AbortController();
-    const tid=setTimeout(()=>ctrl.abort(),timeout);
-    opts.signal=ctrl.signal;
-    const r=await fetch(path,opts);
-    clearTimeout(tid);
-    return r.json();
-  }catch(e){
-    if(e.name==='AbortError')return{error:'Request timed out. Is the server running?'};
-    return{error:e.message||'Cannot connect to server'};
-  }
+  try{const r=await fetch(path,opts);return r.json();}
+  catch(e){return{error:e.message};}
 }
 </script>
 
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
-// All navigation tabs — dashboard is fully implemented; others show placeholder or route to existing view
-const TABS=[
-  'dashboard','ingest','intelligence','versions','reviews',
-  'diagrams','phases','pre-sales','proposals','admin','settings'
-];
+const TABS=['dashboard','versions','reviews'];
 
 let state={
   projects:[],current:null,tab:'dashboard',
@@ -822,14 +455,7 @@ let state={
   _dashVersion:'',_dashReview:'',
   _versionSort:'newest',_reviewSort:'newest',
   _lastRenderedProject:null,
-  // Extended state (Tasks #5)
-  selectedReviewIds:[],   // review IDs checked for multi-review actions
 };
-
-// ── Derived helpers (read from inline state, mirrors spec shape) ─────────────
-function getProjectId(){ return state.current?.id||null; }
-function getVersionId(){ return state._dashVersion||null; }
-function getReviewId(){  return state._dashReview||null; }
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 function formatVersionOption(v){
@@ -840,86 +466,10 @@ function formatVersionOption(v){
   const lbl=v.label?' – '+v.label:'';
   return`${v.version_id}${lbl} (${cnt} review${cnt===1?'':'s'}${aStr})`;
 }
-
-// ── Phase tag helper ─────────────────────────────────────────────────────────
-// Maps phase_id → coloured inline tag HTML.
-// Used in viewVersions() and viewReviews() to show phase context next to version.
-const PHASE_TAG_STYLES={
-  'pre-sales': 'background:rgba(155,142,209,.12);border:1px solid #9B8ED1;color:#6B5CA5',
-  'design':    'background:rgba(108,140,255,.10);border:1px solid #6C8CFF;color:#4A6AE0',
-  'delivery':  'background:rgba(76,175,130,.12);border:1px solid #4CAF82;color:#2E7D5C',
-  'support':   'background:rgba(245,158,11,.12); border:1px solid #F59E0B;color:#92600A',
-};
-function phaseTag(phaseId){
-  if(!phaseId)return'';
-  const s=PHASE_TAG_STYLES[phaseId]||'background:var(--surface2);border:1px solid var(--border);color:var(--text-muted)';
-  const lbl=phaseId.replace(/-/g,'\u2011');
-  return`<span style="display:inline-flex;align-items:center;padding:1px 7px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;${s};flex-shrink:0;white-space:nowrap">${escHtml(lbl)}</span>`;
-}
-
-// ── Activity strip builder ────────────────────────────────────────────────────
-// Derives recent activity events from the hierarchy tree.
-// Returns HTML for the horizontal activity strip (max 5 events, newest first).
-const ACTIVITY_MAX=5;
-const ACTIVITY_META={
-  version_created:  {icon:'📋',label:'created'},
-  review_created:   {icon:'🔍',label:'reviewed'},
-  review_completed: {icon:'✅',label:'completed'},
-};
-function buildActivityEvents(hierarchy){
-  const events=[];
-  for(const phase of((hierarchy&&hierarchy.tree)||[])){
-    const phaseId=phase.id||'';
-    for(const ver of(phase.versions||[])){
-      if(ver.created_at)events.push({type:'version_created',id:ver.version_id,
-        label:ver.label?`${ver.version_id} – ${ver.label}`:ver.version_id,
-        timestamp:ver.created_at,phase_id:phaseId});
-      for(const rev of(ver.reviews||[])){
-        if(rev.created_at)events.push({
-          type:rev.quality_status==='complete'?'review_completed':'review_created',
-          id:rev.review_id,
-          label:`${rev.review_id}${rev.persona?' · '+rev.persona:''}`,
-          timestamp:rev.created_at,phase_id:phaseId,version_id:ver.version_id});
-      }
-    }
-  }
-  events.sort((a,b)=>(b.timestamp||'').localeCompare(a.timestamp||''));
-  return events.slice(0,ACTIVITY_MAX);
-}
-function renderActivityStrip(hierarchy){
-  const events=buildActivityEvents(hierarchy);
-  if(!events.length)return'';
-  const items=events.map(ev=>{
-    const meta=ACTIVITY_META[ev.type]||{icon:'•',label:ev.type};
-    const rel=relativeTime(ev.timestamp);
-    return`<span style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0">
-      <span>${meta.icon}</span>
-      <strong style="font-size:12px;color:var(--accent)">${escHtml(ev.id)}</strong>
-      <span style="font-size:11px;color:var(--text-dim)">${meta.label}</span>
-      ${rel?`<span style="font-size:10px;color:var(--text-muted)">${escHtml(rel)}</span>`:''}
-    </span>`;
-  }).join('<span style="color:var(--border2);font-size:14px;user-select:none">·</span>');
-  return`<div style="display:flex;align-items:center;gap:12px;background:var(--surface);
-    border:1px solid var(--border);border-radius:var(--radius-lg);padding:7px 16px;
-    font-size:12px;overflow-x:auto;white-space:nowrap;margin-bottom:10px;
-    box-shadow:0 1px 3px rgba(0,0,0,.06);scrollbar-width:none">
-    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
-      color:var(--text-muted);flex-shrink:0">Recent:</span>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap">${items}</div>
-  </div>`;
-}
 </script>
 
 
 <script>
-// ── Tab labels (friendly display names) ─────────────────────────────────────
-const TAB_LABELS={
-  'dashboard':'Dashboard','ingest':'Ingest','intelligence':'Intelligence',
-  'versions':'Versions','reviews':'Reviews','diagrams':'Diagrams',
-  'phases':'Phases','pre-sales':'Pre-sales','proposals':'Proposals',
-  'admin':'Admin','settings':'Settings'
-};
-
 // ── Header ───────────────────────────────────────────────────────────────────
 function renderHeader(){
   const proj=state.current;
@@ -928,10 +478,6 @@ function renderHeader(){
     `<option value="${p.id}" ${p.id===(proj?.id)?'selected':''}>${escHtml(p.name)}</option>`
   ).join('');
   const displayName=proj?proj.name:state.appName;
-
-  // Derive Generate Proposal disabled state: need a project + at least one review selected or dashReview set
-  const hasReview=!!(state._dashReview||(state.selectedReviewIds&&state.selectedReviewIds.length));
-  const canPropose=!!(proj&&hasReview);
 
   document.getElementById('header').innerHTML=`
     <span class="logo">⚡ <span>${escHtml(displayName)}</span></span>
@@ -942,139 +488,15 @@ function renderHeader(){
       :'<span style="color:var(--text-dim);font-size:12px">No projects</span>'}
     <nav>
       ${TABS.map(t=>`<button class="${state.tab===t?'active':''}"
-        onclick="switchTab('${t}')">${escHtml(TAB_LABELS[t]||t)}</button>`).join('')}
+        onclick="switchTab('${t}')">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
     </nav>
-    <!-- ── Search widget ── -->
-    <div id="v2-search-wrap"></div>
     <!-- ── Compare button ── -->
     ${proj
       ?`<button class="btn-compare" onclick="openCompare()"
           title="Compare versions or reviews side-by-side">
           <span class="cmp-icon">⇄</span> Compare
         </button>`
-      :''}
-    <!-- ── Generate Proposal CTA (Task #4) ── -->
-    ${proj
-      ?`<button class="btn-compare" id="btn-gen-proposal"
-          onclick="openProposalPanel()"
-          ${canPropose?'':'disabled'}
-          title="${canPropose?'Generate proposal from active review':'Select a review first to enable'}">
-          📄 Generate Proposal
-        </button>`
       :''}`;
-  // Mount/refresh QuickSearch with current hierarchy versions
-  _mountSearch();
-}
-
-// ── QuickSearch adapter ───────────────────────────────────────────────────────
-// search.js expects AppState (the modular v2 store) but dashboard_v2.html uses
-// its own inline state object. This adapter bridges the two by shimming a
-// minimal AppState-compatible interface on window and feeding the current
-// hierarchy versions into QuickSearch after every renderHeader() call.
-(function _initSearchAdapter(){
-  if(window._searchAdapterReady) return;
-  window._searchAdapterReady = true;
-
-  // AppState shim — bridges dashboard_v2.html inline state to the modular v2
-  // components (QuickSearch, ReviewDetail, reconciliation panel).
-  //
-  // ReviewDetail needs:
-  //   AppState.get('selectedProject') → { id, name } — for weakness/note API calls
-  //   AppState.get('selectedVersion')  → { version_id, reviews[] } — for reconciliation review list
-  //   AppState.get('metrics')          → { available_reviews[] } — reconciliation fallback
-  //
-  // QuickSearch needs:
-  //   AppState.get('versions')         → flat version list with nested reviews
-  //   AppState.subscribe('versions', cb)
-  const _subs = new Map(); // key → Set<fn>
-  function _notify(key, val){
-    const s = _subs.get(key);
-    if(s) s.forEach(fn => { try{ fn(key, val); }catch(e){} });
-  }
-
-  window.AppState = {
-    get(key){
-      if(key === 'versions')        return window._qs_versions || [];
-      if(key === 'selectedProject') return state.current || null;
-      if(key === 'selectedVersion'){
-        // Return the full version object that matches the current _dashVersion
-        const vers = window._qs_versions || [];
-        const vid  = state._dashVersion;
-        return vid ? (vers.find(v => v.version_id === vid) || null) : (vers[0] || null);
-      }
-      if(key === 'metrics'){
-        // Expose a minimal metrics-like object so reconciliation panel can
-        // fall back to available_reviews when version.reviews is empty.
-        return { available_reviews: [] };
-      }
-      return null;
-    },
-    subscribe(keys, fn){
-      const ks = Array.isArray(keys) ? keys : [keys];
-      for(const k of ks){
-        if(!_subs.has(k)) _subs.set(k, new Set());
-        _subs.get(k).add(fn);
-      }
-      return () => { for(const k of ks){ _subs.get(k)?.delete(fn); } };
-    },
-    // ReviewDetail calls these after iteration/compare actions — treat as soft no-ops
-    // but update inline state so the drawer can react if needed.
-    selectVersion(v){ if(v && v.version_id) state._dashVersion = v.version_id; },
-    selectReview(r){  if(r && r.review_id)  state._dashReview  = r.review_id;  },
-    openDrawer(type, data){ /* ReviewDetail doesn't call this in v2 drawer mode */ },
-    closeDrawer(){ closeReviewDrawer(); },
-    /** Internal: called by _mountSearch() to push fresh data and notify subs. */
-    _setVersions(versions){
-      window._qs_versions = versions;
-      _notify('versions', versions);
-    }
-  };
-})();
-
-// Called after every renderHeader() — feeds the current project's version+review
-// tree into the QuickSearch index so navigation stays in sync with visible data.
-async function _mountSearch(){
-  // Mount the widget into the freshly-rendered #v2-search-wrap
-  if(window.QuickSearch) QuickSearch.mount();
-
-  if(!state.current) return;
-  try{
-    const h = await api('GET', `/api/projects/${state.current.id}/hierarchy`);
-    const versions = [];
-    for(const phase of (h.tree||[])){
-      for(const v of (phase.versions||[])) versions.push(v);
-    }
-    // Push into shim — notifies QuickSearch subscriber to rebuild index
-    if(window.AppState && window.AppState._setVersions) window.AppState._setVersions(versions);
-  } catch(e){}
-}
-
-// ── QuickSearch navigation override for dashboard_v2.html ────────────────────
-// search.js navigateTo() targets accordion DOM that exists in the modular v2
-// layout, not in this SPA. Override it to use tab-switching + URL-fragment
-// scroll so navigation still works meaningfully here.
-QuickSearch && (QuickSearch._origNavigateTo = QuickSearch.navigateTo);
-function _patchQuickSearchNav(){
-  if(!window.QuickSearch) return;
-  QuickSearch.navigateTo = function(type, id, versionId){
-    if(type === 'version'){
-      // Jump to Versions tab scoped to this version
-      state._dashVersion = id;
-      state._dashReview  = '';
-      switchTab('versions');
-    } else {
-      // Jump to Reviews tab scoped to the parent version, highlight the review
-      state._dashVersion = versionId;
-      state._dashReview  = id;
-      switchTab('reviews');
-    }
-  };
-}
-// Patch after DOM ready (search.js may not be loaded yet at parse time)
-if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', _patchQuickSearchNav);
-} else {
-  _patchQuickSearchNav();
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -1087,60 +509,15 @@ function switchTab(tab){
   render();
 }
 
-// ── Placeholder for non-implemented tabs ─────────────────────────────────────
-function viewPlaceholder(tabName){
-  return`<div class="card" style="margin-top:20px">
-    <div class="empty" style="padding:48px 24px">
-      <div class="empty-icon" style="font-size:42px;margin-bottom:14px">🚧</div>
-      <p style="font-size:14px;font-weight:600;margin-bottom:6px">${escHtml(TAB_LABELS[tabName]||tabName)}</p>
-      <p style="font-size:12px;color:var(--text-dim)">This section is not yet available in v2.</p>
-    </div>
-  </div>`;
-}
-
 async function render(){
   renderHeader();
   if(state.current)state._lastRenderedProject=state.current.id;
   const main=document.getElementById('main');
-  main.innerHTML=`<div style="padding:20px;text-align:center">
-    <div class="loading-bar"></div>
-    <p style="font-size:11px;color:var(--text-muted);margin-top:10px">Loading…</p>
-  </div>`;
-
-  // Tab → view function map; missing tabs get placeholder
-  const views={
-    dashboard:  viewDashboard,
-    versions:   viewVersions,
-    reviews:    viewReviews,
-  };
-
-  // Hard timeout: if view takes >20s, show a helpful message instead of spinning forever
-  const _timeout=setTimeout(()=>{
-    if(document.getElementById('main')?.querySelector('.loading-bar')){
-      document.getElementById('main').innerHTML=`<div class="card" style="margin-top:20px">
-        <div class="empty" style="padding:32px 20px">
-          <div class="empty-icon">⚠️</div>
-          <p style="font-size:13px;font-weight:600;margin-bottom:6px">Could not connect to server</p>
-          <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
-            Make sure the Python server is running, then retry.
-          </p>
-          <button class="btn" onclick="render()">↻ Retry</button>
-        </div>
-      </div>`;
-    }
-  },20000);
-
+  main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
+  const views={dashboard:viewDashboard,versions:viewVersions,reviews:viewReviews};
   try{
-    if(views[state.tab]){
-      const html=await views[state.tab]();
-      clearTimeout(_timeout);
-      main.innerHTML=html;
-    }else{
-      clearTimeout(_timeout);
-      main.innerHTML=viewPlaceholder(state.tab);
-    }
+    main.innerHTML=await(views[state.tab]||viewDashboard)();
   }catch(e){
-    clearTimeout(_timeout);
     console.error('render error:',e);
     main.innerHTML=`<div class="card">
       <p style="color:var(--red);font-size:12px">⚠ Page failed to load: ${escHtml(e.message)}</p>
@@ -1152,11 +529,7 @@ async function render(){
 // ── Compare entry point ───────────────────────────────────────────────────────
 function openCompare(){
   if(!state.current){toast('Select a project first','err');return;}
-  const pid=state.current.id;
-  console.log('[Compare] Opening for project:', pid,
-    '| dashVersion:', state._dashVersion,
-    '| dashReview:', state._dashReview);
-  Compare.open(pid);
+  Compare.open(state.current.id);
 }
 </script>
 
@@ -1204,26 +577,9 @@ async function viewDashboard(){
   if(selR)ps.push(`review_id=${selR}`);
   if(ps.length)metricsUrl+='?'+ps.join('&');
 
-  let metrics={},versions=[],hierarchy={};
-  try{[metrics,hierarchy]=await Promise.all([api('GET',metricsUrl),api('GET',`/api/projects/${pid}/hierarchy`)]);}catch(e){}
+  let metrics={},versions=[];
+  try{[metrics]=await Promise.all([api('GET',metricsUrl)]);}catch(e){}
   try{const r=await api('GET',`/api/projects/${pid}/hierarchy/versions`);versions=r.versions||[];}catch(e){}
-
-  // ── Smart Defaulting: auto-select latest version + review when nothing chosen
-  if(!selV&&versions.length>0){
-    // Sort newest first (API should already do this, but guard)
-    const sorted=[...versions].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
-    const latest=sorted[0];
-    state._dashVersion=latest.version_id;
-    const revs=latest.reviews||[];
-    const active=revs.find(r=>r.review_id===latest.active_review_id)||revs[0]||null;
-    if(active&&!selR)state._dashReview=active.review_id;
-    // Re-build metrics URL with the defaulted selection
-    if(state._dashVersion){
-      metricsUrl=`/api/projects/${pid}/hierarchy/metrics?version_id=${state._dashVersion}`;
-      if(state._dashReview)metricsUrl+=`&review_id=${state._dashReview}`;
-      try{metrics=await api('GET',metricsUrl);}catch(e){}
-    }
-  }
 
   const avail=metrics.available_reviews||[];
   const ds=metrics.data_source||{};
@@ -1239,19 +595,12 @@ async function viewDashboard(){
   const artifacts=metrics.artifact_count||0;
   const trend=metrics.trend||[];
 
-  // Use resolved defaults for dropdown selected state
-  const curV=state._dashVersion||'';
-  const curR=state._dashReview||'';
-
   const vOpts=versions.map(v=>`<option value="${v.version_id}"
-    ${v.version_id===curV?'selected':''}>${escHtml(v.version_id)}
+    ${v.version_id===selV?'selected':''}>${escHtml(v.version_id)}
     ${escHtml(v.label||'')} (${fmtDateShort(v.created_at)})</option>`).join('');
   const rOpts=avail.map(r=>`<option value="${r.review_id}"
-    ${r.review_id===curR?'selected':''}>${r.review_id}
+    ${r.review_id===selR?'selected':''}>${r.review_id}
     – ${escHtml(r.persona)} (${fmtDateShort(r.created_at)})</option>`).join('');
-
-  // Activity strip (derived from hierarchy, no extra fetch)
-  const activityHtml=renderActivityStrip(hierarchy);
 
   // Context selector
   const ctxCard=versions.length?`<div class="card" style="padding:12px 16px">
@@ -1293,9 +642,6 @@ async function viewDashboard(){
       <button class="btn" onclick="switchTab('versions')">📋 Versions</button>
       <button class="btn btn-outline" onclick="switchTab('reviews')">🔍 Reviews</button>
       <button class="btn-compare" onclick="openCompare()" style="margin-left:auto">⇄ Compare</button>
-      ${state._dashReview
-        ?`<button class="btn-compare" onclick="openProposalPanel()" style="color:var(--green);border-color:var(--green-dim)">📄 Generate Proposal</button>`
-        :''}
     </div>
   </div>`;
 
@@ -1327,23 +673,7 @@ async function viewDashboard(){
       </div>`:''}
   </div>`;
 
-  // ── Sprint 9: Health Signal, Pinned Insights, Memory Score ──────────────
-  // Health badge (RAG) — populated by HealthSignal.update() via AppState subscription
-  const healthBadgeSlot = `<div id="v2-health-badge" style="margin-bottom:10px"></div>`;
-
-  // Pinned section — populated by PinnedInsights.updateSection() via subscription
-  const pinnedSlot = `<div id="v2-pinned-section"></div>`;
-
-  // Memory score card — populated by ProjectMemoryScore.update() via subscription
-  const memoryScoreSlot = `<div id="v2-memory-score" style="margin-bottom:12px"></div>`;
-
-  // Trigger immediate renders now that metrics are available
-  // (auto-mount subscriptions fire on DOM ready, but the containers are new)
-  if(window.HealthSignal)       HealthSignal.update(metrics);
-  if(window.ProjectMemoryScore) ProjectMemoryScore.update(metrics);
-  if(window.PinnedInsights && state.current) PinnedInsights.updateSection(state.current.id);
-
-  return pinnedSlot+healthBadgeSlot+activityHtml+ctxCard+overviewCard+memoryScoreSlot+insightCard;
+  return ctxCard+overviewCard+insightCard;
 }
 </script>
 
@@ -1454,7 +784,6 @@ async function viewVersions(){
             onmouseout="this.style.background=''">
             <span class="chevron">▶</span>
             <strong class="fs12">${escHtml(ver.version_id)}</strong>
-            ${phaseTag(ver.phase_id||'')}
             ${ver.label?`<span class="c-dim fs11">– ${escHtml(ver.label)}</span>`:''}
             <span class="fs10 c-muted">${fmtDateShort(ver.created_at)}</span>
             <span class="tag ${verRevs.length?'tag-blue':''}">${verRevs.length} review${verRevs.length===1?'':'s'}</span>
@@ -1468,10 +797,6 @@ async function viewVersions(){
                 View on Dashboard</button>
               <button class="btn-compare btn-xs" style="font-size:10px;padding:2px 8px"
                 onclick="openCompare()">⇄ Compare</button>
-              ${window.PinnedInsights&&state.current
-                ?PinnedInsights.renderPinButton(ver.version_id,'version',
-                    ver.version_id+(ver.label?' – '+ver.label:''),state.current.id)
-                :''}
               <span class="fs10 c-dim">${ver.persona?escHtml(ver.persona)+' · ':''} ${escHtml(ver.ai_backend||'files_only')}</span>
             </div>`;
 
@@ -1592,20 +917,13 @@ async function runInlineVersionCompare(){
 
 
 <script>
-// ── Reviews view (v1 feature parity + v2 UX) ─────────────────────────────────
+// ── Reviews view ──────────────────────────────────────────────────────────────
 async function viewReviews(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
 
   let hierarchy={};
   try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
-  if(hierarchy.error){
-    return`<div class="card"><div class="empty">
-      <div class="empty-icon">⚠️</div>
-      <p style="color:var(--red)">${escHtml(hierarchy.error)}</p>
-      <button class="btn mt" onclick="render()">↻ Retry</button>
-    </div></div>`;
-  }
   const tree=hierarchy.tree||[];
 
   let versionsWithReviews=[];
@@ -1626,18 +944,19 @@ async function viewReviews(){
         onclick="state._reviewSort='${s}';render()">${
           s==='newest'?'Newest First':s==='oldest'?'Oldest First':'Most Findings'
         }</button>`).join('')}
-    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">⇄ Compare</button>
+    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">⇄ Compare Reviews</button>
   </div>`;
 
   if(!versionsWithReviews.length){
     return`<div class="card">
       <div class="flex-between mb">
         <div class="card-title"><span class="icon">🔍</span>Review History</div>
+        <button class="btn-compare" onclick="openCompare()">⇄ Compare</button>
       </div>
       ${sortBar}
       <div class="empty" style="padding:24px 0">
         <div class="empty-icon">🔍</div>
-        <p>No reviews yet. Ingest artefacts and run Build Intelligence first.</p>
+        <p>No reviews yet. Run a Persona Review from the main dashboard.</p>
       </div>
     </div>`;
   }
@@ -1645,9 +964,8 @@ async function viewReviews(){
   let listHtml=`<div class="card">
     <div class="flex-between mb">
       <div class="card-title"><span class="icon">🔍</span>Review History
-        ${state._dashVersion?`<span class="tag tag-blue" style="font-size:10px">v: ${escHtml(state._dashVersion)}</span>`:''}
+        ${state._dashVersion?`<span class="tag tag-blue fs10">v: ${escHtml(state._dashVersion)}</span>`:''}
       </div>
-      ${state._dashVersion?`<button class="btn btn-sm btn-ghost" onclick="state._dashVersion='';render()">✕ All versions</button>`:''}
     </div>
     ${sortBar}`;
 
@@ -1671,24 +989,11 @@ async function viewReviews(){
       </summary>`;
 
     for(const rev of revs){
-      const rid=rev.review_id||''; if(!rid)continue;
+      const rid=rev.review_id||'';if(!rid)continue;
       const isActive=rid===activeId;
-      const qs=rev.quality_status||'pending';
-      const qCls=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
-      const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
-      // Status action buttons — v1 parity
-      let sBtns='';
-      if(qs==='pending'){
-        sBtns=`<button class="btn btn-sm btn-ghost" title="Work in progress"
-          onclick="openMarkCompleteV2('${escHtml(rid)}','interim')">Mark Draft</button>
-          <button class="btn btn-sm btn-ghost" title="Ready for proposal"
-          onclick="openMarkCompleteV2('${escHtml(rid)}','complete')">Mark Final</button>`;
-      } else if(qs==='interim'){
-        sBtns=`<button class="btn btn-sm btn-ghost"
-          onclick="openMarkCompleteV2('${escHtml(rid)}','complete')">Mark Final</button>`;
-      } else {
-        sBtns=`<span style="font-size:10px;color:var(--green)">✓ Final</span>`;
-      }
+      const qStatus=rev.quality_status||'pending';
+      const qCls=qStatus==='complete'?'tag-green':qStatus==='interim'?'tag-yellow':'';
+      const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'In Progress':'Draft';
 
       listHtml+=`<details style="margin:4px 0;background:var(--bg);
         border:1px solid ${isActive?'var(--accent)':'var(--border)'};
@@ -1700,7 +1005,7 @@ async function viewReviews(){
           <span class="chevron">▶</span>
           <span class="tag" style="font-size:10px;padding:1px 6px;font-weight:700;
             background:var(--surface3)">R${rev.iteration_number||'?'}</span>
-          <strong class="fs11">${escHtml(rid)}</strong>
+          <strong class="fs11">${rid}</strong>
           ${isActive?'<span class="tag tag-green">active</span>':''}
           <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
           <span class="tag ${qCls}" style="font-size:9px">${qLabel}</span>
@@ -1710,33 +1015,9 @@ async function viewReviews(){
         </summary>
         <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
           ${rev.summary?`<p class="fs12 c-dim" style="margin-bottom:8px">${escHtml(rev.summary.slice(0,200))}</p>`:''}
-          <div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:6px">
-            <button class="btn btn-sm btn-outline"
-              onclick="openReviewDetail('${escHtml(rid)}','${escHtml(ver.version_id)}')">
-              🔍 Full Details</button>
-            ${!isActive?`<button class="btn btn-sm btn-ghost"
-              onclick="setActiveReviewV2('${escHtml(ver.version_id)}','${escHtml(rid)}')">
-              Set Active</button>`:''}
-            ${sBtns}
-            <button class="btn btn-sm btn-ghost" onclick="openCompare()">⇄ Compare</button>
-            <button class="btn btn-sm btn-ghost"
-              onclick="state._dashVersion='${escHtml(ver.version_id)}';state._dashReview='${escHtml(rid)}';openProposalPanel()"
-              style="color:var(--green);border-color:var(--green-dim)">📄 Proposal</button>
-            <button class="btn btn-sm" style="background:var(--red);color:#fff"
-              onclick="deleteReviewV2('${escHtml(rid)}')">Delete</button>
-          </div>
-          <div id="mcForm_${escHtml(rid)}" style="display:none;padding:8px 10px;
-            background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
-            <p class="fs11 c-dim" style="margin-bottom:5px">Your name (required to record change)</p>
-            <div class="flex gap-sm">
-              <input id="mcName_${escHtml(rid)}" placeholder="Your name" style="flex:1;min-width:100px">
-              <button class="btn btn-sm btn-ghost"
-                onclick="submitMarkCompleteV2('${escHtml(rid)}','interim')">Save Draft</button>
-              <button class="btn btn-sm" style="background:var(--green-dim);color:#fff"
-                onclick="submitMarkCompleteV2('${escHtml(rid)}','complete')">Mark Final</button>
-              <button class="btn btn-xs btn-ghost"
-                onclick="document.getElementById('mcForm_${escHtml(rid)}').style.display='none'">✕</button>
-            </div>
+          <div class="flex gap-sm">
+            <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
+              onclick="openCompare()">⇄ Compare Reviews</button>
           </div>
         </div>
       </details>`;
@@ -1748,160 +1029,13 @@ async function viewReviews(){
 }
 </script>
 
-<script>
-// ── Review status helpers (v2, no reload) ────────────────────────────────────
-function openMarkCompleteV2(rid, suggestedStatus){
-  const el=document.getElementById('mcForm_'+rid);
-  if(el){ el.style.display=''; el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-}
-async function submitMarkCompleteV2(rid, qualityStatus){
-  const name=(document.getElementById('mcName_'+rid)?.value||'').trim();
-  if(!name){ toast('Enter your name first','err'); return; }
-  const pid=state.current?.id; if(!pid) return;
-  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/complete`,
-    {completed_by:name, quality_status:qualityStatus});
-  if(r.error){ toast(r.error,'err'); return; }
-  toast(`Review marked as ${qualityStatus==='complete'?'Final':'Draft'}`);
-  render();
-}
-async function setActiveReviewV2(versionId, reviewId){
-  const pid=state.current?.id; if(!pid) return;
-  const r=await api('POST',`/api/projects/${pid}/hierarchy/versions/${versionId}/set-active-review`,
-    {review_id:reviewId});
-  if(r.error){ toast(r.error,'err'); return; }
-  toast('Active review updated'); render();
-}
-async function deleteReviewV2(rid){
-  if(!confirm('Delete this review? This cannot be undone.')) return;
-  const pid=state.current?.id; if(!pid) return;
-  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/delete`);
-  if(r.error){ toast(r.error,'err'); return; }
-  toast('Review deleted'); render();
-}
-</script>
-
-<script>
-// ── Review Full Detail — right-side drawer ────────────────────────────────────
-//
-// Delegates ALL rendering to ReviewDetail.renderReview() (review_detail.js).
-// That module provides Sprint 1 (full details + weakness notes + artifact refs),
-// Sprint 2 (iteration lineage + create-new-review form), and
-// Sprint 3 (reconciliation panel) in one unified renderer.
-//
-// This block is intentionally thin: open shell → fetch → delegate → close.
-
-async function openReviewDetail(rid, versionId){
-  if(!rid || !state.current) return;
-  const pid = state.current.id;
-
-  // Sync AppState so ReviewDetail reads the right project + version context
-  if(versionId) state._dashVersion = versionId;
-  state._dashReview = rid;
-
-  _openReviewDrawerShell();
-
-  try{
-    const r = await api('GET', `/api/projects/${pid}/hierarchy/reviews/${rid}`);
-    const body = document.getElementById('rd-body');
-    if(!body) return;
-
-    if(r.error){
-      body.innerHTML = `<div style="padding:20px;color:var(--red)">⚠ ${escHtml(r.error)}</div>`;
-      return;
-    }
-
-    // ReviewDetail.renderReview() is the Sprint 1-3 full renderer.
-    // It reads window.AppState.get('selectedProject') for weakness/note API calls,
-    // and window.AppState.get('selectedVersion') for the reconciliation review list.
-    if(window.ReviewDetail){
-      body.style.padding = '0';   // ReviewDetail manages its own padding
-      body.innerHTML = ReviewDetail.renderReview(r);
-    } else {
-      // Fallback: ReviewDetail not loaded yet — show basic info
-      body.innerHTML = _rdFallback(r);
-    }
-  } catch(err){
-    const body = document.getElementById('rd-body');
-    if(body) body.innerHTML = `<div style="padding:20px;color:var(--red)">⚠ ${escHtml(err.message||'Failed to load review')}</div>`;
-  }
-}
-
-function _openReviewDrawerShell(){
-  const existing = document.getElementById('rd-overlay');
-  if(existing) existing.remove();
-
-  const ov = document.createElement('div');
-  ov.id = 'rd-overlay';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1800;' +
-    'opacity:0;transition:opacity .25s ease;pointer-events:none;';
-  ov.innerHTML = `
-    <div id="rd-drawer" style="position:fixed;top:0;right:0;height:100%;width:600px;
-      max-width:96vw;background:var(--surface);border-left:1px solid var(--border2);
-      z-index:1801;display:flex;flex-direction:column;transform:translateX(100%);
-      transition:transform .28s ease;box-shadow:-4px 0 24px rgba(0,0,0,.5);">
-      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-        border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;">
-        <span style="font-size:14px;font-weight:700;flex:1">🔍 Review Detail</span>
-        <button onclick="closeReviewDrawer()" style="background:transparent;border:none;
-          color:var(--text-dim);font-size:17px;cursor:pointer;padding:2px 7px;
-          border-radius:var(--radius);line-height:1" aria-label="Close">✕</button>
-      </div>
-      <div id="rd-body" style="flex:1;overflow-y:auto;padding:16px;">
-        <div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--text-dim)">
-          <span class="spin">⟳</span> Loading…
-        </div>
-      </div>
-    </div>`;
-
-  ov.addEventListener('click', e => { if(e.target === ov) closeReviewDrawer(); });
-  ov._kh = e => { if(e.key === 'Escape') closeReviewDrawer(); };
-  document.addEventListener('keydown', ov._kh);
-  document.body.appendChild(ov);
-
-  requestAnimationFrame(() => {
-    ov.style.opacity = '1';
-    ov.style.pointerEvents = 'all';
-    document.getElementById('rd-drawer').style.transform = 'translateX(0)';
-  });
-}
-
-function closeReviewDrawer(){
-  const ov = document.getElementById('rd-overlay');
-  if(!ov) return;
-  if(ov._kh) document.removeEventListener('keydown', ov._kh);
-  ov.style.opacity = '0';
-  const dr = document.getElementById('rd-drawer');
-  if(dr) dr.style.transform = 'translateX(100%)';
-  setTimeout(() => { if(ov.parentNode) ov.remove(); }, 300);
-}
-
-// Minimal fallback shown only if ReviewDetail script failed to load
-function _rdFallback(r){
-  const rid = r.review_id || '';
-  const qs  = r.quality_status || 'pending';
-  const qLabel = qs === 'complete' ? 'Final' : qs === 'interim' ? 'Draft' : 'Pending';
-  return `<div style="padding:16px">
-    <div style="background:var(--surface2);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
-        <span class="tag tag-blue">v: ${escHtml(r.version_id||'–')}</span>
-        <span class="tag tag-purple">${escHtml(r.persona||'–')}</span>
-        <span class="tag">${qLabel}</span>
-        ${r.iteration_number ? `<span class="tag" style="font-weight:700">R${r.iteration_number}</span>` : ''}
-      </div>
-      ${r.summary ? `<p style="font-size:12px;color:var(--text-dim)">${escHtml(r.summary)}</p>` : ''}
-    </div>
-    <p style="font-size:11px;color:var(--text-muted)">Review detail module not loaded — refresh the page.</p>
-  </div>`;
-}
-</script>
-
 
 <script>
 // ── Project actions ───────────────────────────────────────────────────────────
 async function selectProject(id){
   state.current=state.projects.find(x=>x.id===id)||state.current;
   try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
-  state._dashVersion='';state._dashReview='';state.selectedReviewIds=[];
+  state._dashVersion='';state._dashReview='';
   state.tab='dashboard';render();
 }
 
@@ -1947,536 +1081,6 @@ async function loadAppInfo(){
 (async()=>{
   await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);
   render();
-})();
-</script>
-
-
-<!-- ═══════════════════════════════════════════════════════════════════
-     PROPOSAL PANEL STYLES (scoped .pp- prefix)
-     ═══════════════════════════════════════════════════════════════════ -->
-<style>
-/* ── Drawer overlay (right side panel) ────────────────────────── */
-.pp-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);
-  z-index:1900;opacity:0;transition:opacity .25s ease;pointer-events:none;}
-.pp-overlay.pp-open{opacity:1;pointer-events:all;}
-
-.pp-drawer{position:fixed;top:0;right:0;height:100%;width:520px;max-width:95vw;
-  background:var(--surface);border-left:1px solid var(--border2);
-  z-index:1901;display:flex;flex-direction:column;
-  transform:translateX(100%);transition:transform .28s ease;
-  box-shadow:-4px 0 20px rgba(0,0,0,.45);}
-.pp-overlay.pp-open .pp-drawer{transform:translateX(0);}
-
-/* ── Drawer header ────────────────────────────────────────────── */
-.pp-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  padding:13px 16px;border-bottom:1px solid var(--border);
-  background:var(--surface2);flex-shrink:0;}
-.pp-title{font-size:14px;font-weight:700;color:var(--text);flex:1;}
-.pp-subtitle{font-size:11px;color:var(--text-dim);}
-.pp-close{background:transparent;border:none;color:var(--text-dim);
-  cursor:pointer;font-size:17px;padding:2px 6px;border-radius:var(--radius);
-  transition:all .15s;line-height:1;}
-.pp-close:hover{color:var(--text);background:var(--surface3);}
-
-/* ── Context bar (version + review) ──────────────────────────── */
-.pp-ctx{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  padding:8px 16px;border-bottom:1px solid var(--border);
-  background:var(--bg);font-size:11px;flex-shrink:0;}
-.pp-ctx-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;
-  border-radius:20px;font-size:10px;font-weight:600;}
-.pp-ctx-ver{background:rgba(88,166,255,.12);border:1px solid var(--accent-dim);color:var(--accent);}
-.pp-ctx-rev{background:rgba(188,140,255,.12);border:1px solid var(--purple);color:var(--purple);}
-.pp-ctx-supp{background:rgba(63,185,80,.10);border:1px solid var(--green-dim);color:var(--green);}
-
-/* ── Generate action bar ──────────────────────────────────────── */
-.pp-action-bar{display:flex;align-items:center;gap:10px;
-  padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;}
-.pp-generate-btn{display:inline-flex;align-items:center;gap:6px;
-  background:var(--accent);color:#000;border:none;padding:7px 18px;
-  border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:700;
-  transition:opacity .15s;}
-.pp-generate-btn:hover{opacity:.85;}
-.pp-generate-btn:disabled{opacity:.45;cursor:not-allowed;}
-.pp-force-label{display:inline-flex;align-items:center;gap:5px;
-  font-size:11px;color:var(--text-dim);cursor:pointer;}
-.pp-err{color:var(--red);font-size:12px;padding:0 16px 8px;}
-
-/* ── Scroll body ──────────────────────────────────────────────── */
-.pp-body{flex:1;overflow-y:auto;padding:16px;}
-.pp-body::-webkit-scrollbar{width:5px;}
-.pp-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
-
-/* ── Loading state ────────────────────────────────────────────── */
-.pp-loading{display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:48px 24px;gap:12px;color:var(--text-dim);}
-.pp-spin{animation:spin .8s linear infinite;display:inline-block;font-size:24px;}
-
-/* ── Empty / placeholder ──────────────────────────────────────── */
-.pp-empty{text-align:center;padding:48px 24px;color:var(--text-dim);}
-.pp-empty-icon{font-size:38px;margin-bottom:12px;opacity:.5;}
-
-/* ── Proposal sections ────────────────────────────────────────── */
-.pp-section{margin-bottom:18px;border:1px solid var(--border);
-  border-radius:var(--radius-lg);overflow:hidden;}
-.pp-section-head{display:flex;align-items:center;gap:8px;padding:10px 14px;
-  background:var(--surface2);cursor:pointer;user-select:none;
-  transition:background .15s;}
-.pp-section-head:hover{background:var(--surface3);}
-.pp-section-icon{font-size:15px;}
-.pp-section-title{font-size:12px;font-weight:700;color:var(--text);flex:1;}
-.pp-section-chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;}
-.pp-section.open .pp-section-chevron{transform:rotate(90deg);}
-.pp-section-body{padding:12px 14px;border-top:1px solid var(--border);
-  font-size:12px;color:var(--text-dim);line-height:1.7;display:none;}
-.pp-section.open .pp-section-body{display:block;}
-
-/* ── Decision / risk list items ───────────────────────────────── */
-.pp-list{list-style:none;margin:0;padding:0;}
-.pp-list li{padding:5px 0;border-bottom:1px solid var(--border);
-  font-size:12px;color:var(--text-dim);}
-.pp-list li:last-child{border-bottom:none;}
-.pp-list-marker{display:inline-block;width:6px;height:6px;border-radius:50%;
-  margin-right:8px;flex-shrink:0;vertical-align:middle;}
-.pp-confirmed{background:var(--green);}
-.pp-open{background:var(--yellow);}
-.pp-risk{background:var(--red);}
-.pp-action{background:var(--accent);}
-
-/* ── Coverage grid ────────────────────────────────────────────── */
-.pp-coverage-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
-.pp-coverage-item{background:var(--surface2);border:1px solid var(--border);
-  border-radius:var(--radius);padding:8px 10px;}
-.pp-coverage-label{font-size:10px;font-weight:700;color:var(--text-muted);
-  text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
-.pp-coverage-val{font-size:12px;color:var(--text-dim);}
-
-/* ── Metadata footer ──────────────────────────────────────────── */
-.pp-meta-footer{margin-top:12px;padding-top:10px;border-top:1px solid var(--border);
-  font-size:10px;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:8px;}
-</style>
-
-<script>
-// ═══════════════════════════════════════════════════════════════════
-// PROPOSAL PANEL (Task #4)
-// In-context right-side drawer — no page navigation.
-// ═══════════════════════════════════════════════════════════════════
-
-// ── Proposal panel state ──────────────────────────────────────
-const _pp = {
-  open: false,
-  loading: false,
-  error: null,
-  doc: null,       // last generated ProposalDocument
-  tracker: null,   // proposal tracker (contains current_version)
-};
-
-// ── Open the panel ────────────────────────────────────────────
-function openProposalPanel(){
-  const pid = getProjectId();
-  if(!pid){ toast('Select a project first','err'); return; }
-  const rid = getReviewId();
-  if(!rid){ toast('Select a review first to generate a proposal','err'); return; }
-
-  console.log('[Proposal] Opening panel | project:', pid,
-    '| version:', getVersionId(), '| review:', rid,
-    '| supplemental:', state.selectedReviewIds);
-
-  _pp.open = true;
-  _pp.error = null;
-  _pp.doc = null;
-  _buildProposalDrawer();
-}
-
-// ── Close the panel ───────────────────────────────────────────
-function closeProposalPanel(){
-  _pp.open = false;
-  const overlay = document.getElementById('pp-overlay');
-  if(overlay){
-    overlay.classList.remove('pp-open');
-    setTimeout(()=>{ if(overlay.parentNode) overlay.remove(); }, 300);
-  }
-}
-
-// ── Build / inject drawer DOM ─────────────────────────────────
-function _buildProposalDrawer(){
-  const existing = document.getElementById('pp-overlay');
-  if(existing) existing.remove();
-
-  const pid = getProjectId();
-  const vid = getVersionId();
-  const rid = getReviewId();
-  const suppIds = (state.selectedReviewIds||[]).filter(id=>id!==rid);
-
-  const overlay = document.createElement('div');
-  overlay.id = 'pp-overlay';
-  overlay.className = 'pp-overlay';
-  overlay.innerHTML = `
-    <div class="pp-drawer" id="pp-drawer" role="dialog" aria-modal="true" aria-labelledby="pp-title">
-      <div class="pp-header">
-        <div>
-          <div class="pp-title" id="pp-title">📄 Generate Proposal</div>
-          <div class="pp-subtitle">In-context proposal from active review</div>
-        </div>
-        <button class="pp-close" onclick="closeProposalPanel()" aria-label="Close proposal panel">✕</button>
-      </div>
-
-      <div class="pp-ctx" id="pp-ctx-bar">
-        ${vid?`<span class="pp-ctx-chip pp-ctx-ver">📋 ${escHtml(vid)}</span>`:''}
-        ${rid?`<span class="pp-ctx-chip pp-ctx-rev">🔍 ${escHtml(rid)}</span>`:''}
-        ${suppIds.length?`<span class="pp-ctx-chip pp-ctx-supp">+${suppIds.length} supplemental</span>`:''}
-        ${!vid&&!rid?'<span style="font-size:11px;color:var(--text-muted)">No context selected</span>':''}
-      </div>
-
-      <div class="pp-action-bar">
-        <button class="pp-generate-btn" id="pp-gen-btn"
-          onclick="_runGenerateProposal()"
-          ${rid?'':'disabled'}>
-          ⚡ Generate
-        </button>
-        <label class="pp-force-label">
-          <input type="checkbox" id="pp-force-chk" style="width:auto;margin:0">
-          Force regenerate
-        </label>
-        <span style="font-size:11px;color:var(--text-muted);margin-left:auto" id="pp-status"></span>
-      </div>
-
-      <div id="pp-error-bar"></div>
-
-      <div class="pp-body" id="pp-body">
-        <div class="pp-empty">
-          <div class="pp-empty-icon">📝</div>
-          <p style="font-size:12px">Click <strong>Generate</strong> to create a proposal document from the active review.</p>
-        </div>
-      </div>
-    </div>`;
-
-  // Close on backdrop click
-  overlay.addEventListener('click', e=>{ if(e.target===overlay) closeProposalPanel(); });
-
-  // Close on Escape
-  overlay._keyHandler = e=>{ if(e.key==='Escape') closeProposalPanel(); };
-  document.addEventListener('keydown', overlay._keyHandler);
-
-  document.body.appendChild(overlay);
-  requestAnimationFrame(()=> overlay.classList.add('pp-open'));
-}
-
-// ── Run proposal generation ───────────────────────────────────
-async function _runGenerateProposal(){
-  const pid = getProjectId();
-  const vid = getVersionId();
-  const rid = getReviewId();
-
-  if(!pid||!rid){
-    _ppSetError('A project and review must be selected to generate a proposal.');
-    return;
-  }
-
-  const suppIds = (state.selectedReviewIds||[]).filter(id=>id!==rid);
-  const force   = document.getElementById('pp-force-chk')?.checked||false;
-
-  console.log('[Proposal] pid:', pid, '| vid:', vid, '| rid:', rid,
-    '| supp:', suppIds, '| force:', force);
-
-  _ppSetLoading(true);
-  _ppSetError(null);
-
-  try{
-    // Step 1: get or create proposal tracker
-    let tracker = await api('GET', `/api/projects/${pid}/proposal`);
-    if(tracker.error){
-      tracker = await api('POST', `/api/projects/${pid}/proposal`,{
-        proposal_name: `Proposal – ${pid}`,
-        hierarchy_version_id: vid||'',
-        review_id: rid,
-      });
-    }
-    if(tracker.error){ _ppSetError(`Could not create proposal tracker: ${tracker.error}`); _ppSetLoading(false); return; }
-    _pp.tracker = tracker;
-
-    // proposal_ver_id may be nested differently across versions
-    const proposalVerId = tracker.current_version
-      || tracker.proposal_ver_id
-      || (tracker.versions&&tracker.versions[0]?.version_id)
-      || '';
-
-    console.log('[Proposal] tracker ok | proposal_ver_id:', proposalVerId);
-
-    // Step 2: generate document
-    const payload = {
-      proposal_ver_id: proposalVerId,
-      hierarchy_version_id: vid||'',
-      review_id: rid,
-      ai_backend: 'files_only',
-      force: force,
-    };
-    if(suppIds.length) payload.supplemental_review_ids = suppIds;
-
-    const result = await api('POST', `/api/projects/${pid}/proposal/generate`, payload);
-
-    if(result.error){
-      // ── Quality gate failure → guided UX (not raw error) ──────
-      _ppSetLoading(false);
-      _ppShowQualityGateUX(rid, pid, vid, result.error);
-      return;
-    }
-
-    _pp.doc = result.document || result;
-    _ppSetLoading(false);
-    _renderProposalDoc(_pp.doc);
-
-  }catch(err){
-    console.error('[Proposal] Exception:', err);
-    _ppSetError(`Unexpected error: ${escHtml(err.message)}`);
-    _ppSetLoading(false);
-  }
-}
-
-// ── Quality gate guided UX ────────────────────────────────────
-function _ppShowQualityGateUX(rid, pid, vid, rawError){
-  const body = document.getElementById('pp-body');
-  if(!body) return;
-
-  // Parse what's missing from the error message (backend lists missing cats)
-  const missingMatch = rawError.match(/missing[^:]*:\s*([^.]+)/i)
-    || rawError.match(/blockers[^:]*:\s*([^.]+)/i);
-  const missingText = missingMatch ? missingMatch[1] : '';
-  const missingItems = missingText
-    ? missingText.split(/[,;]+/).map(s=>s.trim()).filter(Boolean)
-    : [];
-
-  // Detect "not complete / not passed" wording
-  const isGateFail = /incomplete|not passed|quality gate|pending|blockers/i.test(rawError);
-
-  if(!isGateFail){
-    // Not a gate error — show it plainly
-    _ppSetError(rawError);
-    return;
-  }
-
-  body.innerHTML=`
-    <div style="border:1px solid var(--yellow);border-radius:var(--radius-lg);padding:16px;
-      background:rgba(210,153,34,.06);margin-bottom:12px">
-      <p style="font-size:13px;font-weight:700;color:var(--yellow);margin-bottom:6px">
-        ⚠ Review is incomplete
-      </p>
-      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px">
-        This review has not passed the quality gate. Before generating a proposal, you can:
-      </p>
-      ${missingItems.length?`
-      <div style="margin-bottom:12px">
-        <p style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px">Missing areas:</p>
-        <ul style="list-style:none;padding:0">
-          ${missingItems.map(m=>`<li style="font-size:12px;color:var(--text-dim);padding:2px 0 2px 14px;
-            border-left:2px solid var(--yellow)">• ${escHtml(m)}</li>`).join('')}
-        </ul>
-      </div>`:''}
-      <div class="flex gap-sm" style="flex-wrap:wrap">
-        <button class="btn btn-sm btn-ghost"
-          onclick="closeProposalPanel();switchTab('reviews')"
-          title="Go to Reviews tab to add more findings">
-          📝 Complete Review
-        </button>
-        <button class="btn btn-sm"
-          style="background:var(--yellow);color:#000"
-          onclick="_ppMarkInterimAndGenerate('${escHtml(rid)}','${escHtml(pid)}','${escHtml(vid||'')}')">
-          ⚡ Mark as Draft &amp; Generate
-        </button>
-      </div>
-      <p style="font-size:10px;color:var(--text-muted);margin-top:8px">
-        "Mark as Draft" acknowledges the review is partial. You can complete it later.
-      </p>
-    </div>`;
-}
-
-// Interim override: mark review as interim, then generate with force=true
-async function _ppMarkInterimAndGenerate(rid, pid, vid){
-  const body=document.getElementById('pp-body');
-
-  // Prompt for name
-  const name=prompt('Enter your name to save this review as Draft (interim):','');
-  if(!name||!name.trim()){ toast('Name required','err'); return; }
-
-  // Mark as interim
-  const mc=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/complete`,
-    {completed_by:name.trim(), quality_status:'interim'});
-  if(mc.error){ toast(mc.error,'err'); return; }
-  toast('Review marked as Draft');
-
-  // Update state so header CTA stays enabled
-  state._dashReview=rid;
-  state._dashVersion=vid||state._dashVersion;
-
-  // Now regenerate with force=true
-  document.getElementById('pp-force-chk').checked=true;
-  _ppSetLoading(true);
-  if(body) body.innerHTML=`<div style="display:flex;align-items:center;gap:8px;padding:20px;color:var(--text-dim)">
-    <span class="spin">⟳</span> Generating with Draft status…</div>`;
-  await _runGenerateProposal();
-}
-
-// ── Loading state ─────────────────────────────────────────────
-function _ppSetLoading(on){
-  _pp.loading = on;
-  const btn = document.getElementById('pp-gen-btn');
-  const status = document.getElementById('pp-status');
-  if(btn){ btn.disabled = on; btn.textContent = on?'⏳ Generating…':'⚡ Generate'; }
-  if(on){
-    const body = document.getElementById('pp-body');
-    if(body) body.innerHTML=`<div class="pp-loading">
-      <span class="pp-spin">⟳</span>
-      <span>Generating proposal document…</span>
-      <span style="font-size:11px;color:var(--text-muted)">This may take a moment</span>
-    </div>`;
-    if(status) status.textContent='Running…';
-  }else{
-    if(status) status.textContent='';
-    // Re-enable button only if review is still selected
-    if(btn&&getReviewId()) btn.disabled=false;
-  }
-}
-
-// ── Error display ─────────────────────────────────────────────
-function _ppSetError(msg){
-  _pp.error = msg;
-  const bar = document.getElementById('pp-error-bar');
-  if(!bar) return;
-  bar.innerHTML = msg
-    ? `<div class="pp-err">⚠ ${escHtml(msg)}</div>`
-    : '';
-}
-
-// ── Render proposal document ──────────────────────────────────
-function _renderProposalDoc(doc){
-  const body = document.getElementById('pp-body');
-  if(!body) return;
-  if(!doc){ body.innerHTML='<div class="pp-empty"><div class="pp-empty-icon">⚠</div><p>No document data returned.</p></div>'; return; }
-
-  // Normalise: response is {document:{...}} from POST /proposal/generate
-  const d = doc.document || doc;
-
-  // ── Section helpers ───────────────────────────────────────
-  function _sec(id, icon, title, bodyHtml, defaultOpen=true){
-    return`<div class="pp-section ${defaultOpen?'open':''}" id="pp-sec-${id}">
-      <div class="pp-section-head" onclick="_ppToggleSec('pp-sec-${id}')">
-        <span class="pp-section-icon">${icon}</span>
-        <span class="pp-section-title">${title}</span>
-        <span class="pp-section-chevron">▶</span>
-      </div>
-      <div class="pp-section-body">${bodyHtml}</div>
-    </div>`;
-  }
-
-  function _list(items, markerClass, fallback='None recorded'){
-    if(!items||!items.length) return`<p style="font-size:12px;color:var(--text-muted);font-style:italic">${fallback}</p>`;
-    return`<ul class="pp-list">${items.map(i=>
-      `<li><span class="pp-list-marker ${markerClass}"></span>${escHtml(String(i))}</li>`
-    ).join('')}</ul>`;
-  }
-
-  function _text(val, fallback='Not available'){
-    if(!val) return`<p style="font-size:12px;color:var(--text-muted);font-style:italic">${fallback}</p>`;
-    return`<p style="white-space:pre-line;font-size:12px;color:var(--text-dim)">${escHtml(String(val))}</p>`;
-  }
-
-  // ── 1. Executive Summary ──────────────────────────────────
-  // ProposalDocument field: exec_summary
-  const sec1 = _sec('exec','📋','Executive Summary', _text(d.exec_summary||''));
-
-  // ── 2. Scope ──────────────────────────────────────────────
-  // ProposalDocument field: scope (plain text)
-  const sec2 = _sec('approach','🏗','Scope', _text(d.scope||''));
-
-  // ── 3. Delivery Phases ────────────────────────────────────
-  // ProposalDocument field: delivery_phases [{phase, description, duration_weeks}]
-  const phases = d.delivery_phases || [];
-  const phasesHtml = phases.length
-    ? `<div style="display:flex;flex-direction:column;gap:6px">${phases.map(p=>`
-        <div style="background:var(--surface2);border-radius:var(--radius);padding:8px 10px">
-          <div style="font-weight:700;font-size:12px;color:var(--accent)">${escHtml(p.phase||'')}</div>
-          <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${escHtml(p.description||'')}
-            ${p.duration_weeks?`<span style="color:var(--text-muted);margin-left:6px">(${p.duration_weeks}w)</span>`:''}
-          </div>
-        </div>`).join('')}</div>`
-    : `<p style="font-size:12px;color:var(--text-muted);font-style:italic">No phases defined</p>`;
-  const sec3 = _sec('phases','🚀','Delivery Phases', phasesHtml);
-
-  // ── 4. Risks ──────────────────────────────────────────────
-  // ProposalDocument field: risks [{risk, category, impact, probability, mitigation}]
-  const risks = d.risks || [];
-  const risksHtml = risks.length
-    ? `<div style="display:flex;flex-direction:column;gap:6px">${risks.map(r=>{
-        const impactColour = r.impact==='high'?'var(--red)':r.impact==='medium'?'var(--yellow)':'var(--green)';
-        return`<div style="background:var(--surface2);border-radius:var(--radius);padding:8px 10px;
-                  border-left:3px solid ${impactColour}">
-          <div style="font-size:12px;color:var(--text)">${escHtml(r.risk||String(r))}</div>
-          ${r.category||r.impact?`<div style="font-size:10px;color:var(--text-muted);margin-top:3px">
-            ${r.category?`<span style="text-transform:uppercase;letter-spacing:.4px">${escHtml(r.category)}</span>`:''}
-            ${r.impact?`· impact: <strong style="color:${impactColour}">${escHtml(r.impact)}</strong>`:''}
-            ${r.probability?`· prob: ${escHtml(r.probability)}`:''}
-          </div>`:''}
-          ${r.mitigation?`<div style="font-size:11px;color:var(--text-dim);margin-top:4px;font-style:italic">${escHtml(r.mitigation)}</div>`:''}
-        </div>`;}).join('')}</div>`
-    : `<p style="font-size:12px;color:var(--text-muted);font-style:italic">No risks recorded</p>`;
-  const sec4 = _sec('risks','⚠️','Risks', risksHtml, false);
-
-  // ── 5. Assumptions ────────────────────────────────────────
-  // ProposalDocument field: assumptions [{assumption, category}]
-  const assumptions = d.assumptions || [];
-  const assumptionTexts = assumptions.map(a=>
-    typeof a === 'string' ? a : (a.assumption ? `[${a.category||'general'}] ${a.assumption}` : String(a))
-  );
-  const sec5 = _sec('assumptions','💡','Assumptions', _list(assumptionTexts,'pp-confirmed','No assumptions recorded'), false);
-
-  // ── 6. Exclusions & Acceptance Criteria ───────────────────
-  // ProposalDocument fields: exclusions [str], acceptance_criteria [str]
-  const exclusions = d.exclusions || [];
-  const acceptance = d.acceptance_criteria || [];
-  const exclHtml = `
-    ${exclusions.length?`<p style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:4px">Exclusions</p>`+_list(exclusions,'pp-risk'):''}
-    ${acceptance.length?`<p style="font-size:11px;font-weight:700;color:var(--text-muted);margin-top:${exclusions.length?10:0}px;margin-bottom:4px">Acceptance Criteria</p>`+_list(acceptance,'pp-action'):''}
-    ${!exclusions.length&&!acceptance.length?`<p style="font-size:12px;color:var(--text-muted);font-style:italic">None recorded</p>`:''}`;
-  const sec6 = _sec('excl','📋','Exclusions &amp; Acceptance Criteria', exclHtml, false);
-
-  // ── 7. Coverage (when present — multi-review path) ────────
-  // ProposalDocument field: proposal_coverage {scope:{status,matched_themes,gap_notes}, …}
-  const covObj = d.proposal_coverage;
-  const DOMAINS = ['scope','architecture','delivery','security_compliance','operations','commercials'];
-  const DOMAIN_LABELS = {scope:'Scope',architecture:'Architecture',delivery:'Delivery',
-    security_compliance:'Security/Compliance',operations:'Operations',commercials:'Commercials'};
-  const statusColour = s => s==='Addressed'?'var(--green)':s==='Partial'?'var(--yellow)':'var(--text-muted)';
-  const covHtml = covObj
-    ? `<div class="pp-coverage-grid">${DOMAINS.map(k=>{
-        const dom = covObj[k]||{};
-        const status = dom.status||'Not Yet Addressed';
-        return`<div class="pp-coverage-item">
-          <div class="pp-coverage-label">${escHtml(DOMAIN_LABELS[k])}</div>
-          <div class="pp-coverage-val" style="color:${statusColour(status)}">${escHtml(status)}</div>
-          ${dom.gap_notes?`<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${escHtml(dom.gap_notes)}</div>`:''}
-        </div>`;}).join('')}</div>
-        ${covObj.source_theme_count?`<p style="font-size:10px;color:var(--text-muted);margin-top:8px">${covObj.source_theme_count} source theme(s) analysed</p>`:''}`
-    : `<p style="font-size:12px;color:var(--text-muted);font-style:italic">Coverage analysis not available (single-review mode)</p>`;
-  const sec7 = _sec('coverage','📊','Coverage Analysis', covHtml, false);
-
-  // ── Metadata footer ───────────────────────────────────────
-  const created  = d.generated_at || '';
-  const docId    = d.doc_id || '';
-  const backend  = d.ai_backend || '';
-  const metaFooter = `<div class="pp-meta-footer">
-    ${docId?`<span>doc: ${escHtml(docId)}</span>`:''}
-    ${backend?`<span>mode: ${escHtml(backend)}</span>`:''}
-    ${created?`<span>Generated: ${fmtDate(created)}</span>`:''}
-    <span style="margin-left:auto">project: ${escHtml(getProjectId()||'–')} · review: ${escHtml(getReviewId()||'–')}</span>
-  </div>`;
-
-  body.innerHTML = sec1+sec2+sec3+sec4+sec5+sec6+sec7+metaFooter;
-}
-
-// ── Toggle a proposal section ─────────────────────────────────
-function _ppToggleSec(secId){
-  const el = document.getElementById(secId);
-  if(el) el.classList.toggle('open');
-}
 </script>
 </body>
 </html>
