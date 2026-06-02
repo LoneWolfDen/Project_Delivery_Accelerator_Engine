@@ -366,6 +366,8 @@ details[open] .chevron{transform:rotate(90deg);}
 
 <!-- Compare module — loaded before inline scripts so Compare is available globally -->
 
+<!-- Phase 1: disable mock mode — route all API calls to the live backend -->
+<script>window.V2_USE_MOCK = false;</script>
 
 <script src="/static/v2/js/compare.js"></script>
 

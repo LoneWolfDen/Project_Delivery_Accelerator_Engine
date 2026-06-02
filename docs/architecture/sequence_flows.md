@@ -382,3 +382,207 @@ available in both the Reviews tab and the Versions tab review-item-body:
 
 All functions use the `v2` prefix to avoid collision with the v1 global namespace.
 Role checkboxes use class `v2-role-check` (vs v1's `role-check`).
+
+
+---
+
+## Sequence 10: Phase 1 — V2 Connects to Live Backend
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant API
+    participant Server
+
+    Note over Browser: dashboard_v2.html sets window.V2_USE_MOCK = false<br/>before any scripts execute.
+
+    User->>Browser: Navigate to /?ui=v2
+    Browser->>Browser: Parse inline script block:<br/>window.V2_USE_MOCK = false
+    Browser->>Browser: Load compare.js, state.js, api.js, dashboard.js
+
+    Note over API: api.js _useMock() reads window.V2_USE_MOCK !== false<br/>→ returns false → live path taken for every call.
+
+    Browser->>API: fetchProjects()
+    API->>API: _useMock() → false
+    API->>Server: GET /api/projects
+    Server->>API: 200 {projects:[...]}
+    API->>Browser: real project list
+
+    Browser->>API: fetchHierarchy(pid)
+    API->>API: _useMock() → false
+    API->>Server: GET /api/projects/{pid}/hierarchy
+    Server->>API: 200 hierarchy
+    API->>Browser: real hierarchy tree
+
+    Note over Browser: All subsequent calls (metrics, versions,<br/>reviews, detail) follow the same live path.
+    Browser->>User: Dashboard populated with real data
+```
+
+### What changed (Phase 1)
+| File | Change |
+|------|--------|
+| `static/v2/dashboard_v2.html` | Added `<script>window.V2_USE_MOCK = false;</script>` before `compare.js` |
+
+### Contract preserved
+- Mock data in `api.js` is retained for local offline development.
+- To re-enable mock mode, set `window.V2_USE_MOCK = true` in the HTML.
+- `_useMock()` guard still wraps every mock return path — no unconditional mock returns.
+
+---
+
+## Sequence 11: Phase 2 — V2 Weakness Status Update from Drawer
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant DetailPanel
+    participant API
+    participant Server
+    participant ReviewHandler
+    participant ReviewService
+    participant HierarchyStore
+
+    Note over Browser: Review detail drawer is open.<br/>renderReview() has rendered weakness rows<br/>with status <select> and note <textarea>.
+
+    alt User changes status dropdown
+        User->>Browser: Change status <select> → "addressed"
+        Browser->>DetailPanel: _onWeaknessStatusChange(selectEl)
+        DetailPanel->>DetailPanel: Read data-pid, data-rid, data-wid from selectEl.dataset
+        DetailPanel->>API: updateWeaknessStatus(pid, rid, wid, "addressed", null)
+        Note over API: userNote=null → body only contains {status}.<br/>Existing note is preserved server-side.
+        API->>Server: POST /api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/status<br/>body: { status: "addressed" }
+        Server->>ReviewHandler: handle_weakness_status(pid, rid, wid, body)
+        ReviewHandler->>ReviewService: update_weakness_status(pid, rid, wid, "addressed", user_note=None)
+        ReviewService->>HierarchyStore: get_review(rid)
+        HierarchyStore->>ReviewService: Review dataclass
+        ReviewService->>ReviewService: target["status"] = "addressed"<br/>(user_note untouched — None passed)
+        ReviewService->>HierarchyStore: update_review_weaknesses(rid, weaknesses)
+        HierarchyStore->>ReviewService: persisted
+        ReviewService->>ReviewHandler: { updated: true, status: "addressed" }
+        ReviewHandler->>Server: respond(result, 200)
+        Server->>API: 200 { updated: true }
+        API->>DetailPanel: result
+        Note over Browser: No re-render — select already shows new value.
+        Browser->>User: (silent success)
+    end
+
+    alt User types a note and tabs away
+        User->>Browser: Type note text → blur textarea
+        Browser->>DetailPanel: _onWeaknessNoteBlur(textarea)
+        DetailPanel->>DetailPanel: Read data-pid, data-rid, data-wid from textarea.dataset
+        DetailPanel->>DetailPanel: Find sibling <select> in .weakness-row → read .value
+        DetailPanel->>API: updateWeaknessStatus(pid, rid, wid, currentStatus, textarea.value)
+        Note over API: Both status and user_note are sent.
+        API->>Server: POST … body: { status: "addressed", user_note: "Confirmed by client" }
+        Server->>ReviewHandler: handle_weakness_status(pid, rid, wid, body)
+        ReviewHandler->>ReviewService: update_weakness_status(…, "addressed", user_note="Confirmed by client")
+        ReviewService->>ReviewService: target["status"] = "addressed"<br/>target["user_note"] = "Confirmed by client"
+        ReviewService->>HierarchyStore: update_review_weaknesses(rid, weaknesses)
+        HierarchyStore->>ReviewService: persisted
+        ReviewService->>ReviewHandler: { updated: true, user_note: "Confirmed by client" }
+        ReviewHandler->>Server: respond(result, 200)
+        Server->>API: 200 { updated: true, user_note: "Confirmed by client" }
+        Note over Browser: No re-render — textarea already shows the value.
+        Browser->>User: (silent success)
+    end
+```
+
+---
+
+## Sequence 12: Phase 2 — V2 Decision Point Status Update from Drawer
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant DetailPanel
+    participant API
+    participant Server
+    participant ReviewHandler
+    participant ReviewService
+    participant HierarchyStore
+
+    Note over Browser: Review detail drawer is open.<br/>renderReview() has rendered decision point rows<br/>each with a status <select>.
+
+    User->>Browser: Change decision status <select> → "validated"
+    Browser->>DetailPanel: _onDecisionStatusChange(selectEl)
+    DetailPanel->>DetailPanel: Read data-pid, data-rid, data-did from selectEl.dataset
+    DetailPanel->>API: updateDecisionStatus(pid, rid, did, "validated")
+    API->>Server: POST /api/projects/{pid}/hierarchy/reviews/{rid}/decision/{did}/status<br/>body: { status: "validated" }
+
+    Server->>ReviewHandler: handle_decision_status(pid, rid, did, body)
+    ReviewHandler->>ReviewService: update_decision_status(pid, rid, did, "validated")
+    ReviewService->>HierarchyStore: get_review(rid)
+    HierarchyStore->>ReviewService: Review dataclass
+    ReviewService->>ReviewService: Find dp by id<br/>target["status"] = "validated"
+    ReviewService->>HierarchyStore: update_review_decision_points(rid, dps)
+    HierarchyStore->>ReviewService: persisted
+    ReviewService->>ReviewHandler: { updated: true, decision_id: did, status: "validated" }
+    ReviewHandler->>Server: respond(result, 200)
+    Server->>API: 200 { updated: true }
+    API->>DetailPanel: result
+
+    Note over Browser: No re-render — select already shows new value.
+    Browser->>User: (silent success)
+```
+
+---
+
+## Sequence 13: Phase 2 — V2 Provenance Line Render
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Accordion
+    participant Dashboard
+    participant DetailPanel
+    participant API
+    participant Server
+
+    User->>Browser: Click review row in accordion
+    Browser->>Accordion: onReviewClick(el)
+    Accordion->>Dashboard: AppState.openDrawer('review', summary)
+    Dashboard->>DetailPanel: renderReview(summary)
+    DetailPanel->>Browser: Inject skeleton HTML (summary only)
+
+    Dashboard->>API: fetchReviewDetail(pid, rid)
+    API->>Server: GET /api/projects/{pid}/hierarchy/reviews/{rid}
+    Server->>API: 200 full review {findings, questions, weaknesses,<br/>decision_points, included_files, categories, persona}
+    API->>Dashboard: full review
+
+    Dashboard->>DetailPanel: renderReview(full)
+    DetailPanel->>DetailPanel: _renderProvenanceLine(r)<br/>→ reads r.persona, r.included_files.length, r.categories
+    Note over DetailPanel: No extra API call — provenance data<br/>is already in the review detail response.
+    DetailPanel->>Browser: Inject full HTML:<br/>• Provenance line (persona · N artefacts · [category chips])<br/>• Findings by category<br/>• Weaknesses (interactive)<br/>• Decision points (interactive)
+    Browser->>User: Drawer shows full detail with provenance
+```
+
+### Provenance line data sources (Phase 2.3)
+| Field shown | Source in Review object |
+|-------------|------------------------|
+| Persona label | `review.persona` |
+| Artefact count | `review.included_files.length` |
+| Category chips | `review.categories[]` (up to 4, +N overflow) |
+
+### Key rules enforced (Phase 2)
+| Rule | Where enforced |
+|------|----------------|
+| `userNote=null` → `user_note` key absent from POST body | `api.js → updateWeaknessStatus()` |
+| `user_note=None` on service → existing note preserved | `services/review.py → update_weakness_status()` |
+| Status-only change does not re-render the drawer | `DetailPanel.js → _onWeaknessStatusChange()` |
+| Note blur reads current status from sibling `<select>` | `DetailPanel.js → _onWeaknessNoteBlur()` |
+| All weaknesses rendered (not just open) so any can be updated | `DetailPanel.js → renderReview()` |
+| Provenance line rendered above findings, no extra API call | `DetailPanel.js → _renderProvenanceLine()` |
+| `projectId` resolved from `AppState.get('selectedProject')` at render time | `DetailPanel.js → renderReview()` |
+
+### Linked components — Phase 2 additions
+| Participant | File |
+|-------------|------|
+| DetailPanel | `ui/v2/components/DetailPanel.js` |
+| API | `static/v2/js/api.js` |
+| ReviewHandler | `handlers/review.py` |
+| ReviewService | `services/review.py` |
+| HierarchyStore | `models/hierarchy.py` |

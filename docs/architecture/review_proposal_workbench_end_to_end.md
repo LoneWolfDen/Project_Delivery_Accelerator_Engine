@@ -495,15 +495,16 @@ tests and affected diagrams updated with each module change
 | Backend services and handlers (CRUD, metrics, diff, gate) | ✅ Complete |
 | Server routes (hierarchy, review, proposal, presales) | ⚠️ Partial — missing 7 routes |
 | V2 frontend shell (state, API layer, layout, accordion) | ✅ Complete |
-| V2 frontend — live data connection (mock flag off) | ❌ Not done |
-| V2 DetailPanel — weakness notes + decision status | ❌ Not done |
-| Review Iteration workflow (UI + route) | ❌ Not done |
-| Reconciliation workflow (UI + route) | ❌ Not done |
-| Proposal Data Pack workflow (UI + route) | ❌ Not done |
-| Proposal Review Pass (UI + route) | ❌ Not done |
-| Coverage Map (UI + route) | ❌ Not done |
-| Forward Guidance (UI + route) | ❌ Not done |
-| Provenance chips in DetailPanel | ❌ Not done |
+| V2 frontend — live data connection (mock flag off) | ✅ **Phase 1 — Done** |
+| V2 DetailPanel — weakness notes + decision status | ✅ **Phase 2 — Done** |
+| V2 DetailPanel — provenance line on findings | ✅ **Phase 2.3 — Done** |
+| Review Iteration workflow (UI + route) | ❌ Not done — Phase 3 |
+| Reconciliation workflow (UI + route) | ❌ Not done — Phase 4 |
+| Proposal Data Pack workflow (UI + route) | ❌ Not done — Phase 6 |
+| Proposal Review Pass (UI + route) | ❌ Not done — Phase 7 |
+| Coverage Map (UI + route) | ❌ Not done — Phase 5 |
+| Forward Guidance (UI + route) | ❌ Not done — Phase 7 |
+| Provenance endpoint + full chips | ❌ Not done — Phase 8 |
 
 ---
 
@@ -653,24 +654,56 @@ Work is sequenced so each item builds on the previous. Items within a phase are 
 
 ---
 
-#### Phase 1 — Connect V2 Frontend to Live Backend
-*Unblocks all subsequent UI work. No new features.*
+#### Phase 1 — Connect V2 Frontend to Live Backend ✅ COMPLETE
+*Completed: 2026-06-02*
 
-| # | Item | File(s) | Work |
-|---|------|---------|------|
-| 1.1 | Disable mock flag | `static/v2/dashboard_v2.html` | Set `window.V2_USE_MOCK = false` in the inline script block |
-| 1.2 | Verify all 6 sequences work live | Manual smoke test | Load v2, confirm projects load, version/review select, metrics refresh, drawer opens with real data |
+| # | Item | File(s) | Status |
+|---|------|---------|--------|
+| 1.1 | Disable mock flag | `static/v2/dashboard_v2.html` | ✅ Done — `window.V2_USE_MOCK = false` added in dedicated script tag before `compare.js` |
+| 1.2 | Verify all 6 sequences work live | Manual smoke test | ✅ Sequences 1–6 functional; live path taken for all API calls |
+
+**What was implemented:**
+- Single `<script>window.V2_USE_MOCK = false;</script>` tag inserted before `compare.js` in `dashboard_v2.html`
+- `_useMock()` guard in `api.js` reads `window.V2_USE_MOCK !== false` — explicit `false` disables mock for every call
+- Mock data retained in `api.js` for offline/dev use; re-enable by setting `window.V2_USE_MOCK = true`
 
 ---
 
-#### Phase 2 — Complete Review Detail in V2
-*Closes GAP-3. Brings v2 DetailPanel to parity with v1 for weakness and decision interactions.*
+#### Phase 2 — Complete Review Detail in V2 ✅ COMPLETE
+*Completed: 2026-06-02*
 
-| # | Item | File(s) | Work |
-|---|------|---------|------|
-| 2.1 | Weakness status + user_note in DetailPanel | `ui/v2/components/DetailPanel.js` | Add status `<select>` + note `<textarea>` per weakness; wire `onblur` to `POST .../weakness/{wid}/status`; add `updateWeaknessStatus()` to `api.js` |
-| 2.2 | Decision points section in DetailPanel | `ui/v2/components/DetailPanel.js` | Render decision points list with status `<select>`; wire change to `POST .../decision/{did}/status`; add `updateDecisionStatus()` to `api.js` |
-| 2.3 | Provenance line on findings | `ui/v2/components/DetailPanel.js` | Show `included_files` count and `persona` as a lightweight provenance line under each finding block (no new backend needed — data already in review detail response) |
+| # | Item | File(s) | Status |
+|---|------|---------|--------|
+| 2.1 | Weakness status + user_note in DetailPanel | `ui/v2/components/DetailPanel.js`, `static/v2/js/api.js` | ✅ Done |
+| 2.2 | Decision points section in DetailPanel | `ui/v2/components/DetailPanel.js`, `static/v2/js/api.js` | ✅ Done |
+| 2.3 | Provenance line on findings | `ui/v2/components/DetailPanel.js` | ✅ Done |
+
+**What was implemented:**
+
+`static/v2/js/api.js`:
+- `updateWeaknessStatus(projectId, reviewId, weaknessId, status, userNote)` — POST to `/hierarchy/reviews/{rid}/weakness/{wid}/status`; omits `user_note` key when `userNote` is `null` so existing notes are preserved server-side
+- `updateDecisionStatus(projectId, reviewId, decisionId, status)` — POST to `/hierarchy/reviews/{rid}/decision/{did}/status`
+- Both functions exposed on `window.API`
+
+`ui/v2/components/DetailPanel.js` (full rewrite):
+- `_renderWeaknessRow(w, reviewId, projectId)` — renders each weakness with: status `<select>` (open/addressed/validated/rejected), note `<textarea>` with `onblur`, data attributes for event routing
+- `_onWeaknessStatusChange(sel)` — reads `data-pid/rid/wid`; POSTs status-only (null note); no re-render
+- `_onWeaknessNoteBlur(ta)` — reads sibling `<select>` for current status; POSTs status + note text
+- `_renderDecisionRow(dp, reviewId, projectId)` — renders each decision point with status `<select>`
+- `_onDecisionStatusChange(sel)` — reads `data-pid/rid/did`; POSTs status; no re-render
+- `_renderProvenanceLine(r)` — lightweight provenance from `r.persona`, `r.included_files.length`, `r.categories[]`; no extra API call; returns `''` when no data available
+- `renderReview()` — now renders **all** weaknesses (not just open, so any can be updated), all decision points, and provenance above finding blocks
+- Three event handlers exported from IIFE so inline `onclick`/`onblur` in injected HTML can reach them via `DetailPanel.*`
+
+**Test coverage added** (`tests/test_v2_phase1_and_phase2.py`):
+- 50 tests covering Phase 1 (6), Phase 2.1 API (7), Phase 2.1 DetailPanel weakness (11), Phase 2.2 decision (7), Phase 2.3 provenance (6), regression (13)
+- All 50 pass; 314 static-analysis tests pass with no regressions
+
+**Sequence flows added** (`docs/architecture/sequence_flows.md`):
+- Sequence 10: Phase 1 — V2 connects to live backend
+- Sequence 11: Phase 2 — weakness status + note update from drawer
+- Sequence 12: Phase 2 — decision point status update from drawer
+- Sequence 13: Phase 2 — provenance line render (no extra API call)
 
 ---
 
@@ -746,8 +779,8 @@ Work is sequenced so each item builds on the previous. Items within a phase are 
 
 | Phase | New Files | Modified Files |
 |-------|-----------|----------------|
-| 1 | — | `static/v2/dashboard_v2.html` |
-| 2 | — | `ui/v2/components/DetailPanel.js`, `static/v2/js/api.js` |
+| 1 ✅ | — | `static/v2/dashboard_v2.html` |
+| 2 ✅ | `tests/test_v2_phase1_and_phase2.py` | `ui/v2/components/DetailPanel.js`, `static/v2/js/api.js`, `docs/architecture/sequence_flows.md`, `docs/architecture/review_proposal_workbench_end_to_end.md` |
 | 3 | — | `server.py`, `handlers/review.py`, `static/v2/js/api.js`, `ui/v2/components/DetailPanel.js` |
 | 4 | `ui/v2/components/ReconciliationPanel.js` | `server.py`, `handlers/hierarchy.py`, `services/hierarchy.py`, `static/v2/js/api.js`, `static/v2/js/dashboard.js`, `static/v2/dashboard_v2.html` |
 | 5 | `ui/v2/components/CoverageMap.js` | `server.py`, `handlers/proposal.py`, `services/proposal.py`, `static/v2/js/api.js` |
@@ -771,8 +804,8 @@ Work is sequenced so each item builds on the previous. Items within a phase are 
 
 | Phase | Done When |
 |-------|-----------|
-| 1 | v2 loads real project list; version/review selection fetches live metrics; drawer shows real review data |
-| 2 | Weakness status and note can be saved from v2 drawer; decision points render with status control |
+| 1 ✅ | v2 loads real project list; version/review selection fetches live metrics; drawer shows real review data |
+| 2 ✅ | Weakness status and note can be saved from v2 drawer; decision points render with status control; provenance line shown above findings |
 | 3 | "Iterate" button creates a new review linked to prior review; new review appears in accordion; `previous_review_id` is set |
 | 4 | Reconciliation panel renders reconciled findings + conflicts for two or more selected reviews from the same version |
 | 5 | Coverage map renders six-domain grid with correct Addressed / Partial / Not Yet Addressed status after reconciliation |
