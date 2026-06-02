@@ -2087,12 +2087,17 @@ async function viewReviewDetail(rid){
     const _wGroupsHtml=_wGroupKeys.map(cat=>{
       const meta=_wCatMeta[cat]||{icon:'🔍',label:cat.replace(/_/g,' ')};
       const items=_wGroups[cat];
-      const rows=items.map(w=>`<div class="findings-item" style="font-size:12px;display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
-          <span title="${escHtml(w.status||'open')}" style="font-size:14px;line-height:1.4;flex-shrink:0">${_wStatusIcon[w.status||'open']||'🔴'}</span>
-          <span style="flex:1;line-height:1.5">${escHtml(w.text||'')}</span>
-          <select title="Update status" style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);flex-shrink:0" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value)">
-            ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${w.status===s?' selected':''}>${s}</option>`).join('')}
-          </select>
+      const rows=items.map(w=>`<div class="findings-item" style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <span title="${escHtml(w.status||'open')}" style="font-size:14px;line-height:1.4;flex-shrink:0">${_wStatusIcon[w.status||'open']||'🔴'}</span>
+            <span style="flex:1;line-height:1.5">${escHtml(w.text||'')}</span>
+            <select title="Update status" style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);flex-shrink:0" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value,null)">
+              ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${w.status===s?' selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <textarea rows="2" placeholder="Add note…" style="width:100%;margin-top:4px;font-size:11px;resize:vertical;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;box-sizing:border-box"
+            onblur="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',null,this.value)"
+          >${escHtml(w.user_note||'')}</textarea>
         </div>`).join('');
       return`<details open style="margin-bottom:6px">
         <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);font-size:12px;font-weight:600">
@@ -2212,14 +2217,26 @@ async function updateDecisionStatus(reviewId, decisionId, status) {
   }
 }
 
-// S6-01: Update weakness status via API
-async function updateWeaknessStatus(reviewId, weaknessId, status) {
+// S6-01 / S9-03: Update weakness status and/or user_note via API.
+// Pass status=null to do a note-only update; pass note=null to do a status-only update.
+async function updateWeaknessStatus(reviewId, weaknessId, status, note) {
   if (!state.current) return;
   const pid = state.current.id;
   try {
-    await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`, { status });
+    const body = {};
+    if (status !== null && status !== undefined) body.status = status;
+    if (note   !== null && note   !== undefined) body.user_note = note;
+    if (!Object.keys(body).length) return;
+    // Note-only call: still need a valid status — read from the sibling <select>
+    if (body.user_note !== undefined && body.status === undefined) {
+      const sel = document.querySelector(
+        `select[onchange*="'${weaknessId}'"]`
+      );
+      if (sel) body.status = sel.value;
+    }
+    await api('POST', `/api/projects/${pid}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`, body);
   } catch(e) {
-    console.error('Failed to update weakness status', e);
+    console.error('Failed to update weakness', e);
   }
 }
 </script>

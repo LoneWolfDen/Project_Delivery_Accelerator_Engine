@@ -182,6 +182,21 @@ An execution run against a Version. Contains the prompt used, AI-generated outpu
 **Iteration number:** 1-based per version (R1, R2 … within V1)  
 **Storage:** `projects_data/{pid}/hierarchy/reviews/{rid}.json`
 
+#### Weakness item shape (S9-03)
+Each entry in `weaknesses: List[dict]` carries:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | str | Stable ID within the review, e.g. `w1` |
+| `text` | str | Original finding text flagged as weak |
+| `category` | str | Finding category: `risks`, `assumptions`, etc. |
+| `status` | str | `open` \| `addressed` \| `validated` \| `rejected` |
+| `user_note` | str | Free-text annotation added by the user (default `""`) |
+
+`user_note` is written by `POST /hierarchy/reviews/{rid}/weakness/{wid}/status` when the
+request body includes `"user_note"`. Status-only calls (no `user_note` key in body) leave
+the field unchanged. Added in S9-03 (spec §8.3).
+
 ### Artifact
 An ingested document (uploaded file or pasted text). Linked to a project and optionally included in a Version snapshot.  
 **Categories:** `project_artefact`, `meetings_comms`, `delivery_notes`, `client_context`, `architecture_design`, `external_data`  

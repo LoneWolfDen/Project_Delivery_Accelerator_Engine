@@ -250,3 +250,59 @@ sequenceDiagram
     end
     Browser->>User: Accordion state toggled
 ```
+
+
+---
+
+## Sequence 7: Weakness User Note Update (S9-03)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Server
+    participant ReviewHandler
+    participant ReviewService
+    participant HierarchyStore
+
+    Note over Browser: Review detail view is open.<br/>User edits the note textarea under a weakness item.
+
+    User->>Browser: Tab / click away from textarea (blur event)
+    Browser->>Browser: onblur fires → updateWeaknessStatus(reviewId, weaknessId, null, this.value)
+    Note over Browser: status=null (no change), note=textarea.value
+    Browser->>Browser: Read current status from sibling <select>
+    Browser->>Server: POST /api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/status<br/>body: { status: "open", user_note: "Confirmed by client" }
+
+    Server->>ReviewHandler: handle_weakness_status(pid, rid, wid, body)
+    ReviewHandler->>ReviewHandler: status = body["status"]<br/>user_note = body["user_note"]
+    ReviewHandler->>ReviewService: update_weakness_status(pid, rid, wid, status, user_note=note)
+
+    ReviewService->>HierarchyStore: get_review(rid)
+    HierarchyStore->>ReviewService: Review dataclass
+
+    ReviewService->>ReviewService: Find weakness by id<br/>target["status"] = status<br/>target["user_note"] = user_note
+
+    ReviewService->>HierarchyStore: update_review_weaknesses(rid, weaknesses)
+    HierarchyStore->>HierarchyStore: UPDATE reviews SET weaknesses=? WHERE review_id=?<br/>+ file dual-write
+
+    ReviewService->>ReviewHandler: { review_id, weakness_id, status, user_note, updated: true }
+    ReviewHandler->>Server: respond(result, 200)
+    Server->>Browser: 200 { updated: true, user_note: "Confirmed by client" }
+
+    Note over Browser: No re-render needed — textarea already shows the value.
+    Browser->>User: (silent success)
+
+    alt Status-only update (user changes <select>)
+        User->>Browser: Change status dropdown
+        Browser->>Server: POST … body: { status: "addressed", user_note: null }
+        Note over Server: user_note=None → service skips target["user_note"] assignment<br/>Existing note is preserved.
+    end
+```
+
+### Key rules enforced (S9-03)
+| Rule | Where |
+|------|-------|
+| `user_note` defaults to `""` on every new weakness | `processors/review_quality.py → extract_weaknesses()` |
+| Status-only call (no `user_note` key) leaves note unchanged | `services/review.py → update_weakness_status()` |
+| Note-only blur sends current status from sibling `<select>` | `static/index.html → updateWeaknessStatus()` |
+| Existing reviews without `user_note` render empty textarea (no error) | `static/index.html` — `w.user_note\|\|''` |

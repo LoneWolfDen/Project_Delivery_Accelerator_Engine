@@ -217,7 +217,7 @@ def run_persona_review(
     )
 
     try:
-        created_reviews = store.list_reviews(version_filter=latest_version_id)
+        created_reviews = store.list_reviews(version_id=latest_version_id)
         created_review_id = created_reviews[0]["review_id"] if created_reviews else ""
         _log_prompt(
             project_id=project_id,
@@ -296,7 +296,8 @@ def set_active_review_gated(
 # ── Weakness / decision status ────────────────────────────────────────────────
 
 def update_weakness_status(
-    project_id: str, review_id: str, weakness_id: str, status: str
+    project_id: str, review_id: str, weakness_id: str, status: str,
+    user_note: Optional[str] = None,
 ) -> Dict[str, Any]:
     if status not in DECISION_STATUSES:
         return {"error": f"Invalid status '{status}'. Must be one of: {', '.join(DECISION_STATUSES)}"}
@@ -309,8 +310,16 @@ def update_weakness_status(
     if target is None:
         return {"error": f"Weakness '{weakness_id}' not found in review {review_id}"}
     target["status"] = status
+    if user_note is not None:
+        target["user_note"] = user_note
     store.update_review_weaknesses(review_id, weaknesses)
-    return {"review_id": review_id, "weakness_id": weakness_id, "status": status, "updated": True}
+    result: Dict[str, Any] = {
+        "review_id": review_id, "weakness_id": weakness_id,
+        "status": status, "updated": True,
+    }
+    if user_note is not None:
+        result["user_note"] = user_note
+    return result
 
 
 def update_decision_status(

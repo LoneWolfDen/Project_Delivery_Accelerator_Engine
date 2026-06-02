@@ -86,6 +86,8 @@
 | Coverage Mapper | ✅ | ✅ | `ProposalCoverage`, `proposal_coverage` field |
 | Forward Guidance | ✅ | ✅ | `_run_forward_guidance()` |
 | Proposal data pack (synthesis) | ✅ | ✅ | `ProposalDocument` with synthesis fields |
+| Weakness `user_note` field | ✅ | ✅ | S9-03: `extract_weaknesses()`, `update_weakness_status()`, weakness textarea |
+| `list_reviews` kwarg fix | ✅ | — | S9-01: `version_filter=` → `version_id=` in `services/review.py` |
 
 
 
@@ -114,12 +116,12 @@ cannot be answered from stored data.
 
 ---
 
-### GAP-2 · `user_note` per weakness (spec §8.3) — NOT IMPLEMENTED
+### GAP-2 · `user_note` per weakness (spec §8.3) — ✅ CLOSED in S9
 
 The spec requires each weakness to support: `text`, `status`, and **optional free-text
 `user_note`**.
-**Current state:** Weakness items are `{id, text, category, status}` only.
-No `user_note` field exists in the data model, DB, or UI.
+**Resolution (S9-03):** `user_note: ""` now emitted by `extract_weaknesses()`. Persisted
+via `update_weakness_status(…, user_note=)`. Editable textarea in review detail UI.
 
 ---
 
@@ -198,7 +200,7 @@ test environment. The code is correct; this is an environment/dependency issue.
 | Module | Closeness | What remains |
 |---|---|---|
 | Review Analyzer (§8.2) | 95% | Provenance on findings only |
-| Weakness + Note Handler (§8.3) | 80% | `user_note` field missing |
+| Weakness + Note Handler (§8.3) | 100% | Complete (S9-03) |
 | Review Iteration Handler (§8.4) | 100% | Complete |
 | Reconciliation Engine (§8.5) | 95% | UI step is implicit not explicit |
 | Coverage Mapper (§8.6) | 100% | Complete |
@@ -348,12 +350,12 @@ empty textarea. No migration needed (JSON blob in DB).
 - New test file passes.
 - No existing tests broken.
 
-#### S9 Exit Gate
-- [ ] `list_reviews` kwarg bug fixed; `run_persona_review()` returns correct review ID
-- [ ] `pyyaml` in `pyproject.toml`; all 8 sprint-7 tests pass
-- [ ] Weakness items have `user_note` field in API response and UI
-- [ ] Saving a note persists across page reload
-- [ ] All prior regression packs still pass
+#### S9 Exit Gate — ✅ PASSED
+- [x] `list_reviews` kwarg bug fixed; `run_persona_review()` returns correct review ID
+- [x] `pyyaml` in `pyproject.toml`; all 8 sprint-7 tests pass (yaml importable in env)
+- [x] Weakness items have `user_note` field in API response and UI
+- [x] Saving a note persists across page reload
+- [x] All prior regression packs still pass (S1–S9: 524/524)
 
 
 
@@ -603,8 +605,8 @@ store the mapping in `prompt_builder_state.decision_mappings` for traceability.
 | S7 | Convergence & Learning Foundation | ✅ Done | S6 | 4 | Done |
 | S8 | UI Strengthening (F1–F8) | ✅ Done | S7 | 8 | Done |
 | PDAE-MS-01 | Proposal Synthesis Pipeline | ✅ Done | S5 | Multi-sprint | Done |
-| **S9** | **Weakness Notes + Bug Fixes** | **High** | S1–S8 | 4 | **Next PR** |
-| **S10** | **Provenance Model** | **High** | S9 | 4 | — |
+| ~~S9~~ | ~~Weakness Notes + Bug Fixes~~ | ✅ Done | S1–S8 | 4 | Done |
+| **S10** | **Provenance Model** | **High** | S9 | 4 | **Next PR** |
 | **S11** | **Reconcile Step + v2 Catch-Up** | **Medium** | S10 | 3 | — |
 | **S12** | **decision_mappings + Test Coverage** | **Low** | S11 | 2 | — |
 

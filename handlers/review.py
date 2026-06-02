@@ -133,7 +133,11 @@ def handle_weakness_status(
     project_id: str, review_id: str, weakness_id: str,
     body: Dict[str, Any], respond: Callable
 ) -> None:
-    result = svc.update_weakness_status(project_id, review_id, weakness_id, body.get("status", ""))
+    status = body.get("status", "")
+    user_note = body.get("user_note")          # None when key absent — preserved
+    result = svc.update_weakness_status(
+        project_id, review_id, weakness_id, status, user_note=user_note
+    )
     if result.get("error"):
         respond(result, status=400)
     else:
