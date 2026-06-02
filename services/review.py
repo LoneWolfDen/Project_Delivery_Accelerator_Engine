@@ -217,7 +217,7 @@ def run_persona_review(
     )
 
     try:
-        created_reviews = store.list_reviews(version_filter=latest_version_id)
+        created_reviews = store.list_reviews(version_id=latest_version_id)
         created_review_id = created_reviews[0]["review_id"] if created_reviews else ""
         _log_prompt(
             project_id=project_id,
