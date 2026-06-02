@@ -139,6 +139,10 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         if self.path.startswith("/feedback"):
             self._serve_static("feedback.html")
             return
+        if clean_path_early == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
         if self.path.startswith("/static/") or self.path.endswith((".html", ".css", ".js")):
             filename = self.path.lstrip("/")
             if not filename.startswith("static/"):
