@@ -330,6 +330,46 @@ async function fetchVersionDetail(projectId, versionId) {
   return _request('GET', `/api/projects/${projectId}/hierarchy/versions/${versionId}`);
 }
 
+/**
+ * Update the status (and optionally the user_note) on a single weakness.
+ * TRACE: API → /hierarchy/reviews/{rid}/weakness/{wid}/status
+ * Rules:
+ *   - Pass user_note=null to perform a status-only update (note is preserved server-side).
+ *   - Pass user_note='' or a string to set/clear the note.
+ * @param {string} projectId
+ * @param {string} reviewId
+ * @param {string} weaknessId
+ * @param {string} status      - one of: open | addressed | validated | rejected
+ * @param {string|null} userNote
+ * @returns {Promise<object>}
+ */
+async function updateWeaknessStatus(projectId, reviewId, weaknessId, status, userNote) {
+  const body = { status };
+  if (userNote !== null && userNote !== undefined) body.user_note = userNote;
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`,
+    body,
+  );
+}
+
+/**
+ * Update the status on a single decision point.
+ * TRACE: API → /hierarchy/reviews/{rid}/decision/{did}/status
+ * @param {string} projectId
+ * @param {string} reviewId
+ * @param {string} decisionId
+ * @param {string} status      - one of: open | addressed | validated | rejected
+ * @returns {Promise<object>}
+ */
+async function updateDecisionStatus(projectId, reviewId, decisionId, status) {
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/reviews/${reviewId}/decision/${decisionId}/status`,
+    { status },
+  );
+}
+
 // ── Expose globally ───────────────────────────────────────────
 window.API = {
   fetchProjects,
@@ -339,4 +379,6 @@ window.API = {
   fetchReviews,
   fetchReviewDetail,
   fetchVersionDetail,
+  updateWeaknessStatus,
+  updateDecisionStatus,
 };
