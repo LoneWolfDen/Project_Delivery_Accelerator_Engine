@@ -815,9 +815,25 @@ async function viewVersions(){
             </div>
             <div class="review-item-body" style="display:none">
               ${rev.summary?`<p class="fs12 c-dim mb">${escHtml(rev.summary.slice(0,160))}</p>`:''}
-              <div class="flex gap-sm">
-                <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
-                  onclick="openCompare()">⇄ Compare Reviews</button>
+              <div class="flex gap-sm" style="flex-wrap:wrap">
+                <button class="btn btn-xs btn-outline" onclick="v2ViewReviewDetail('${rid}')">Full Details</button>
+                ${!isActive?`<button class="btn btn-xs btn-ghost" onclick="v2SetActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
+                ${(rev.quality_status||'pending')==='pending'
+                  ?`<button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','interim')">Mark Draft</button>
+                    <button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark Final</button>`
+                  :(rev.quality_status==='interim'
+                    ?`<button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark Final</button>`
+                    :`<span class="fs10" style="color:var(--green)">✓ Final</span>`)}
+                <button class="btn btn-xs" style="background:var(--red);color:#fff" onclick="v2DeleteReview('${rid}')">Delete</button>
+              </div>
+              <div id="v2mc_${rid}" style="display:none;margin-top:6px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+                <label class="fs11 c-dim">Your name</label>
+                <div class="flex gap-sm" style="margin-top:4px">
+                  <input id="v2cb_${rid}" placeholder="Your name" style="flex:1;font-size:11px">
+                  <button class="btn btn-xs btn-ghost" onclick="v2SubmitMarkComplete('${rid}','interim')">Draft</button>
+                  <button class="btn btn-xs" style="background:var(--green-dim);color:#fff" onclick="v2SubmitMarkComplete('${rid}','complete')">Final</button>
+                  <button class="btn btn-xs btn-ghost" onclick="document.getElementById('v2mc_${rid}').style.display='none'">✕</button>
+                </div>
               </div>
             </div>
           </div>`;
@@ -917,54 +933,129 @@ async function runInlineVersionCompare(){
 
 
 <script>
-// ── Reviews view ──────────────────────────────────────────────────────────────
+// ── Reviews view (v2 — full feature parity with v1) ──────────────────────────
 async function viewReviews(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
+  if(!state._injectedQuestions)state._injectedQuestions=[];
+
+  const personas=await api('GET','/api/personas');
+  const backendOpts=(state.backends||[]).map(b=>
+    `<option value="${escHtml(b.name)}">${escHtml(b.display_name||b.name)}${b.available?'':' (not configured)'}</option>`
+  ).join('');
 
   let hierarchy={};
   try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
   const tree=hierarchy.tree||[];
 
   let versionsWithReviews=[];
-  for(const phase of tree){
-    for(const ver of(phase.versions||[])){
+  for(const phase of tree)
+    for(const ver of(phase.versions||[]))
       if((ver.reviews||[]).length>0)versionsWithReviews.push({...ver,phase_label:phase.label});
-    }
-  }
-  if(state._dashVersion){
+
+  if(state._dashVersion)
     versionsWithReviews=versionsWithReviews.filter(v=>v.version_id===state._dashVersion);
-  }
 
   const sort=state._reviewSort||'newest';
   const sortBar=`<div class="sort-bar">
     <span>Sort:</span>
-    ${['newest','oldest','most-findings'].map(s=>
-      `<button class="sort-btn ${sort===s?'active':''}"
-        onclick="state._reviewSort='${s}';render()">${
-          s==='newest'?'Newest First':s==='oldest'?'Oldest First':'Most Findings'
-        }</button>`).join('')}
-    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">⇄ Compare Reviews</button>
+    <button class="sort-btn ${sort==='newest'?'active':''}" onclick="v2SetReviewSort('newest')">Newest</button>
+    <button class="sort-btn ${sort==='oldest'?'active':''}" onclick="v2SetReviewSort('oldest')">Oldest</button>
+    <button class="sort-btn ${sort==='most-findings'?'active':''}" onclick="v2SetReviewSort('most-findings')">Most Findings</button>
+  </div>`;
+
+  const allRoles=personas.personas||personas.roles||[];
+  const roleGrid=`<div style="display:flex;flex-wrap:wrap;gap:5px">`+
+    allRoles.map(r=>`<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;
+        cursor:pointer;padding:3px 8px;border:1px solid var(--border);border-radius:20px;
+        background:var(--surface2);user-select:none;white-space:nowrap"
+        title="${escHtml(r.purpose||'')}">
+        <input type="checkbox" class="v2-role-check" value="${escHtml(r.id)}"
+          onchange="v2OnRoleCheck(this)" style="accent-color:var(--accent);width:11px;height:11px">
+        ${escHtml(r.name)}</label>`).join('')+`</div>`;
+
+  const runCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">🔍</span>Run Persona Review</div>
+    <div style="margin-bottom:8px">
+      <label class="fs10 c-dim" style="display:flex;align-items:center;gap:6px">
+        Roles <span id="v2RoleCountBadge" class="fs10 c-muted">(select up to 3)</span>
+      </label>
+      <div style="margin-top:6px">${roleGrid}</div>
+    </div>
+    <div class="mt8">
+      <label class="fs10 c-dim">AI Backend</label>
+      <select id="v2BackendSelect" style="width:100%;margin-top:3px">${backendOpts}</select>
+    </div>
+    <div class="mt8">
+      <button class="btn btn-outline btn-sm" onclick="v2RunDeepDive()" style="margin-bottom:8px">
+        🔬 Ask SME Questions
+      </button>
+      <p class="fs10 c-muted" style="margin-bottom:10px">
+        Workflow: Select role(s) → <strong>Ask SME Questions</strong> → tick → <strong>Add to Prompt</strong> → <strong>Run Review</strong>
+      </p>
+    </div>
+    <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:4px">
+      <div style="padding:5px 10px;background:var(--surface3);border-bottom:1px solid var(--border);
+        font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:6px">
+        <span class="fw7 c-dim">Prompt:</span>
+        <span style="opacity:.7">① Role persona</span><span style="opacity:.5">+</span>
+        <span style="opacity:.7">② SME questions</span><span style="opacity:.5">+</span>
+        <span style="opacity:.7">③ Your notes</span>
+      </div>
+      <details id="v2BaselineSection" style="border-bottom:1px solid var(--border)">
+        <summary style="list-style:none;cursor:pointer;padding:7px 10px;background:var(--surface2);
+          display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-dim)">
+          <span class="chevron">▶</span><span>① Role Persona Prompt</span>
+          <span class="tag fs10" style="margin-left:auto">read-only</span>
+        </summary>
+        <div id="v2BaselinePreview" style="padding:8px 10px;font-size:11px;color:var(--text-muted);
+          font-family:monospace;white-space:pre-wrap;background:var(--bg);max-height:100px;overflow-y:auto">
+          Select a role above to preview.
+        </div>
+      </details>
+      <div style="border-bottom:1px solid var(--border);padding:8px 10px;background:var(--surface)">
+        <div class="fs11 fw6 c-dim" style="margin-bottom:3px;display:flex;align-items:center;gap:6px">
+          <span>② SME Questions</span>
+          <span id="v2InjectedCount" class="tag fs10">0</span>
+        </div>
+        <div id="v2InjectedQuestions" style="display:flex;flex-wrap:wrap;gap:5px;min-height:22px">
+          <span class="fs11 c-muted" style="font-style:italic">No questions added yet.</span>
+        </div>
+      </div>
+      <div style="padding:8px 10px;background:var(--surface)">
+        <label class="fs11 fw6 c-dim" style="display:block;margin-bottom:4px">
+          ③ Your Context &amp; Constraints <span class="fs10 c-muted">(optional)</span>
+        </label>
+        <textarea id="v2UserNotes" rows="2" placeholder="e.g. Budget capped at £500K. AWS only."
+          style="width:100%;font-size:12px;resize:vertical"></textarea>
+      </div>
+    </div>
+    <input type="hidden" id="v2PreviousReviewId" value="">
+    <div class="flex gap-sm mt8">
+      <button class="btn" onclick="v2RunReview()">▶ Run Review</button>
+    </div>
+    <div id="v2DeepDiveResult" class="mt"></div>
+    <div id="v2ReviewResult" class="mt"></div>
   </div>`;
 
   if(!versionsWithReviews.length){
-    return`<div class="card">
-      <div class="flex-between mb">
-        <div class="card-title"><span class="icon">🔍</span>Review History</div>
-        <button class="btn-compare" onclick="openCompare()">⇄ Compare</button>
-      </div>
+    return runCard+`<div class="card">
       ${sortBar}
       <div class="empty" style="padding:24px 0">
         <div class="empty-icon">🔍</div>
-        <p>No reviews yet. Run a Persona Review from the main dashboard.</p>
+        <p>No reviews yet — run one above.</p>
       </div>
     </div>`;
   }
 
   let listHtml=`<div class="card">
     <div class="flex-between mb">
-      <div class="card-title"><span class="icon">🔍</span>Review History
+      <div class="card-title"><span class="icon">📜</span>Review History
         ${state._dashVersion?`<span class="tag tag-blue fs10">v: ${escHtml(state._dashVersion)}</span>`:''}
+      </div>
+      <div class="flex gap-sm">
+        ${state._dashVersion?`<button class="btn btn-xs btn-ghost" onclick="state._dashVersion='';render()">✕ All</button>`:''}
+        <button class="btn btn-sm btn-ghost" onclick="render()">↻</button>
       </div>
     </div>
     ${sortBar}`;
@@ -979,45 +1070,66 @@ async function viewReviews(){
     listHtml+=`<details open style="border-left:2px solid var(--border);padding-left:10px;margin:8px 0">
       <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
         padding:5px 6px;border-radius:var(--radius)"
-        onmouseover="this.style.background='var(--surface2)'"
-        onmouseout="this.style.background=''">
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
         <span class="chevron">▶</span>
         <strong class="fs12">${escHtml(ver.version_id)}</strong>
         ${ver.label?`<span class="c-dim fs12">– ${escHtml(ver.label)}</span>`:''}
         <span class="tag">${escHtml(ver.phase_label||'')}</span>
-        <span class="tag tag-blue">${revs.length} reviews</span>
+        <span class="tag tag-blue">${revs.length} review${revs.length===1?'':'s'}</span>
       </summary>`;
 
     for(const rev of revs){
       const rid=rev.review_id||'';if(!rid)continue;
       const isActive=rid===activeId;
-      const qStatus=rev.quality_status||'pending';
-      const qCls=qStatus==='complete'?'tag-green':qStatus==='interim'?'tag-yellow':'';
-      const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'In Progress':'Draft';
+      const qs=rev.quality_status||'pending';
+      const qCls=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
+      const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
+      const pbs=rev.prompt_builder_state;
+      const isCustom=pbs&&((pbs.injected_questions||[]).length>0||(pbs.user_notes||'').trim());
+      const promptBadge=isCustom
+        ?`<span class="tag tag-purple" style="font-size:9px">Customised</span>`
+        :`<span class="tag" style="font-size:9px">Baseline</span>`;
+      const scoreColor=(rev.completeness_score||0)>=70?'var(--green)':(rev.completeness_score||0)>=40?'var(--yellow)':'var(--red)';
 
       listHtml+=`<details style="margin:4px 0;background:var(--bg);
         border:1px solid ${isActive?'var(--accent)':'var(--border)'};
         border-radius:var(--radius);overflow:hidden">
         <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;
           gap:7px;padding:7px 10px"
-          onmouseover="this.style.background='var(--surface2)'"
-          onmouseout="this.style.background=''">
+          onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
           <span class="chevron">▶</span>
-          <span class="tag" style="font-size:10px;padding:1px 6px;font-weight:700;
-            background:var(--surface3)">R${rev.iteration_number||'?'}</span>
+          <span class="tag" style="font-size:10px;padding:1px 6px;font-weight:700;background:var(--surface3)">R${rev.iteration_number||'?'}</span>
           <strong class="fs11">${rid}</strong>
           ${isActive?'<span class="tag tag-green">active</span>':''}
           <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
+          ${promptBadge}
           <span class="tag ${qCls}" style="font-size:9px">${qLabel}</span>
+          <span style="font-size:10px;color:${scoreColor};background:var(--surface3);padding:1px 6px;border-radius:10px">${rev.completeness_score||0}%</span>
           ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
-          <span style="font-size:10px;color:var(--text-muted);margin-left:auto">
-            ${relativeTime(rev.created_at)}</span>
+          <span class="fs10 c-muted ml-auto">${relativeTime(rev.created_at)}</span>
         </summary>
         <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
-          ${rev.summary?`<p class="fs12 c-dim" style="margin-bottom:8px">${escHtml(rev.summary.slice(0,200))}</p>`:''}
-          <div class="flex gap-sm">
-            <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
-              onclick="openCompare()">⇄ Compare Reviews</button>
+          ${rev.summary?`<p class="fs12 c-dim mb">${escHtml(rev.summary.slice(0,200))}</p>`:''}
+          <div class="flex gap-sm" style="flex-wrap:wrap">
+            <button class="btn btn-sm btn-outline" onclick="v2ViewReviewDetail('${rid}')">Full Details</button>
+            ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="v2SetActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
+            ${qs==='pending'
+              ?`<button class="btn btn-sm btn-ghost" onclick="v2OpenMarkComplete('${rid}','interim')">Mark as Draft</button>
+                <button class="btn btn-sm btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark as Final</button>`
+              :(qs==='interim'
+                ?`<button class="btn btn-sm btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark as Final</button>`
+                :`<span class="fs10" style="color:var(--green)">✓ Final</span>`)}
+            <button class="btn btn-sm" style="background:var(--red);color:#fff" onclick="v2DeleteReview('${rid}')">Delete</button>
+          </div>
+          <div id="v2mc_${rid}" style="display:none;margin-top:8px;padding:8px 10px;
+            background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+            <label class="fs11 c-dim">Your name</label>
+            <div class="flex gap-sm mt-sm">
+              <input id="v2cb_${rid}" placeholder="Your name" style="flex:1">
+              <button class="btn btn-sm btn-ghost" onclick="v2SubmitMarkComplete('${rid}','interim')">Save Draft</button>
+              <button class="btn btn-sm" style="background:var(--green-dim);color:#fff" onclick="v2SubmitMarkComplete('${rid}','complete')">Mark Final</button>
+              <button class="btn btn-xs btn-ghost" onclick="document.getElementById('v2mc_${rid}').style.display='none'">✕</button>
+            </div>
           </div>
         </div>
       </details>`;
@@ -1025,8 +1137,183 @@ async function viewReviews(){
     listHtml+=`</details>`;
   }
   listHtml+=`</div>`;
-  return listHtml;
+
+  // Re-sync injected chips after DOM render
+  setTimeout(()=>v2RenderInjectedChips(),50);
+
+  return runCard+listHtml;
 }
+
+function v2SetReviewSort(s){state._reviewSort=s;render();}
+
+// ── Role helpers ──────────────────────────────────────────────────────────────
+function v2OnRoleCheck(el){
+  const checked=document.querySelectorAll('.v2-role-check:checked');
+  if(checked.length>3){el.checked=false;}
+  const badge=document.getElementById('v2RoleCountBadge');
+  if(badge)badge.textContent=`(${checked.length} selected, max 3)`;
+  const rid=Array.from(checked).map(c=>c.value)[0]||'';
+  v2UpdateBaselinePreview(rid);
+}
+function v2GetSelectedRoles(){
+  return Array.from(document.querySelectorAll('.v2-role-check:checked')).map(c=>c.value);
+}
+async function v2UpdateBaselinePreview(personaId){
+  const el=document.getElementById('v2BaselinePreview');
+  if(!el||!personaId)return;
+  try{
+    const r=await api('GET','/api/personas');
+    const p=(r.personas||r.roles||[]).find(x=>x.id===personaId);
+    if(p)el.textContent=p.purpose||p.description||'(No description)';
+  }catch(e){}
+}
+
+// ── Injected chips ────────────────────────────────────────────────────────────
+function v2RenderInjectedChips(){
+  const el=document.getElementById('v2InjectedQuestions');
+  const cnt=document.getElementById('v2InjectedCount');
+  if(!el)return;
+  const qs=state._injectedQuestions||[];
+  if(cnt)cnt.textContent=qs.length;
+  if(!qs.length){
+    el.innerHTML=`<span class="fs11 c-muted" style="font-style:italic">No questions added yet.</span>`;
+    return;
+  }
+  el.innerHTML=qs.map((q,i)=>`<span style="display:inline-flex;align-items:center;gap:4px;
+    font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:20px;
+    background:var(--surface2)">
+    ${escHtml(typeof q==='object'?q.question:q)}
+    <button onclick="v2RemoveInjectedQuestion(${i})" style="background:none;border:none;
+      cursor:pointer;color:var(--text-muted);font-size:10px;padding:0 2px">✕</button>
+  </span>`).join('');
+}
+function v2RemoveInjectedQuestion(idx){
+  (state._injectedQuestions=state._injectedQuestions||[]).splice(idx,1);
+  v2RenderInjectedChips();
+}
+function v2AssemblePrompt(){
+  const qs=(state._injectedQuestions||[]).map(q=>typeof q==='object'?q.question:q);
+  const notes=(document.getElementById('v2UserNotes')?.value||'').trim();
+  const parts=[...qs];
+  if(notes)parts.push(notes);
+  return parts.join('\n');
+}
+
+// ── Run review ────────────────────────────────────────────────────────────────
+async function v2RunReview(){
+  const pid=state.current?.id;if(!pid)return;
+  const roles=v2GetSelectedRoles();
+  if(!roles.length){toast('Select at least one role','err');return;}
+  const backend=document.getElementById('v2BackendSelect')?.value||'files_only';
+  const customPrompt=v2AssemblePrompt();
+  const prevId=document.getElementById('v2PreviousReviewId')?.value||'';
+  const pbs={injected_questions:(state._injectedQuestions||[]).map(q=>typeof q==='object'?q.question:q),user_notes:document.getElementById('v2UserNotes')?.value||''};
+  const btn=document.querySelector('[onclick="v2RunReview()"]');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Running…';}
+  const el=document.getElementById('v2ReviewResult');
+  if(el)el.innerHTML=`<span class="loading-inline"><span class="spin">⟳</span> Running review…</span>`;
+  const r=await api('POST','/api/review',{project_id:pid,roles,ai_backend:backend,custom_prompt:customPrompt,previous_review_id:prevId,prompt_builder_state:pbs});
+  if(btn){btn.disabled=false;btn.textContent='▶ Run Review';}
+  if(r.error){
+    if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px">⚠ ${escHtml(r.error)}</p>`;
+    return;
+  }
+  state._injectedQuestions=[];
+  if(document.getElementById('v2PreviousReviewId'))document.getElementById('v2PreviousReviewId').value='';
+  toast('Review complete');
+  render();
+}
+
+// ── Deep dive ─────────────────────────────────────────────────────────────────
+async function v2RunDeepDive(){
+  const pid=state.current?.id;if(!pid)return;
+  const roles=v2GetSelectedRoles();
+  const persona=roles[0]||'solution_architect';
+  const el=document.getElementById('v2DeepDiveResult');
+  if(el)el.innerHTML=`<span class="loading-inline"><span class="spin">⟳</span> Generating questions…</span>`;
+  const r=await api('POST',`/api/projects/${pid}/deep-dive`,{persona,custom_prompt:v2AssemblePrompt()});
+  if(r.error){if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px">⚠ ${escHtml(r.error)}</p>`;return;}
+  const groups=r.question_groups||[];
+  if(!groups.length){if(el)el.innerHTML=`<p class="fs12 c-dim">No questions generated.</p>`;return;}
+  let html=`<div class="card" style="margin-top:8px">
+    <div class="flex-between mb">
+      <div class="card-title" style="font-size:12px"><span class="icon">🔬</span>SME Clarification Questions</div>
+    </div>`;
+  for(const grp of groups){
+    const qs=grp.questions||[];
+    html+=`<details open style="margin-bottom:6px">
+      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
+        padding:5px 8px;background:var(--surface2);border-radius:var(--radius);font-size:11px;font-weight:600">
+        <span class="chevron">▶</span>${grp.icon||'❓'} ${escHtml(grp.category)}
+        <span class="tag fs10" style="margin-left:4px">${qs.length}</span>
+      </summary>
+      <div style="padding:4px 4px 0">
+        ${qs.map((q,i)=>{
+          const qt=typeof q==='object'?q.question:q;
+          const dp=typeof q==='object'?q.decision_point_text:null;
+          return`<label style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;
+            border-bottom:1px solid var(--border);cursor:pointer;font-size:11px">
+            <input type="checkbox" class="v2-dd-check" data-q="${escHtml(qt)}"
+              data-dpid="${typeof q==='object'?escHtml(q.decision_point_id||''):''}"
+              data-dptext="${typeof q==='object'?escHtml(q.decision_point_text||''):''}"
+              style="accent-color:var(--accent);margin-top:2px;flex-shrink:0">
+            <span>${escHtml(qt)}${dp?`<br><span class="fs10 c-muted">→ Decision: ${escHtml(dp)}</span>`:''}</span>
+          </label>`;
+        }).join('')}
+      </div>
+    </details>`;
+  }
+  html+=`<button class="btn btn-sm btn-outline" onclick="v2AddSelectedToPrompt()">Add Selected to Prompt</button></div>`;
+  if(el)el.innerHTML=html;
+}
+function v2AddSelectedToPrompt(){
+  const checks=document.querySelectorAll('.v2-dd-check:checked');
+  if(!checks.length){toast('Select questions first','err');return;}
+  if(!state._injectedQuestions)state._injectedQuestions=[];
+  checks.forEach(c=>{
+    state._injectedQuestions.push({question:c.dataset.q,decision_point_id:c.dataset.dpid||null,decision_point_text:c.dataset.dptext||null});
+    c.checked=false;
+  });
+  v2RenderInjectedChips();
+  toast(`${checks.length} question${checks.length===1?'':'s'} added to prompt`);
+}
+
+// ── Set active / delete / mark complete ───────────────────────────────────────
+async function v2SetActiveReview(versionId,reviewId){
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/versions/${versionId}/active-review`,{review_id:reviewId});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Active review updated');render();
+}
+async function v2DeleteReview(reviewId){
+  if(!confirm('Delete this review? This cannot be undone.'))return;
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/delete`,{});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Review deleted');render();
+}
+function v2OpenMarkComplete(reviewId,status){
+  document.querySelectorAll('[id^="v2mc_"]').forEach(el=>el.style.display='none');
+  const el=document.getElementById(`v2mc_${reviewId}`);
+  if(el)el.style.display='block';
+}
+async function v2SubmitMarkComplete(reviewId,qualityStatus){
+  const pid=state.current?.id;if(!pid)return;
+  const by=(document.getElementById(`v2cb_${reviewId}`)?.value||'').trim();
+  if(!by){toast('Enter your name','err');return;}
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/complete`,{completed_by:by,quality_status:qualityStatus});
+  if(r.error){toast(r.error,'err');return;}
+  toast(qualityStatus==='complete'?'Marked as Final':'Saved as Draft');render();
+}
+
+// ── Full detail view ──────────────────────────────────────────────────────────
+async function v2ViewReviewDetail(reviewId){
+  const pid=state.current?.id;if(!pid)return;
+  state._v2ReviewDetail=reviewId;
+  render();
+}
+</script>
+
 </script>
 
 

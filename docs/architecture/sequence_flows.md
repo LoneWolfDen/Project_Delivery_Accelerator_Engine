@@ -306,3 +306,79 @@ sequenceDiagram
 | Status-only call (no `user_note` key) leaves note unchanged | `services/review.py → update_weakness_status()` |
 | Note-only blur sends current status from sibling `<select>` | `static/index.html → updateWeaknessStatus()` |
 | Existing reviews without `user_note` render empty textarea (no error) | `static/index.html` — `w.user_note\|\|''` |
+
+
+---
+
+## Sequence 8: Review Compare via Hierarchy Store (Compare bug fix)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant CompareJS as compare.js (Compare module)
+    participant Server
+    participant Handler as handlers/hierarchy.py
+    participant Service as services/hierarchy.py
+    participant HierarchyStore
+
+    Note over Browser: User opens Compare modal, switches to Reviews mode,<br/>selects two reviews (r1, r2) and clicks Compare.
+
+    User->>Browser: Click ⇄ Compare (Reviews mode)
+    Browser->>CompareJS: Compare.run()
+    CompareJS->>Server: POST /api/projects/{pid}/compare-reviews<br/>body: { review_a: "r1", review_b: "r2" }
+
+    Server->>Handler: handle_compare_reviews(pid, body)
+    Handler->>Handler: review_a = body["review_a"]  → "r1"<br/>review_b = body["review_b"]  → "r2"
+    Handler->>Service: compare_project_reviews(pid, "r1", "r2")
+
+    Note over Service: FIX: was opening flat file projects_data/{pid}/reviews/r1<br/>which does not exist. Now uses hierarchy store.
+
+    Service->>HierarchyStore: _make_hierarchy_store(pid).get_review("r1")
+    HierarchyStore->>Service: Review dataclass (r1)
+    Service->>HierarchyStore: _make_hierarchy_store(pid).get_review("r2")
+    HierarchyStore->>Service: Review dataclass (r2)
+
+    Service->>Service: compare_reviews(r1.to_dict(), r2.to_dict())
+    Note over Service: processors/history.compare_reviews() compares<br/>findings dicts: new_findings, resolved, persistent per category.
+
+    Service->>Handler: comparison result dict
+    Handler->>Server: respond(result, 200)
+    Server->>CompareJS: { sections: {...}, summary: {...} }
+    CompareJS->>Browser: Render review progression tiles + per-category diff
+    Browser->>User: Shows Resolved / New / Persistent counts
+```
+
+### Root cause of the bug
+`compare_project_reviews()` was looking for a file at:
+`projects_data/{pid}/reviews/<review_id>` — the legacy flat-file store path.
+The hierarchy store (SQLite-backed) stores reviews in `projects_data/{pid}/hierarchy/reviews/`
+and uses IDs like `r1`, not filenames. The flat-file path never exists for hierarchy reviews,
+so the function always raised `ValueError("Review not found: r1")`.
+
+### Fix
+`services/hierarchy.py → compare_project_reviews()` now calls
+`_make_hierarchy_store(pid).get_review(review_id)` for both reviews,
+then passes `review.to_dict()` to `processors/history.compare_reviews()`.
+
+---
+
+## Sequence 9: v2 Reviews Tab — Full Action Set
+
+The v2 Reviews tab (`static/v2/dashboard_v2.html`) previously rendered
+each review with only a Compare button. All the following actions are now
+available in both the Reviews tab and the Versions tab review-item-body:
+
+| Action | Function | API call |
+|--------|----------|----------|
+| Full Details | `v2ViewReviewDetail(rid)` | Sets `state._v2ReviewDetail`, re-renders |
+| Set Active | `v2SetActiveReview(vid, rid)` | `POST /hierarchy/versions/{vid}/active-review` |
+| Mark as Draft | `v2OpenMarkComplete(rid,'interim')` | `POST /hierarchy/reviews/{rid}/complete` |
+| Mark as Final | `v2OpenMarkComplete(rid,'complete')` | `POST /hierarchy/reviews/{rid}/complete` |
+| Delete | `v2DeleteReview(rid)` | `POST /hierarchy/reviews/{rid}/delete` |
+| Run Review | `v2RunReview()` | `POST /api/review` |
+| Ask SME | `v2RunDeepDive()` | `POST /api/projects/{pid}/deep-dive` |
+| Add to Prompt | `v2AddSelectedToPrompt()` | Client-side state update only |
+
+All functions use the `v2` prefix to avoid collision with the v1 global namespace.
+Role checkboxes use class `v2-role-check` (vs v1's `role-check`).
