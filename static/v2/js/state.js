@@ -38,11 +38,6 @@ const AppState = (() => {
     // Hierarchy tree (full Phase→Version→Review)
     hierarchy:       null,     // HierarchyPayload | null
 
-    // Recent activity events derived from hierarchy
-    // Shape: Array<{type, id, label, timestamp, phase_id, version_id?}>
-    // Types: 'version_created' | 'review_created' | 'review_completed'
-    recentActivity:  [],       // ActivityEvent[]
-
     // Detail drawer
     drawerOpen:      false,
     drawerEntity:    null,     // { type: 'version'|'review', data: {} }
@@ -141,7 +136,6 @@ const AppState = (() => {
       versions:        [],
       reviews:         [],
       metrics:         null,
-      recentActivity:  [],
     });
   }
 

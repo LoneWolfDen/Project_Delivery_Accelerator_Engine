@@ -267,7 +267,6 @@ class HierarchyStoreSQLite:
         prompt_builder_state: Optional[Dict[str, Any]] = None,
         weaknesses: Optional[List[Dict[str, Any]]] = None,
         decision_points: Optional[List[Dict[str, Any]]] = None,
-        artifact_refs: Optional[List[Dict[str, Any]]] = None,
     ):
         from models.hierarchy import Review  # noqa: PLC0415
         db = self._db
@@ -294,8 +293,8 @@ class HierarchyStoreSQLite:
                 included_files, categories, ai_metadata,
                 deep_dive, feedback, completeness_score, quality_status,
                 completed_by, completed_at, decided_by, previous_review_id,
-                prompt_builder_state, weaknesses, decision_points, artifact_refs, created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                prompt_builder_state, weaknesses, decision_points, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 review_id, self.project_id, version_id, phase_id, persona, ai_backend,
                 prompt_used, custom_prompt,
@@ -313,7 +312,6 @@ class HierarchyStoreSQLite:
                 Database.jdump(prompt_builder_state) if prompt_builder_state is not None else None,
                 Database.jdump(weaknesses or []),
                 Database.jdump(decision_points or []),
-                Database.jdump(artifact_refs or []),
                 now,
             ),
         )
@@ -344,7 +342,6 @@ class HierarchyStoreSQLite:
             prompt_builder_state=prompt_builder_state,
             weaknesses=weaknesses or [],
             decision_points=decision_points or [],
-            artifact_refs=artifact_refs or [],
         )
         self._file_save_review(review)
         if version:
@@ -612,109 +609,7 @@ class HierarchyStoreSQLite:
             prompt_builder_state=Database.jload(row.get("prompt_builder_state"), None),
             weaknesses=Database.jload(row.get("weaknesses"), []),
             decision_points=Database.jload(row.get("decision_points"), []),
-            artifact_refs=Database.jload(row.get("artifact_refs"), []),
         )
-
-    # ── Reconciliation persistence (Sprint 3) ────────────────────────────────
-
-    def save_reconciliation_selection(self, selection: "ReconciliationSelection") -> None:  # noqa: F821
-        """Upsert the user's explicit review selection for a version."""
-        from models.reconciliation import ReconciliationSelection  # noqa: PLC0415
-        db = self._db
-        db.execute(
-            """INSERT OR REPLACE INTO reconciliation_selections
-               (project_id, version_id, anchor_review_id, selected_review_ids,
-                selected_at, selected_by)
-               VALUES (?,?,?,?,?,?)""",
-            (
-                self.project_id,
-                selection.version_id,
-                selection.anchor_review_id,
-                Database.jdump(selection.selected_review_ids),
-                selection.selected_at,
-                selection.selected_by,
-            ),
-        )
-        db.commit()
-
-    def get_reconciliation_selection(self, version_id: str) -> "Optional[ReconciliationSelection]":  # noqa: F821
-        """Return the stored ReconciliationSelection for a version, or None."""
-        from models.reconciliation import ReconciliationSelection  # noqa: PLC0415
-        row = self._db.fetchone(
-            "SELECT * FROM reconciliation_selections WHERE project_id=? AND version_id=?",
-            (self.project_id, version_id),
-        )
-        if not row:
-            return None
-        return ReconciliationSelection(
-            project_id=self.project_id,
-            version_id=version_id,
-            anchor_review_id=row.get("anchor_review_id", ""),
-            selected_review_ids=Database.jload(row.get("selected_review_ids"), []),
-            selected_at=row.get("selected_at", ""),
-            selected_by=row.get("selected_by", ""),
-        )
-
-    def save_reconciliation_output(self, output: "ReconciliationOutput") -> None:  # noqa: F821
-        """Upsert a ReconciliationOutput for a version (overwrites prior run)."""
-        from models.reconciliation import ReconciliationOutput  # noqa: PLC0415
-        db = self._db
-        db.execute(
-            """INSERT OR REPLACE INTO reconciliation_outputs
-               (project_id, version_id, reconciliation_id, anchor_review_id,
-                selected_review_ids, created_at, consensus_points, divergent_points,
-                confirmed_decisions, open_decisions, unresolved_weaknesses,
-                merged_findings, provenance_summary, anchor_only)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                self.project_id,
-                output.version_id,
-                output.reconciliation_id,
-                output.anchor_review_id,
-                Database.jdump(output.selected_review_ids),
-                output.created_at,
-                Database.jdump(output.consensus_points),
-                Database.jdump(output.divergent_points),
-                Database.jdump(output.confirmed_decisions),
-                Database.jdump(output.open_decisions),
-                Database.jdump(output.unresolved_weaknesses),
-                Database.jdump(output.merged_findings),
-                Database.jdump(output.provenance_summary),
-                1 if output.anchor_only else 0,
-            ),
-        )
-        db.commit()
-
-    def get_reconciliation_output(self, version_id: str) -> "Optional[ReconciliationOutput]":  # noqa: F821
-        """Return the stored ReconciliationOutput for a version, or None."""
-        from models.reconciliation import ReconciliationOutput  # noqa: PLC0415
-        row = self._db.fetchone(
-            "SELECT * FROM reconciliation_outputs WHERE project_id=? AND version_id=?",
-            (self.project_id, version_id),
-        )
-        if not row:
-            return None
-        output = ReconciliationOutput(
-            reconciliation_id=row.get("reconciliation_id", ""),
-            project_id=self.project_id,
-            version_id=version_id,
-            anchor_review_id=row.get("anchor_review_id", ""),
-            selected_review_ids=Database.jload(row.get("selected_review_ids"), []),
-            created_at=row.get("created_at", ""),
-            consensus_points=Database.jload(row.get("consensus_points"), []),
-            divergent_points=Database.jload(row.get("divergent_points"), []),
-            confirmed_decisions=Database.jload(row.get("confirmed_decisions"), []),
-            open_decisions=Database.jload(row.get("open_decisions"), []),
-            unresolved_weaknesses=Database.jload(row.get("unresolved_weaknesses"), []),
-            merged_findings=Database.jload(row.get("merged_findings"), []),
-            provenance_summary=Database.jload(row.get("provenance_summary"), []),
-            anchor_only=bool(row.get("anchor_only", 0)),
-        )
-        output.total_consensus             = len(output.consensus_points)
-        output.total_divergent             = len(output.divergent_points)
-        output.total_open_decisions        = len(output.open_decisions)
-        output.total_unresolved_weaknesses = len(output.unresolved_weaknesses)
-        return output
 
     # ── File dual-write helpers ───────────────────────────────
 

@@ -140,62 +140,11 @@ def handle_weakness_status(
         respond(result)
 
 
-def handle_weakness_note(
-    project_id: str, review_id: str, weakness_id: str,
-    body: Dict[str, Any], respond: Callable
-) -> None:
-    """POST /api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/note
-
-    Body: { "note": "Free-text user annotation (optional)" }
-    An empty string clears the note.
-    """
-    note = body.get("note", "")
-    result = svc.update_weakness_note(project_id, review_id, weakness_id, note)
-    if result.get("error"):
-        respond(result, status=400)
-    else:
-        respond(result)
-
-
 def handle_decision_status(
     project_id: str, review_id: str, decision_id: str,
     body: Dict[str, Any], respond: Callable
 ) -> None:
     result = svc.update_decision_status(project_id, review_id, decision_id, body.get("status", ""))
-    if result.get("error"):
-        respond(result, status=400)
-    else:
-        respond(result)
-
-
-def handle_create_review_iteration(
-    project_id: str, base_review_id: str, body: Dict[str, Any], respond: Callable
-) -> None:
-    """POST /api/projects/{pid}/hierarchy/reviews/{rid}/iterate
-
-    Create a new review from an existing review (Sprint 2 — Review Iteration).
-
-    Body (all optional):
-        new_persona   : str  — persona for the new review; defaults to base review persona
-        custom_prompt : str  — optional prompt suffix
-
-    Returns the new review summary with lineage metadata:
-        review_id, version_id, persona_used, previous_review_id,
-        base_review_persona, persona_changed, iteration_number, created_at
-    """
-    if not project_id:
-        respond({"error": "project_id required"}, status=400)
-        return
-    if not base_review_id:
-        respond({"error": "base_review_id required"}, status=400)
-        return
-
-    result = svc.create_review_iteration(
-        project_id=project_id,
-        base_review_id=base_review_id,
-        new_persona=body.get("new_persona") or body.get("persona") or "",
-        custom_prompt=body.get("custom_prompt") or "",
-    )
     if result.get("error"):
         respond(result, status=400)
     else:

@@ -61,9 +61,9 @@ const MOCK_DATA = {
             persona: 'solution_architect',
             active_review_id: 'r7',
             reviews: [
-              { review_id: 'r7', version_id: 'v3', persona: 'solution_architect', created_at: '2026-05-28T12:00:00Z', total_findings: 14, issues_resolved: 4, issues_carry_forward: 10, quality_status: 'complete',   iteration_number: 3, summary: 'Comprehensive architecture review covering all risk areas.' },
-              { review_id: 'r6', version_id: 'v3', persona: 'delivery_manager',   created_at: '2026-05-27T09:00:00Z', total_findings: 9,  issues_resolved: 3, issues_carry_forward:  6, quality_status: 'interim',    iteration_number: 2, summary: 'Delivery timeline risks identified, dependencies mapped.' },
-              { review_id: 'r5', version_id: 'v3', persona: 'product_owner',      created_at: '2026-05-26T14:00:00Z', total_findings: 6,  issues_resolved: 0, issues_carry_forward:  6, quality_status: 'pending',    iteration_number: 1, summary: 'Initial scope assessment for the new version.' },
+              { review_id: 'r7', version_id: 'v3', persona: 'solution_architect', created_at: '2026-05-28T12:00:00Z', total_findings: 14, quality_status: 'complete',   iteration_number: 3, summary: 'Comprehensive architecture review covering all risk areas.' },
+              { review_id: 'r6', version_id: 'v3', persona: 'delivery_manager',   created_at: '2026-05-27T09:00:00Z', total_findings: 9,  quality_status: 'interim',    iteration_number: 2, summary: 'Delivery timeline risks identified, dependencies mapped.' },
+              { review_id: 'r5', version_id: 'v3', persona: 'product_owner',      created_at: '2026-05-26T14:00:00Z', total_findings: 6,  quality_status: 'pending',    iteration_number: 1, summary: 'Initial scope assessment for the new version.' },
             ],
           },
           {
@@ -76,8 +76,8 @@ const MOCK_DATA = {
             persona: 'delivery_manager',
             active_review_id: 'r4',
             reviews: [
-              { review_id: 'r4', version_id: 'v2', persona: 'delivery_manager', created_at: '2026-05-21T11:00:00Z', total_findings: 11, issues_resolved: 5, issues_carry_forward: 6, quality_status: 'complete', iteration_number: 2, summary: 'Refined delivery approach after client feedback.' },
-              { review_id: 'r3', version_id: 'v2', persona: 'product_owner',    created_at: '2026-05-20T15:00:00Z', total_findings: 5,  issues_resolved: 0, issues_carry_forward: 5, quality_status: 'interim',  iteration_number: 1, summary: 'Product scope boundaries established.' },
+              { review_id: 'r4', version_id: 'v2', persona: 'delivery_manager', created_at: '2026-05-21T11:00:00Z', total_findings: 11, quality_status: 'complete', iteration_number: 2, summary: 'Refined delivery approach after client feedback.' },
+              { review_id: 'r3', version_id: 'v2', persona: 'product_owner',    created_at: '2026-05-20T15:00:00Z', total_findings: 5,  quality_status: 'interim',  iteration_number: 1, summary: 'Product scope boundaries established.' },
             ],
           },
           {
@@ -90,8 +90,8 @@ const MOCK_DATA = {
             persona: 'solution_architect',
             active_review_id: 'r2',
             reviews: [
-              { review_id: 'r2', version_id: 'v1', persona: 'solution_architect', created_at: '2026-05-11T10:00:00Z', total_findings: 8, issues_resolved: 3, issues_carry_forward: 5, quality_status: 'complete', iteration_number: 2, summary: 'Architecture baseline established. Key risks documented.' },
-              { review_id: 'r1', version_id: 'v1', persona: 'delivery_manager',   created_at: '2026-05-10T14:00:00Z', total_findings: 4, issues_resolved: 0, issues_carry_forward: 4, quality_status: 'pending',  iteration_number: 1, summary: 'First-pass delivery assessment.' },
+              { review_id: 'r2', version_id: 'v1', persona: 'solution_architect', created_at: '2026-05-11T10:00:00Z', total_findings: 8, quality_status: 'complete', iteration_number: 2, summary: 'Architecture baseline established. Key risks documented.' },
+              { review_id: 'r1', version_id: 'v1', persona: 'delivery_manager',   created_at: '2026-05-10T14:00:00Z', total_findings: 4, quality_status: 'pending',  iteration_number: 1, summary: 'First-pass delivery assessment.' },
             ],
           },
         ],
@@ -157,15 +157,12 @@ const MOCK_DATA = {
     quality_status: 'complete',
     completeness_score: 84,
     iteration_number: 3,
-    previous_review_id: 'r6',
-    prompt_used: 'Review this solution architecture from the perspective of a senior solution architect. Focus on technical risks, assumptions, and dependencies. Highlight the top 3 risks clearly.',
     summary: 'Comprehensive architecture review covering all risk areas. Key decisions around cloud strategy and data migration remain open.',
     findings: {
       risks: [
         'No DR strategy defined for the legacy data tier',
         'Single-vendor dependency on primary cloud provider',
         'Security posture unclear for API gateway layer',
-        'Data migration timeline underestimated by ~30%',
       ],
       constraints: [
         'Q4 freeze window limits deployment options',
@@ -187,21 +184,6 @@ const MOCK_DATA = {
     questions: [
       'What is the expected data volume for migration?',
       'Is there an existing monitoring solution to integrate with?',
-    ],
-    weaknesses: [
-      { id: 'w1', text: 'DR strategy not defined for legacy data tier', category: 'resilience',   status: 'open',      user_note: '' },
-      { id: 'w2', text: 'API gateway security posture is unclear',       category: 'security',    status: 'addressed', user_note: 'Flagged for follow-up with client security team in Week 2.' },
-      { id: 'w3', text: 'Migration timeline may be underestimated',      category: 'delivery',    status: 'validated', user_note: 'Added 2-week buffer in revised plan.' },
-    ],
-    artifact_refs: [
-      { artifact_id: 'a1', artifact_name: 'Solution_Architecture_v3.docx', artifact_type: 'document',   section_reference: 'Technical Assumptions', page_reference: '7' },
-      { artifact_id: 'a2', artifact_name: 'Client_Presentation_Dec.pptx',  artifact_type: 'slides',     slide_number: 12, slide_title: 'Migration Approach' },
-      { artifact_id: 'a3', artifact_name: 'Scope clarification',           artifact_type: 'email',      subject: 'RE: Scope Clarification v2', date: '2026-05-15', sender: 'client@example.com' },
-      { artifact_id: 'a4', artifact_name: 'Discovery Workshop Notes',      artifact_type: 'meeting_notes', meeting_name: 'Discovery Workshop', date: '2026-05-12', section_reference: 'Cloud Strategy' },
-    ],
-    decision_points: [
-      { id: 'd1', text: 'Cloud provider selection (AWS vs Azure)', status: 'open',     category: 'architecture' },
-      { id: 'd2', text: 'Identity provider vendor selection',      status: 'accepted', category: 'security' },
     ],
   },
 };
@@ -348,335 +330,6 @@ async function fetchVersionDetail(projectId, versionId) {
   return _request('GET', `/api/projects/${projectId}/hierarchy/versions/${versionId}`);
 }
 
-/**
- * Derive recent activity events from the hierarchy tree.
- *
- * TRACE: API → /api/projects/{pid}/hierarchy → Data: ActivityEvent[]
- *
- * Events are derived client-side from the hierarchy payload — no separate
- * endpoint required. Each event has the shape:
- *   { type, id, label, timestamp, phase_id, version_id? }
- *
- * Types:
- *   'version_created'  — a Version was created
- *   'review_created'   — a Review was run
- *   'review_completed' — a Review reached quality_status 'complete'
- *
- * Returns the latest MAX_EVENTS events sorted newest-first.
- *
- * @param {string} projectId
- * @returns {Promise<{events: Array}>}
- */
-const _ACTIVITY_MAX = 5;
-
-async function fetchActivity(projectId) {
-  const hierarchy = await fetchHierarchy(projectId);
-  return { events: _deriveActivityEvents(hierarchy) };
-}
-
-/**
- * Pure function: derive activity events from a HierarchyPayload.
- * Exported so dashboard.js can call it synchronously when hierarchy is
- * already in state (avoids a second fetch).
- *
- * @param {object} hierarchy
- * @returns {Array<{type, id, label, timestamp, phase_id, version_id?}>}
- */
-function _deriveActivityEvents(hierarchy) {
-  const events = [];
-  for (const phase of ((hierarchy && hierarchy.tree) || [])) {
-    const phaseId = phase.id || '';
-    for (const ver of (phase.versions || [])) {
-      if (ver.created_at) {
-        events.push({
-          type:      'version_created',
-          id:        ver.version_id,
-          label:     ver.label ? `${ver.version_id} – ${ver.label}` : ver.version_id,
-          timestamp: ver.created_at,
-          phase_id:  phaseId,
-        });
-      }
-      for (const rev of (ver.reviews || [])) {
-        if (rev.created_at) {
-          events.push({
-            type:       rev.quality_status === 'complete' ? 'review_completed' : 'review_created',
-            id:         rev.review_id,
-            label:      `${rev.review_id}${rev.persona ? ' · ' + rev.persona : ''}`,
-            timestamp:  rev.created_at,
-            phase_id:   phaseId,
-            version_id: ver.version_id,
-          });
-        }
-      }
-    }
-  }
-  // Sort newest first, cap at max
-  events.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-  return events.slice(0, _ACTIVITY_MAX);
-}
-
-// ── Review Iteration (Sprint 2) ──────────────────────────────
-
-/**
- * Create a new review from an existing review (review iteration).
- *
- * TRACE: API → POST /hierarchy/reviews/{rid}/iterate → Data: Review (new, with lineage)
- *
- * Body:
- *   new_persona   — optional; defaults to base review persona
- *   custom_prompt — optional prompt suffix
- *
- * Returns the new review summary including:
- *   review_id, version_id, persona_used, previous_review_id,
- *   base_review_persona, persona_changed, iteration_number, created_at
- *
- * @param {string} projectId
- * @param {string} baseReviewId   — the review being iterated from (user-selected)
- * @param {string} [newPersona]   — optional new persona
- * @param {string} [customPrompt] — optional custom prompt
- * @returns {Promise<object>}
- */
-async function createReviewIteration(projectId, baseReviewId, newPersona, customPrompt) {
-  if (_useMock()) {
-    // Simulate a newly created iteration review
-    const base = MOCK_DATA.reviewDetail;
-    const newRid = `r${Date.now()}`;
-    return {
-      review_id:           newRid,
-      version_id:          base.version_id,
-      persona_used:        newPersona || base.persona,
-      previous_review_id:  baseReviewId,
-      base_review_persona: base.persona,
-      persona_changed:     !!(newPersona && newPersona !== base.persona),
-      iteration_number:    (base.iteration_number || 1) + 1,
-      created_at:          new Date().toISOString(),
-      quality_status:      'pending',
-      summary:             `Iteration from ${baseReviewId}. Refined analysis with updated context.`,
-    };
-  }
-  const body = {};
-  if (newPersona)   body.new_persona   = newPersona;
-  if (customPrompt) body.custom_prompt = customPrompt;
-  return _request(
-    'POST',
-    `/api/projects/${projectId}/hierarchy/reviews/${baseReviewId}/iterate`,
-    body,
-  );
-}
-
-// ── Reconciliation (Sprint 3) ────────────────────────────────
-
-/**
- * Save the user's explicit review selection for reconciliation.
- *
- * TRACE: API → POST /hierarchy/versions/{vid}/reconciliation/select
- *
- * Body:
- *   anchor_review_id    — required; the primary anchor review
- *   selected_review_ids — required list; must include anchor
- *   selected_by         — optional
- *
- * @param {string} projectId
- * @param {string} versionId
- * @param {string} anchorReviewId
- * @param {string[]} selectedReviewIds
- * @param {string} [selectedBy]
- * @returns {Promise<object>}  ReconciliationSelection dict or {error}
- */
-async function saveReconciliationSelection(projectId, versionId, anchorReviewId, selectedReviewIds, selectedBy) {
-  if (_useMock()) {
-    return {
-      project_id:          projectId,
-      version_id:          versionId,
-      anchor_review_id:    anchorReviewId,
-      selected_review_ids: selectedReviewIds,
-      selected_at:         new Date().toISOString(),
-      selected_by:         selectedBy || '',
-    };
-  }
-  return _request(
-    'POST',
-    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation/select`,
-    {
-      anchor_review_id:    anchorReviewId,
-      selected_review_ids: selectedReviewIds,
-      selected_by:         selectedBy || '',
-    },
-  );
-}
-
-/**
- * Fetch the stored review selection for a version.
- *
- * TRACE: API → GET /hierarchy/versions/{vid}/reconciliation/selection
- *
- * @param {string} projectId
- * @param {string} versionId
- * @returns {Promise<object>}  ReconciliationSelection dict, {error} when not found
- */
-async function fetchReconciliationSelection(projectId, versionId) {
-  if (_useMock()) {
-    const hierarchy = MOCK_DATA.hierarchy;
-    const versions = [];
-    (hierarchy.tree || []).forEach(p => (p.versions || []).forEach(v => versions.push(v)));
-    const ver = versions.find(v => v.version_id === versionId) || versions[0] || {};
-    const reviews = ver.reviews || [];
-    const anchor  = ver.active_review_id || (reviews[0] && reviews[0].review_id) || '';
-    return {
-      project_id:          projectId,
-      version_id:          versionId,
-      anchor_review_id:    anchor,
-      selected_review_ids: reviews.map(r => r.review_id),
-      selected_at:         '2026-05-28T12:00:00Z',
-      selected_by:         '',
-    };
-  }
-  return _request(
-    'GET',
-    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation/selection`,
-  );
-}
-
-/**
- * Run reconciliation across selected reviews for a version.
- *
- * TRACE: API → POST /hierarchy/versions/{vid}/reconciliation/run
- *
- * Body (optional when selection already saved via saveReconciliationSelection):
- *   anchor_review_id    — overrides stored selection if provided
- *   selected_review_ids — overrides stored selection if provided
- *
- * Returns a ReconciliationOutput dict with sections:
- *   consensus_points, divergent_points, confirmed_decisions, open_decisions,
- *   unresolved_weaknesses, merged_findings, provenance_summary
- *
- * @param {string} projectId
- * @param {string} versionId
- * @param {string} [anchorReviewId]      — optional override
- * @param {string[]} [selectedReviewIds] — optional override
- * @returns {Promise<object>}
- */
-async function runReconciliation(projectId, versionId, anchorReviewId, selectedReviewIds) {
-  if (_useMock()) {
-    const base = MOCK_DATA.reviewDetail;
-    const rid  = base.review_id;
-    const _makeItem = (id, text, cat, reviews) => ({
-      id, text, category: cat, status: '', source_reviews: reviews,
-      anchor_text: text, supplemental_texts: [],
-    });
-    const anchor_prov = { review_id: rid, review_persona: base.persona, is_anchor: true,
-                          artifact_id: '', artifact_name: '', section_reference: '' };
-    const supp_prov   = { review_id: 'r6', review_persona: 'delivery_manager', is_anchor: false,
-                          artifact_id: '', artifact_name: '', section_reference: '' };
-    return {
-      reconciliation_id:       `rec_mock_${Date.now()}`,
-      project_id:              projectId,
-      version_id:              versionId,
-      anchor_review_id:        anchorReviewId || rid,
-      selected_review_ids:     selectedReviewIds || [rid, 'r6'],
-      created_at:              new Date().toISOString(),
-      anchor_only:             false,
-      total_consensus:         2,
-      total_divergent:         2,
-      total_open_decisions:    1,
-      total_unresolved_weaknesses: 1,
-      consensus_points: [
-        _makeItem('cons_1', 'No DR strategy defined for legacy data tier', 'risks', [anchor_prov, supp_prov]),
-        _makeItem('cons_2', 'Client has access to source environment',     'assumptions', [anchor_prov, supp_prov]),
-      ],
-      divergent_points: [
-        { ..._makeItem('div_1', 'Single-vendor dependency on primary cloud provider', 'risks', [anchor_prov]),
-          present_in_reviews: [rid], absent_from_reviews: ['r6'] },
-        { ..._makeItem('div_2', 'Data team availability for migration scripts', 'dependencies', [supp_prov]),
-          present_in_reviews: ['r6'], absent_from_reviews: [rid] },
-      ],
-      confirmed_decisions: [
-        _makeItem('dp_1', 'Identity provider vendor selection', 'security', [anchor_prov, supp_prov]),
-      ],
-      open_decisions: [
-        _makeItem('dp_2', 'Cloud provider selection (AWS vs Azure)', 'architecture', [anchor_prov, supp_prov]),
-      ],
-      unresolved_weaknesses: [
-        { ..._makeItem('uw_1', 'DR strategy not defined for legacy data tier', 'resilience', [anchor_prov]),
-          user_note: '' },
-      ],
-      merged_findings: [
-        _makeItem('mf_1', 'No DR strategy defined for legacy data tier', 'risks', [anchor_prov, supp_prov]),
-        _makeItem('mf_2', 'Single-vendor dependency on primary cloud provider', 'risks', [anchor_prov]),
-        _makeItem('mf_3', 'Client has access to source environment', 'assumptions', [anchor_prov, supp_prov]),
-        _makeItem('mf_4', 'Data team availability for migration scripts', 'dependencies', [supp_prov]),
-      ],
-      provenance_summary: [
-        { review_id: rid,  persona: base.persona,      is_anchor: true,  created_at: base.created_at, item_count: 14, artifact_refs: base.artifact_refs },
-        { review_id: 'r6', persona: 'delivery_manager', is_anchor: false, created_at: '2026-05-27T09:00:00Z', item_count: 9, artifact_refs: [] },
-      ],
-    };
-  }
-  const body = {};
-  if (anchorReviewId)    body.anchor_review_id    = anchorReviewId;
-  if (selectedReviewIds) body.selected_review_ids = selectedReviewIds;
-  return _request(
-    'POST',
-    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation/run`,
-    body,
-  );
-}
-
-/**
- * Fetch the stored ReconciliationOutput for a version.
- *
- * TRACE: API → GET /hierarchy/versions/{vid}/reconciliation
- *
- * @param {string} projectId
- * @param {string} versionId
- * @returns {Promise<object>}  ReconciliationOutput dict or {error}
- */
-async function fetchReconciliation(projectId, versionId) {
-  if (_useMock()) return runReconciliation(projectId, versionId);
-  return _request(
-    'GET',
-    `/api/projects/${projectId}/hierarchy/versions/${versionId}/reconciliation`,
-  );
-}
-
-// ── Weakness note + status (Sprint 1) ────────────────────────
-
-/**
- * Persist a weakness status update.
- * TRACE: API → POST /hierarchy/reviews/{rid}/weakness/{wid}/status
- * @param {string} projectId
- * @param {string} reviewId
- * @param {string} weaknessId
- * @param {string} status
- * @returns {Promise<object>}
- */
-async function updateWeaknessStatus(projectId, reviewId, weaknessId, status) {
-  if (_useMock()) return { review_id: reviewId, weakness_id: weaknessId, status, updated: true };
-  return _request(
-    'POST',
-    `/api/projects/${projectId}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`,
-    { status },
-  );
-}
-
-/**
- * Persist a weakness user note.
- * TRACE: API → POST /hierarchy/reviews/{rid}/weakness/{wid}/note
- * @param {string} projectId
- * @param {string} reviewId
- * @param {string} weaknessId
- * @param {string} note
- * @returns {Promise<object>}
- */
-async function updateWeaknessNote(projectId, reviewId, weaknessId, note) {
-  if (_useMock()) return { review_id: reviewId, weakness_id: weaknessId, user_note: note, updated: true };
-  return _request(
-    'POST',
-    `/api/projects/${projectId}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/note`,
-    { note },
-  );
-}
-
 // ── Expose globally ───────────────────────────────────────────
 window.API = {
   fetchProjects,
@@ -686,14 +339,4 @@ window.API = {
   fetchReviews,
   fetchReviewDetail,
   fetchVersionDetail,
-  fetchActivity,
-  _deriveActivityEvents,
-  updateWeaknessStatus,
-  updateWeaknessNote,
-  createReviewIteration,
-  // Sprint 3 — reconciliation
-  saveReconciliationSelection,
-  fetchReconciliationSelection,
-  runReconciliation,
-  fetchReconciliation,
 };
