@@ -115,21 +115,21 @@ def compare_project_versions(
 
 
 def compare_project_reviews(
-    project_id: str, review_file_a: str, review_file_b: str
+    project_id: str, review_id_a: str, review_id_b: str
 ) -> Dict[str, Any]:
-    import json
-    reviews_dir = PROJECTS_DIR / project_id / "reviews"
-    path_a = reviews_dir / review_file_a
-    path_b = reviews_dir / review_file_b
-    if not path_a.exists():
-        raise ValueError(f"Review not found: {review_file_a}")
-    if not path_b.exists():
-        raise ValueError(f"Review not found: {review_file_b}")
-    with open(path_a) as f:
-        review_a = json.load(f)
-    with open(path_b) as f:
-        review_b = json.load(f)
-    return compare_reviews(review_a, review_b)
+    """Compare two reviews by their hierarchy review IDs (e.g. 'r1', 'r2').
+
+    Loads both reviews from the hierarchy store (SQLite-backed).
+    Raises ValueError if either review is not found.
+    """
+    store = _make_hierarchy_store(project_id)
+    review_a = store.get_review(review_id_a)
+    if review_a is None:
+        raise ValueError(f"Review not found: {review_id_a}")
+    review_b = store.get_review(review_id_b)
+    if review_b is None:
+        raise ValueError(f"Review not found: {review_id_b}")
+    return compare_reviews(review_a.to_dict(), review_b.to_dict())
 
 
 def get_project_evolution(project_id: str, category: str = "risks") -> List[Dict[str, Any]]:
