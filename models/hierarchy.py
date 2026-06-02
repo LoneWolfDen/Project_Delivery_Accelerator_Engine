@@ -187,13 +187,6 @@ class Review:
     # S5: decision intelligence
     decision_points: List[Dict[str, Any]] = field(default_factory=list)
 
-    # Sprint 1: structured artifact provenance references
-    # Each entry: {artifact_id, artifact_name, artifact_type, section_reference,
-    #              page_reference, slide_number, slide_title, subject, date, sender,
-    #              meeting_name, timestamp, sheet, row_range, excerpt}
-    # artifact_type: document | slides | email | meeting_notes | spreadsheet
-    artifact_refs: List[Dict[str, Any]] = field(default_factory=list)
-
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         d["total_findings"] = sum(
@@ -226,8 +219,6 @@ class Review:
             "weaknesses":         self.weaknesses,
             "missing_categories": self.missing_categories,
             "decision_points":    self.decision_points,
-            "artifact_refs":      self.artifact_refs,
-            "prompt_used":        self.prompt_used,
         }
 
 
@@ -836,43 +827,3 @@ class HierarchyStore:
             "total_versions": len(versions),
             "total_reviews": len(reviews),
         }
-
-    # ── Reconciliation stubs (Sprint 3) ──────────────────────────────────────
-    # The file-based store does not implement full reconciliation persistence.
-    # These stubs ensure _make_hierarchy_store() callers work regardless of backend.
-
-    def save_reconciliation_selection(self, selection: Any) -> None:  # type: ignore[override]
-        """File-based stub: persist selection as JSON next to version data."""
-        import json  # noqa: PLC0415
-        sel_dir = self.base_dir / "reconciliation"
-        sel_dir.mkdir(parents=True, exist_ok=True)
-        with open(sel_dir / f"selection_{selection.version_id}.json", "w") as f:
-            json.dump(selection.to_dict(), f, indent=2)
-
-    def get_reconciliation_selection(self, version_id: str) -> Optional[Any]:  # type: ignore[override]
-        """File-based stub: read selection JSON if present."""
-        import json  # noqa: PLC0415
-        from models.reconciliation import ReconciliationSelection  # noqa: PLC0415
-        sel_file = self.base_dir / "reconciliation" / f"selection_{version_id}.json"
-        if not sel_file.exists():
-            return None
-        with open(sel_file) as f:
-            return ReconciliationSelection.from_dict(json.load(f))
-
-    def save_reconciliation_output(self, output: Any) -> None:  # type: ignore[override]
-        """File-based stub: persist output as JSON."""
-        import json  # noqa: PLC0415
-        sel_dir = self.base_dir / "reconciliation"
-        sel_dir.mkdir(parents=True, exist_ok=True)
-        with open(sel_dir / f"output_{output.version_id}.json", "w") as f:
-            json.dump(output.to_dict(), f, indent=2)
-
-    def get_reconciliation_output(self, version_id: str) -> Optional[Any]:  # type: ignore[override]
-        """File-based stub: read output JSON if present."""
-        import json  # noqa: PLC0415
-        from models.reconciliation import ReconciliationOutput  # noqa: PLC0415
-        out_file = self.base_dir / "reconciliation" / f"output_{version_id}.json"
-        if not out_file.exists():
-            return None
-        with open(out_file) as f:
-            return ReconciliationOutput.from_dict(json.load(f))

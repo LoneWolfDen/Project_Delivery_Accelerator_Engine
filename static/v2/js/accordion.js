@@ -68,88 +68,6 @@ const VersionAccordion = (() => {
     return 'pending';
   }
 
-  // ── Phase tag ─────────────────────────────────────────────
-  /**
-   * Map phase_id → a coloured inline badge.
-   *
-   * Colours use CSS custom properties from theme.css.
-   * Unknown phase IDs fall back to a neutral badge.
-   *
-   * @param {string} phaseId  - e.g. 'pre-sales' | 'design' | 'delivery' | 'support'
-   * @returns {string} HTML span, or '' if phaseId is blank
-   */
-  const _PHASE_COLOURS = {
-    'pre-sales': 'phase-tag--presales',
-    'design':    'phase-tag--design',
-    'delivery':  'phase-tag--delivery',
-    'support':   'phase-tag--support',
-  };
-
-  function _phaseTag(phaseId) {
-    if (!phaseId) return '';
-    const cls  = _PHASE_COLOURS[phaseId] || 'phase-tag--default';
-    const label = phaseId.replace(/-/g, '\u2011');  // non-breaking hyphen for display
-    return `<span class="phase-tag ${_esc(cls)}" title="Phase: ${_esc(phaseId)}">${_esc(label)}</span>`;
-  }
-
-  // ── Review quality metrics block ──────────────────────────
-  /**
-   * Computes and renders the Issues / Resolved / Carry Forward metrics row.
-   *
-   * Source fields (all optional — degrades gracefully when absent):
-   *   review.total_findings      → Issues found
-   *   review.issues_resolved     → Resolved (explicit field, or derived)
-   *   review.issues_carry_forward→ Carry forward (explicit, or total − resolved)
-   *
-   * Derivation when explicit fields are absent:
-   *   - If neither resolved nor carry_forward is set, show only Issues found.
-   *   - If resolved is set but carry_forward is not, derive carry_forward.
-   *
-   * @param {object} review
-   * @returns {string} HTML — empty string when no metrics are available
-   */
-  function _renderReviewMetrics(review) {
-    const issues   = review.total_findings      != null ? Number(review.total_findings)       : null;
-    const resolved = review.issues_resolved     != null ? Number(review.issues_resolved)      : null;
-    let   carry    = review.issues_carry_forward != null ? Number(review.issues_carry_forward) : null;
-
-    // Nothing to show
-    if (issues == null && resolved == null && carry == null) return '';
-
-    // Derive carry forward when missing
-    if (resolved != null && carry == null && issues != null) {
-      carry = Math.max(0, issues - resolved);
-    }
-
-    const issuesHtml = issues != null
-      ? `<span class="review-metric" title="Issues found in this review">
-           <span class="review-metric-icon">🔍</span>
-           <span class="review-metric-label">Issues</span>
-           <span class="review-metric-value">${issues}</span>
-         </span>`
-      : '';
-
-    const resolvedHtml = resolved != null
-      ? `<span class="review-metric review-metric--resolved" title="Issues resolved since previous review">
-           <span class="review-metric-icon">✅</span>
-           <span class="review-metric-label">Resolved</span>
-           <span class="review-metric-value">${resolved}</span>
-         </span>`
-      : '';
-
-    const carryHtml = carry != null
-      ? `<span class="review-metric review-metric--carry" title="Issues carried forward to next review">
-           <span class="review-metric-icon">⏩</span>
-           <span class="review-metric-label">Carry fwd</span>
-           <span class="review-metric-value">${carry}</span>
-         </span>`
-      : '';
-
-    return `<div class="review-metrics" aria-label="Review quality metrics">
-      ${issuesHtml}${resolvedHtml}${carryHtml}
-    </div>`;
-  }
-
   // ── Render a single review row ────────────────────────────
   /**
    * TRACE: UI → ReviewItem → AppState.openDrawer()
@@ -160,7 +78,6 @@ const VersionAccordion = (() => {
   function _renderReviewItem(review, activeReviewId) {
     const isActive = review.review_id === activeReviewId;
     const iterLabel = review.iteration_number ? `R${review.iteration_number}` : review.review_id;
-    const metricsHtml = _renderReviewMetrics(review);
     return `
       <div class="review-item${isActive ? ' active-review' : ''}"
            role="button"
@@ -179,7 +96,6 @@ const VersionAccordion = (() => {
         <span class="badge ${_qualityClass(review.quality_status)}">${_qualityLabel(review.quality_status)}</span>
         ${isActive ? '<span class="badge badge-primary">Active</span>' : ''}
         <span class="review-item-date" title="${_esc(review.created_at || '')}">${_relTime(review.created_at)}</span>
-        ${metricsHtml}
       </div>`;
   }
 
@@ -200,18 +116,6 @@ const VersionAccordion = (() => {
       .map(r => _renderReviewItem(r, version.active_review_id || ''))
       .join('');
 
-    // RAG health badge — rendered only when HealthSignal is loaded
-    const healthBadgeHtml = (window.HealthSignal && version.stats != null)
-      ? HealthSignal.renderVersionBadge(version)
-      : '';
-
-    // Pin button — rendered only when PinnedInsights is loaded
-    const _proj = window.AppState ? window.AppState.get('selectedProject') : null;
-    const _projId = _proj ? _proj.id : '';
-    const pinBtnHtml = (window.PinnedInsights && _projId)
-      ? PinnedInsights.renderPinButton(vid, 'version', vid + (label ? ' – ' + label : ''), _projId)
-      : '';
-
     return `
       <div class="accordion-item${isExpandedByDefault ? ' expanded' : ''}"
            id="accordion-${_esc(vid)}"
@@ -225,15 +129,12 @@ const VersionAccordion = (() => {
              onkeydown="if(event.key==='Enter'||event.key===' ')VersionAccordion.onVersionHeaderClick(this)">
           <span class="accordion-chevron" aria-hidden="true">▶</span>
           <span class="accordion-version-id">${_esc(vid)}</span>
-          ${_phaseTag(version.phase_id || '')}
           ${label ? `<span class="accordion-version-label">– ${_esc(label)}</span>` : ''}
-          ${healthBadgeHtml}
           <div class="accordion-meta">
             <span class="badge badge-default">${reviewCount} review${reviewCount !== 1 ? 's' : ''}</span>
             ${version.artifact_count ? `<span class="badge badge-secondary">${version.artifact_count} artefacts</span>` : ''}
             <span class="badge badge-default fs-10">${_fmtDate(version.created_at)}</span>
           </div>
-          ${pinBtnHtml}
           <button class="btn-icon btn-sm"
                   title="View version details"
                   aria-label="Open version ${_esc(vid)} detail"

@@ -217,7 +217,7 @@ def run_persona_review(
     )
 
     try:
-        created_reviews = store.list_reviews(version_id=latest_version_id)
+        created_reviews = store.list_reviews(version_filter=latest_version_id)
         created_review_id = created_reviews[0]["review_id"] if created_reviews else ""
         _log_prompt(
             project_id=project_id,
@@ -313,29 +313,6 @@ def update_weakness_status(
     return {"review_id": review_id, "weakness_id": weakness_id, "status": status, "updated": True}
 
 
-def update_weakness_note(
-    project_id: str, review_id: str, weakness_id: str, note: str
-) -> Dict[str, Any]:
-    """Persist an optional free-text user note against a weakness (Sprint 1)."""
-    store = _make_hierarchy_store(project_id)
-    review = store.get_review(review_id)
-    if review is None:
-        return {"error": f"Review not found: {review_id}"}
-    weaknesses = list(review.weaknesses or [])
-    target = next((w for w in weaknesses if w.get("id") == weakness_id), None)
-    if target is None:
-        return {"error": f"Weakness '{weakness_id}' not found in review {review_id}"}
-    # note is optional — empty string clears the note
-    target["user_note"] = str(note) if note is not None else ""
-    store.update_review_weaknesses(review_id, weaknesses)
-    return {
-        "review_id": review_id,
-        "weakness_id": weakness_id,
-        "user_note": target["user_note"],
-        "updated": True,
-    }
-
-
 def update_decision_status(
     project_id: str, review_id: str, decision_id: str, status: str
 ) -> Dict[str, Any]:
@@ -427,168 +404,6 @@ def get_version_readiness(project_id: str, version_id: str) -> Dict[str, Any]:
         review_dict = review.__dict__ if hasattr(review, "__dict__") else {}
     readiness = compute_decision_readiness(review_dict)
     return {"version_id": version_id, "review_id": version.active_review_id, **readiness}
-
-
-# ── Review Iteration (Sprint 2) ───────────────────────────────────────────────
-
-# Known UI-friendly persona values (role names + legacy IDs) — used for input
-# validation only.  Kept as a tuple so callers can do fast `in` checks.
-_KNOWN_PERSONAS = (
-    "Solution Architect",
-    "Enterprise Architect",
-    "Delivery Manager",
-    "Product Owner",
-    "Resource Manager",
-    "DevOps Engineer",
-    "Cloud Architect",
-    "Platform Engineer",
-    "QA / Test Lead",
-    "Data Engineer",
-    "Security Architect",
-    "FinOps",
-    # legacy snake_case IDs
-    "solution_architect",
-    "delivery_manager",
-    "product_owner",
-    "resource_manager",
-)
-
-
-def create_review_iteration(
-    project_id: str,
-    base_review_id: str,
-    new_persona: Optional[str] = None,
-    custom_prompt: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Create a new review from an existing review (Sprint 2 — Review Iteration).
-
-    The new review:
-    - links to the base review via ``previous_review_id``
-    - carries the base review's full output as part of its input context
-    - uses the supplied ``new_persona`` (or the base review's persona if omitted)
-    - stores its own ``prompt_used`` and ``persona_used`` — the base review is
-      never overwritten
-
-    Args:
-        project_id:     Target project.
-        base_review_id: The review to iterate from (user-selected, not automatic).
-        new_persona:    Optional new persona.  Defaults to base review persona.
-        custom_prompt:  Optional custom prompt suffix.
-
-    Returns:
-        Dict containing the new review summary plus lineage metadata.
-    """
-    store = _make_hierarchy_store(project_id)
-
-    # ── Validate base review exists ───────────────────────────────────────────
-    base_review = store.get_review(base_review_id)
-    if base_review is None:
-        return {"error": f"Base review not found: {base_review_id}"}
-
-    # ── Resolve persona ───────────────────────────────────────────────────────
-    resolved_persona: str = (new_persona or "").strip() or base_review.persona
-    if not resolved_persona:
-        return {"error": "No persona available — provide new_persona or ensure base review has one"}
-
-    # ── Build context incorporating base review output ────────────────────────
-    # Pull the project intelligence (same context used for the original review)
-    from services.intelligence import get_project_intelligence  # noqa: PLC0415
-    intelligence = get_project_intelligence(project_id)
-    if not intelligence:
-        return {"error": f"No intelligence built for project: {project_id}. Run build-context first."}
-
-    intelligence["_project_id"] = project_id
-
-    # Inject base review output as additional context for the new execution
-    base_output_context: Dict[str, Any] = {
-        "base_review_id": base_review_id,
-        "base_review_persona": base_review.persona,
-        "base_review_summary": base_review.summary,
-        "base_review_findings": base_review.findings,
-        "base_review_weaknesses": [
-            {"text": w.get("text", ""), "status": w.get("status", "open"),
-             "category": w.get("category", "")}
-            for w in (base_review.weaknesses or [])
-        ],
-        "base_review_decision_points": [
-            {"text": dp.get("text", ""), "status": dp.get("status", "open")}
-            for dp in (base_review.decision_points or [])
-        ],
-        "base_review_questions": base_review.questions or [],
-    }
-    intelligence["_base_review_context"] = base_output_context
-
-    # ── Run the review ────────────────────────────────────────────────────────
-    from personas.engine import run_review as _run_review  # noqa: PLC0415
-    review = _run_review(
-        roles=resolved_persona,
-        context=intelligence,
-        ai_backend="files_only",
-        custom_prompt=custom_prompt,
-    )
-
-    roles_used = review.get("roles", [resolved_persona] if isinstance(resolved_persona, str) else resolved_persona)
-    canonical_persona = " / ".join(roles_used) if roles_used else str(resolved_persona)
-
-    # ── Compute weaknesses / decision points ──────────────────────────────────
-    from processors.review_quality import (  # noqa: PLC0415
-        extract_weaknesses,
-        extract_decision_points,
-        compute_missing_categories,
-    )
-    review_findings = review.get("findings", {})
-    computed_weaknesses = extract_weaknesses(review_findings)
-    computed_missing = compute_missing_categories(review_findings)
-    computed_decision_points = extract_decision_points(review_findings)
-
-    # Carry forward open decision points from base review that are not already present
-    existing_texts = {dp["text"] for dp in computed_decision_points}
-    for dp in (base_review.decision_points or []):
-        if dp.get("status") == "open" and dp.get("text", "") not in existing_texts:
-            new_dp = dict(dp)
-            new_dp["id"] = f"d{len(computed_decision_points) + 1}"
-            computed_decision_points.append(new_dp)
-            existing_texts.add(dp["text"])
-
-    # ── Persist the new review ─────────────────────────────────────────────────
-    new_review = store.create_review(
-        version_id=base_review.version_id,
-        persona=canonical_persona,
-        ai_backend="files_only",
-        prompt_used=review.get("prompt_used", ""),
-        custom_prompt=custom_prompt or "",
-        findings=review.get("findings", {}),
-        questions=review.get("questions", []),
-        summary=review.get("summary", ""),
-        included_files=base_review.included_files or [],
-        categories=base_review.categories or [],
-        ai_metadata=review.get("ai_metadata", {}),
-        previous_review_id=base_review_id,
-        weaknesses=computed_weaknesses,
-        decision_points=computed_decision_points,
-        artifact_refs=base_review.artifact_refs or [],
-    )
-
-    bus.publish(Event(
-        topic=Topics.REVIEW_COMPLETED,
-        payload={
-            "project_id": project_id,
-            "review_id": new_review.review_id,
-            "persona": canonical_persona,
-            "previous_review_id": base_review_id,
-            "ai_backend": "files_only",
-        },
-        source="services.review.create_review_iteration",
-    ))
-
-    result = new_review.to_summary()
-    result["previous_review_id"] = base_review_id
-    result["base_review_persona"] = base_review.persona
-    result["persona_used"] = canonical_persona
-    result["persona_changed"] = (
-        canonical_persona.strip().lower() != base_review.persona.strip().lower()
-    )
-    return result
 
 
 # ── Prompt history ────────────────────────────────────────────────────────────

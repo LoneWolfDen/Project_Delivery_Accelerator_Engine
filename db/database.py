@@ -284,41 +284,6 @@ CREATE TABLE IF NOT EXISTS decision_log (
 CREATE INDEX IF NOT EXISTS idx_declog_project ON decision_log(project_id);
 CREATE INDEX IF NOT EXISTS idx_declog_entity  ON decision_log(entity_id);
 
--- ── Reconciliation Selections (Sprint 3) ─────────────────────
--- Stores the user's explicit anchor + supplemental review selection
--- for a version.  One row per (project_id, version_id) — upserted on
--- each save.  Never auto-populated.
-CREATE TABLE IF NOT EXISTS reconciliation_selections (
-    project_id          TEXT NOT NULL,
-    version_id          TEXT NOT NULL,
-    anchor_review_id    TEXT NOT NULL DEFAULT '',
-    selected_review_ids TEXT NOT NULL DEFAULT '[]',
-    selected_at         TEXT NOT NULL DEFAULT '',
-    selected_by         TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (project_id, version_id)
-);
-
--- ── Reconciliation Outputs (Sprint 3) ────────────────────────
--- Stores the full ReconciliationOutput produced by run_reconciliation().
--- One row per (project_id, version_id) — overwritten on re-run.
-CREATE TABLE IF NOT EXISTS reconciliation_outputs (
-    project_id             TEXT NOT NULL,
-    version_id             TEXT NOT NULL,
-    reconciliation_id      TEXT NOT NULL DEFAULT '',
-    anchor_review_id       TEXT NOT NULL DEFAULT '',
-    selected_review_ids    TEXT NOT NULL DEFAULT '[]',
-    created_at             TEXT NOT NULL DEFAULT '',
-    consensus_points       TEXT NOT NULL DEFAULT '[]',
-    divergent_points       TEXT NOT NULL DEFAULT '[]',
-    confirmed_decisions    TEXT NOT NULL DEFAULT '[]',
-    open_decisions         TEXT NOT NULL DEFAULT '[]',
-    unresolved_weaknesses  TEXT NOT NULL DEFAULT '[]',
-    merged_findings        TEXT NOT NULL DEFAULT '[]',
-    provenance_summary     TEXT NOT NULL DEFAULT '[]',
-    anchor_only            INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (project_id, version_id)
-);
-
 -- ── Prompt Log (S7-03) ────────────────────────────────────────
 -- Captures full prompt state and outcome links for every review.
 -- Foundation for future prompt learning and self-improvement.
@@ -409,8 +374,6 @@ class Database:
             ("weaknesses",          "TEXT DEFAULT '[]'"),
             # S5: decision intelligence
             ("decision_points",     "TEXT DEFAULT '[]'"),
-            # Sprint 1: artifact provenance references
-            ("artifact_refs",       "TEXT DEFAULT '[]'"),
         ]:
             if col not in rev_cols:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {col} {definition}")
@@ -478,39 +441,8 @@ class Database:
             if col not in pd_cols:
                 conn.execute(f"ALTER TABLE proposal_documents ADD COLUMN {col} {definition}")
 
-        # ── Sprint 3: reconciliation tables ─────────────────────────────────
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS reconciliation_selections (
-                project_id          TEXT NOT NULL,
-                version_id          TEXT NOT NULL,
-                anchor_review_id    TEXT NOT NULL DEFAULT '',
-                selected_review_ids TEXT NOT NULL DEFAULT '[]',
-                selected_at         TEXT NOT NULL DEFAULT '',
-                selected_by         TEXT NOT NULL DEFAULT '',
-                PRIMARY KEY (project_id, version_id)
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS reconciliation_outputs (
-                project_id             TEXT NOT NULL,
-                version_id             TEXT NOT NULL,
-                reconciliation_id      TEXT NOT NULL DEFAULT '',
-                anchor_review_id       TEXT NOT NULL DEFAULT '',
-                selected_review_ids    TEXT NOT NULL DEFAULT '[]',
-                created_at             TEXT NOT NULL DEFAULT '',
-                consensus_points       TEXT NOT NULL DEFAULT '[]',
-                divergent_points       TEXT NOT NULL DEFAULT '[]',
-                confirmed_decisions    TEXT NOT NULL DEFAULT '[]',
-                open_decisions         TEXT NOT NULL DEFAULT '[]',
-                unresolved_weaknesses  TEXT NOT NULL DEFAULT '[]',
-                merged_findings        TEXT NOT NULL DEFAULT '[]',
-                provenance_summary     TEXT NOT NULL DEFAULT '[]',
-                anchor_only            INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (project_id, version_id)
-            )
-        """)
-
         conn.commit()
+
 
     # ── Query helpers ──
 
