@@ -308,6 +308,50 @@ details[open] .chevron{transform:rotate(90deg);}
 .cmp-spin{animation:spin .8s linear infinite;display:inline-block;font-size:16px;}
 .cmp-error{padding:12px 14px;background:rgba(248,81,73,.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);font-size:12px;}
 .cmp-empty{color:var(--text-muted);font-size:12px;padding:12px 0;font-style:italic;}
+
+/* ── Review Full Detail: Coverage, Strength, Decision, Readiness ── */
+.prompt-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px 12px;font-family:'Cascadia Code','Fira Code',monospace;font-size:11px;
+  white-space:pre-wrap;max-height:280px;overflow-y:auto;color:var(--text-dim);
+  margin-top:8px;line-height:1.6;}
+.coverage-bar-outer{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin:6px 0 8px;}
+.coverage-bar-inner{height:100%;border-radius:3px;transition:width .4s ease;}
+.coverage-pills{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;}
+.coverage-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+  border-radius:20px;font-size:10px;font-weight:500;border:1px solid var(--border);white-space:nowrap;}
+.coverage-pill.covered{border-color:var(--green-dim);color:var(--green);background:rgba(63,185,80,.08);}
+.coverage-pill.missing{border-color:var(--border2);color:var(--text-muted);background:var(--surface2);}
+.rs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+@media(max-width:600px){.rs-grid{grid-template-columns:1fr;}}
+.rs-cell{background:var(--surface2);border-radius:var(--radius);padding:8px 10px;}
+.rs-cell-header{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:6px;display:flex;align-items:center;gap:5px;}
+.rs-item{font-size:11px;color:var(--text-dim);padding:3px 0;display:flex;align-items:flex-start;gap:5px;line-height:1.4;}
+.rs-item::before{content:'•';color:var(--text-muted);flex-shrink:0;}
+.pr-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius);margin-bottom:8px;}
+.pr-bar.not-ready{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);}
+.pr-bar.partial{background:rgba(227,179,65,.08);border:1px solid rgba(227,179,65,.3);}
+.pr-bar.ready{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);}
+.nba-item{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:var(--radius);
+  background:var(--surface2);margin-bottom:5px;font-size:12px;}
+.nba-num{font-size:10px;font-weight:700;background:var(--accent-dim);color:#fff;
+  border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.dp-card{border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;margin-bottom:6px;background:var(--surface);}
+.dp-title{font-size:12px;font-weight:600;color:var(--text);}
+.dp-desc{font-size:11px;color:var(--text-dim);margin-bottom:4px;line-height:1.4;}
+.dp-opts{font-size:10px;color:var(--text-muted);font-style:italic;}
+.prog-row{display:flex;align-items:flex-start;gap:6px;padding:4px 0;font-size:11px;color:var(--text-dim);}
+.prog-resolved{color:var(--green);}
+.prog-new{color:var(--accent);}
+.prog-still{color:var(--yellow);}
+.diff-cat-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  cursor:pointer;transition:background var(--transition);}
+.diff-cat-header:hover{background:var(--surface3);}
+.diff-cat-body{padding:6px 12px 10px;}
+.prop-strength-area{padding:6px 10px;border-radius:var(--radius);margin-bottom:4px;font-size:11px;}
+.prop-strength-strong{background:rgba(63,185,80,.08);border-left:3px solid var(--green);}
+.prop-strength-weak{background:rgba(248,81,73,.08);border-left:3px solid var(--red);}
+.mb8{margin-bottom:8px;} .mt8{margin-top:8px;}
 </style>
 
 </head>
@@ -1283,92 +1327,480 @@ async function v2SubmitMarkComplete(reviewId,qualityStatus){
   toast(qualityStatus==='complete'?'Marked as Final':'Saved as Draft');render();
 }
 
+// ── Coverage / Strength / Decision / Readiness constants & helpers ────────────
+
+const COVERAGE_BASELINE=[
+  {id:'risks',       label:'Risk Management',       icon:'🔴',keywords:['risk','threat','impact','probability','mitigation','contingency']},
+  {id:'timeline',    label:'Timeline & Schedule',    icon:'📅',keywords:['timeline','schedule','deadline','milestone','sprint','week','month','date','due']},
+  {id:'budget',      label:'Budget & Cost',          icon:'💰',keywords:['budget','cost','price','spend','financial','roi','invest','fund','estimate']},
+  {id:'stakeholders',label:'Stakeholders',           icon:'👥',keywords:['stakeholder','sponsor','owner','client','customer','user','executive']},
+  {id:'dependencies',label:'Dependencies',           icon:'🔗',keywords:['depend','prerequisite','block','integration','third-party','external','vendor']},
+  {id:'governance',  label:'Governance & Compliance',icon:'📋',keywords:['governance','compliance','audit','regulatory','policy','security','gdpr','iso','sox']},
+];
+
+const COVERAGE_PERSONA={
+  solution_architect:[
+    {id:'architecture',  label:'Architecture & Design', icon:'🏗️',keywords:['architect','design','pattern','component','system','microservice','monolith','api','layer','diagram']},
+    {id:'nfr',           label:'Non-Functional Reqs',   icon:'⚙️',keywords:['performance','scalab','latency','throughput','availability','uptime','sla','nfr','reliability','response time']},
+    {id:'tech_stack',    label:'Technology Choices',    icon:'🛠️',keywords:['technology','stack','framework','language','platform','cloud','container','kubernetes','docker','database']},
+    {id:'security_arch', label:'Security Architecture', icon:'🔒',keywords:['encrypt','auth','oauth','jwt','tls','ssl','penetrat','vulnerability','access control','secret','credential']},
+    {id:'integration',   label:'Integration & APIs',    icon:'🔌',keywords:['integrat','api','interface','contract','endpoint','webhook','event','message','queue','sync','async']},
+    {id:'data',          label:'Data & Storage',        icon:'🗄️',keywords:['data','database','storage','migration','schema','model','cache','backup','retention','privacy']},
+  ],
+  delivery_manager:[
+    {id:'execution',   label:'Execution Plan',      icon:'🚀',keywords:['execution','plan','sprint','iteration','release','deploy','launch','rollout','go-live','handover']},
+    {id:'scope',       label:'Scope Control',       icon:'📐',keywords:['scope','change request','creep','in scope','out of scope','definition','boundary','deliverable']},
+    {id:'resources',   label:'Resource & Capacity', icon:'👤',keywords:['resource','capacity','headcount','allocation','team','staffing','hire','onboard','availability','bandwidth']},
+    {id:'quality',     label:'Quality & Testing',   icon:'✅',keywords:['quality','test','qa','uat','validation','acceptance','defect','bug','regression','sign-off']},
+    {id:'reporting',   label:'Reporting & RAG',     icon:'📊',keywords:['report','status','rag','red amber green','dashboard','kpi','metric','progress','update','escalat']},
+    {id:'change_mgmt', label:'Change Management',   icon:'🔄',keywords:['change','transition','adopt','train','onboard','communic','impact','transformation','cutover']},
+  ],
+  product_owner:[
+    {id:'scope',          label:'Scope Definition',     icon:'📐',keywords:['scope','boundary','in scope','out of scope','definition','deliverable','feature','epic','story']},
+    {id:'requirements',   label:'Requirements Quality', icon:'📝',keywords:['requirement','acceptance criteria','definition of done','user story','backlog','priority','must have','should have']},
+    {id:'value',          label:'Business Value & ROI', icon:'💎',keywords:['value','roi','benefit','outcome','impact','return','business case','payback','kpi','success metric']},
+    {id:'users',          label:'User Needs & UX',      icon:'🎯',keywords:['user','customer','persona','journey','experience','feedback','research','usability','accessibility','need']},
+    {id:'prioritisation', label:'Prioritisation',       icon:'🏷️',keywords:['priorit','moscow','must have','nice to have','backlog','roadmap','release plan','mvp','increment']},
+    {id:'commercials',    label:'Commercials & Contracts',icon:'📜',keywords:['contract','sla','commercial','legal','liability','penalty','warranty','ip','license','nda']},
+  ],
+  resource_manager:[
+    {id:'skills',     label:'Skills & Capability',   icon:'🧠',keywords:['skill','capability','competency','expertise','knowledge','experience','certif','training','gap','proficiency']},
+    {id:'allocation', label:'Allocation & Conflicts', icon:'⚖️',keywords:['allocat','utilisation','conflict','overload','shared','part-time','split','stretch','availability','commitment']},
+    {id:'capacity',   label:'Capacity Planning',     icon:'📈',keywords:['capacity','demand','supply','forecast','plan','ramp','bench','pipeline','headcount','fte']},
+    {id:'onboarding', label:'Onboarding & Ramp',     icon:'🎓',keywords:['onboard','ramp','induction','setup','access','tool','environment','buddy','shadow','handover']},
+    {id:'key_person', label:'Key-Person Risk',       icon:'⚠️',keywords:['key person','bus factor','single point','knowledge silo','depend on','critical resource','replace','cover','backup','succession']},
+    {id:'external',   label:'Contractors & Vendors', icon:'🤝',keywords:['contractor','vendor','third party','outsource','partner','supplier','ir35','statement of work','rate','procurement']},
+  ],
+};
+
+const _IMPACT_MAP={
+  'Architecture': ['architecture','design','pattern','integration','api','microservice','infrastructure','platform','cloud','aws','azure','gcp','database','data model'],
+  'Delivery':     ['delivery','timeline','milestone','sprint','dependency','resource','capacity','team','scope','change','governance','plan'],
+  'Cost':         ['cost','budget','spend','pricing','licence','license','finops','commercial','contract','opex','capex','financial'],
+  'Operations':   ['monitoring','observability','sla','uptime','support','incident','alert','log','backup','recovery','dr','failover','runbook'],
+};
+
+function _inferDecisionTitle(text){
+  const t=(text||'').toLowerCase();
+  if(t.includes('cloud')||t.includes('aws')||t.includes('azure')||t.includes('gcp'))return'Cloud Strategy';
+  if(t.includes('architecture')||t.includes('design pattern')||t.includes('microservice'))return'Architecture Design';
+  if(t.includes('cost')||t.includes('budget')||t.includes('commercial'))return'Cost Model';
+  if(t.includes('dr')||t.includes('disaster')||t.includes('recovery')||t.includes('failover'))return'DR & Recovery';
+  if(t.includes('team')||t.includes('resource')||t.includes('capacity')||t.includes('people'))return'Team & Capacity';
+  if(t.includes('timeline')||t.includes('milestone')||t.includes('deadline')||t.includes('phasing'))return'Delivery Timeline';
+  if(t.includes('security')||t.includes('compliance')||t.includes('gdpr')||t.includes('regulation'))return'Security & Compliance';
+  if(t.includes('integration')||t.includes('api')||t.includes('interface'))return'Integration Approach';
+  if(t.includes('vendor')||t.includes('partner')||t.includes('contract'))return'Vendor Selection';
+  if(t.includes('data')||t.includes('migration')||t.includes('etl'))return'Data Strategy';
+  return'Open Decision';
+}
+
+function _inferOptions(text){
+  const t=(text||'').toLowerCase();
+  if(t.includes('cloud')||t.includes('aws')||t.includes('azure'))return['AWS','Azure','GCP','Hybrid'];
+  if(t.includes('microservice')||t.includes('monolith'))return['Microservices','Modular Monolith','Event-Driven'];
+  if(t.includes('phase')||t.includes('big bang'))return['Phased rollout','Big-bang cutover','Pilot first'];
+  if(t.includes('make')||t.includes('build')||t.includes('buy'))return['Build in-house','Buy COTS','Hybrid'];
+  return[];
+}
+
+function renderCoverageAssessment(review){
+  const personaId=(review.persona||'').toLowerCase().replace(/\s+/g,'_');
+  const personaDims=COVERAGE_PERSONA[personaId]||[];
+  const allDims=[...COVERAGE_BASELINE,...personaDims];
+  const seen=new Set();
+  const dims=allDims.filter(d=>seen.has(d.id)?false:(seen.add(d.id),true));
+  const corpus=(Object.values(review.findings||{}).flat().join(' ')+' '+(review.questions||[]).join(' ')+' '+(review.summary||'')).toLowerCase();
+  const covered=dims.filter(d=>d.keywords.some(kw=>corpus.includes(kw)));
+  const missing=dims.filter(d=>!d.keywords.some(kw=>corpus.includes(kw)));
+  const pct=Math.round(covered.length/dims.length*100);
+  const barColor=pct>=80?'var(--green)':pct>=50?'var(--yellow)':'var(--red)';
+  const scoreTag=pct>=80?'tag-green':pct>=50?'tag-yellow':'tag-red';
+  return`<div class="mb">
+    <div class="flex-between" style="margin-bottom:4px">
+      <p class="card-section" style="margin:0">📊 Coverage Assessment${review.persona?' for '+escHtml(review.persona):''}</p>
+      <span class="tag ${scoreTag}">${covered.length}/${dims.length} areas covered</span>
+    </div>
+    <div class="coverage-bar-outer"><div class="coverage-bar-inner" style="width:${pct}%;background:${barColor}"></div></div>
+    <div class="coverage-pills">
+      ${covered.map(d=>`<span class="coverage-pill covered" title="${d.keywords.slice(0,3).join(', ')}">${d.icon} ${escHtml(d.label)}</span>`).join('')}
+      ${missing.map(d=>`<span class="coverage-pill missing" title="Not detected">${d.icon} ${escHtml(d.label)}</span>`).join('')}
+    </div>
+    ${missing.length?`<p style="font-size:11px;color:var(--text-muted);margin-top:4px">⬆️ Consider adding context on: ${missing.slice(0,4).map(d=>escHtml(d.label)).join(', ')}${missing.length>4?' and more':''}</p>`:'<p style="font-size:11px;color:var(--green);margin-top:4px">✓ All key areas detected</p>'}
+  </div>`;
+}
+
+function renderReviewStrength(r){
+  const weaknesses=r.weaknesses||[];
+  const missingCats=r.missing_categories||[];
+  const decisionPts=r.decision_points||[];
+  const findings=r.findings||{};
+  const missingItems=missingCats.map(c=>c.replace(/_/g,' '));
+  const weakItems=weaknesses.filter(w=>w.status==='open'||!w.status).map(w=>escHtml((w.text||'').slice(0,90)));
+  const unresolvedItems=[
+    ...decisionPts.filter(d=>d.status==='open'||!d.status).map(d=>escHtml((d.text||'').slice(0,90))),
+    ...weaknesses.filter(w=>w.status==='addressed').map(w=>'(addressed) '+escHtml((w.text||'').slice(0,70))),
+  ];
+  const allFindingText=Object.values(findings).flat().join(' ').toLowerCase();
+  const impactAreas=Object.entries(_IMPACT_MAP).filter(([,kws])=>kws.some(kw=>allFindingText.includes(kw))).map(([area])=>area);
+  if(!missingItems.length&&!weakItems.length&&!unresolvedItems.length)return'';
+  const cell=(icon,label,color,items)=>{
+    if(!items.length)return'';
+    return`<div class="rs-cell"><div class="rs-cell-header" style="color:${color}">${icon} ${label} <span style="font-weight:400;opacity:.7">(${items.length})</span></div>${items.map(t=>`<div class="rs-item">${t}</div>`).join('')}</div>`;
+  };
+  const impactHtml=impactAreas.length?`<div class="rs-cell" style="grid-column:1/-1"><div class="rs-cell-header">🗺️ Impact Areas</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px">${impactAreas.map(a=>`<span class="tag" style="font-size:10px">${escHtml(a)}</span>`).join('')}</div></div>`:'';
+  return`<div class="card mt8" style="border-top:2px solid var(--yellow)">
+    <div class="card-title" style="font-size:12px;margin-bottom:6px"><span class="icon">🔎</span>Review Strength<span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:6px">— missing, weak, unresolved</span></div>
+    <div class="rs-grid">${cell('🕳️','Missing','var(--text-muted)',missingItems)}${cell('⚠️','Weak','var(--yellow)',weakItems)}${cell('❓','Unresolved','var(--red)',unresolvedItems)}${impactHtml}</div>
+  </div>`;
+}
+
+function renderDecisionPointsEngine(r){
+  const dps=(r.decision_points||[]).filter(d=>d.status==='open'||!d.status);
+  if(!dps.length)return'';
+  const cards=dps.map(dp=>{
+    const title=_inferDecisionTitle(dp.text);
+    const opts=_inferOptions(dp.text);
+    const optsHtml=opts.length?`<div class="dp-opts">Options: ${opts.map(o=>escHtml(o)).join(' · ')}</div>`:'';
+    const statusBadge=dp.status==='addressed'?'<span class="tag tag-yellow" style="font-size:9px">Partially Clarified</span>':'<span class="tag tag-red" style="font-size:9px">Open</span>';
+    return`<div class="dp-card"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span class="dp-title">${escHtml(title)}</span>${statusBadge}<span class="tag" style="font-size:9px;margin-left:auto">${escHtml(dp.category||'')}</span></div><div class="dp-desc">${escHtml(dp.text||'')}</div>${optsHtml}<div style="font-size:9px;color:var(--text-muted);margin-top:4px">🔬 Use SME Questions to surface evidence for this decision</div></div>`;
+  }).join('');
+  return`<div class="card mt8" style="border-top:2px solid var(--accent)">
+    <div class="card-title" style="font-size:12px;margin-bottom:2px"><span class="icon">🎯</span>Decisions Required<span class="tag" style="margin-left:6px;background:var(--accent);color:#000">${dps.length}</span></div>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Each decision below must be resolved before this review is proposal-ready.</p>
+    ${cards}
+    <div style="font-size:11px;color:var(--text-dim);margin-top:4px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius)">💡 Run <strong>Ask SME Questions</strong> to generate targeted questions for each decision above.</div>
+  </div>`;
+}
+
+function renderReviewProgression(diff,prevReviewId){
+  if(!diff||diff.error){
+    return`<div class="card mt8"><div class="card-title" style="font-size:12px"><span class="icon">📈</span>Review Progression</div><p class="fs11 c-dim">No predecessor review — this is the first iteration.</p></div>`;
+  }
+  function _classify(data){
+    const resolved=(data.resolved||[]).map(i=>({text:i.text||i.category||String(i)}));
+    const newItems=(data.new||[]).map(i=>({text:i.text||i.category||String(i)}));
+    return{resolved,newItems,unchanged:data.unchanged||0};
+  }
+  const f=_classify(diff.findings||{});
+  const w=_classify(diff.weaknesses||{});
+  const d=_classify(diff.decision_points||{});
+  const allResolved=[...w.resolved,...d.resolved];
+  const allNew=[...f.newItems,...w.newItems,...d.newItems];
+  const stillOpen=(diff.weaknesses?.unchanged||0)+(diff.decision_points?.unchanged||0);
+  const improved=w.resolved.length+d.resolved.length;
+  const rowHtml=(items,cls,prefix)=>items.slice(0,5).map(i=>`<div class="prog-row ${cls}">${prefix} ${escHtml(String(i.text||i).slice(0,100))}</div>`).join('');
+  const resolvedHtml=rowHtml(allResolved,'prog-resolved','✓');
+  const newHtml=rowHtml(allNew,'prog-new','+');
+  return`<div class="card mt8">
+    <div class="flex-between mb"><div class="card-title" style="font-size:12px"><span class="icon">📈</span>Review Progression<span class="fs10 c-muted" style="font-weight:400;margin-left:6px">vs ${escHtml(prevReviewId||'')}</span></div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+      <div style="text-align:center;padding:8px;background:rgba(63,185,80,.08);border-radius:var(--radius)"><div style="font-size:18px;font-weight:700;color:var(--green)">${improved}</div><div style="font-size:10px;color:var(--text-muted)">Resolved</div></div>
+      <div style="text-align:center;padding:8px;background:var(--surface2);border-radius:var(--radius)"><div style="font-size:18px;font-weight:700;color:var(--accent)">${allNew.length}</div><div style="font-size:10px;color:var(--text-muted)">New Findings</div></div>
+      <div style="text-align:center;padding:8px;background:rgba(227,179,65,.08);border-radius:var(--radius)"><div style="font-size:18px;font-weight:700;color:var(--yellow)">${stillOpen}</div><div style="font-size:10px;color:var(--text-muted)">Still Open</div></div>
+      <div style="text-align:center;padding:8px;background:var(--surface2);border-radius:var(--radius)"><div style="font-size:18px;font-weight:700;color:var(--text-dim)">${f.unchanged}</div><div style="font-size:10px;color:var(--text-muted)">Unchanged</div></div>
+    </div>
+    ${resolvedHtml?`<details open class="mb8"><summary class="diff-cat-header" style="list-style:none">✓ <strong style="font-size:11px">Resolved (${allResolved.length})</strong></summary><div class="diff-cat-body">${resolvedHtml}</div></details>`:''}
+    ${newHtml?`<details class="mb8"><summary class="diff-cat-header" style="list-style:none">+ <strong style="font-size:11px">New Findings (${allNew.length})</strong></summary><div class="diff-cat-body">${newHtml}</div></details>`:''}
+    ${stillOpen?`<div style="font-size:11px;color:var(--yellow);padding:4px 0">⚠ ${stillOpen} weakness/decision item${stillOpen!==1?'s':''} still open from previous review</div>`:''}
+  </div>`;
+}
+
+function renderProposalReadiness(r){
+  const openWeaknesses=(r.weaknesses||[]).filter(w=>w.status==='open'||!w.status);
+  const openDecisions=(r.decision_points||[]).filter(d=>d.status==='open'||!d.status);
+  const missing=(r.missing_categories||[]);
+  const blockers=[
+    ...openDecisions.map(d=>`Unresolved decision: ${(d.text||'').slice(0,70)}`),
+    ...openWeaknesses.slice(0,3).map(w=>`Weak finding: ${(w.text||'').slice(0,70)}`),
+    ...missing.map(c=>`Missing category: ${c.replace(/_/g,' ')}`),
+  ];
+  let status,statusClass,statusIcon;
+  if(openDecisions.length>0||missing.length>1){status='Not Ready';statusClass='not-ready';statusIcon='🔴';}
+  else if(openWeaknesses.length>2||missing.length===1){status='Partially Ready';statusClass='partial';statusIcon='🟡';}
+  else{status='Ready';statusClass='ready';statusIcon='🟢';}
+  const steps=[];
+  if(openDecisions.length)steps.push(`Resolve ${openDecisions.length} open decision${openDecisions.length!==1?'s':''} using SME questions`);
+  if(missing.length)steps.push(`Add artefacts covering: ${missing.slice(0,2).map(c=>c.replace(/_/g,' ')).join(', ')}`);
+  if(openWeaknesses.length>2)steps.push(`Address ${openWeaknesses.length} open weaknesses — focus on high-risk categories first`);
+  if(!steps.length&&status==='Ready'){steps.push('Run a final review iteration to validate all addressed items','Generate proposal document');}
+  const blockersHtml=blockers.slice(0,5).map(b=>`<div class="rs-item" style="font-size:11px">${escHtml(b)}</div>`).join('');
+  const stepsHtml=steps.slice(0,5).map((s,i)=>`<div class="nba-item"><div class="nba-num">${i+1}</div><span>${escHtml(s)}</span></div>`).join('');
+  return`<div class="card mt8" style="border-top:2px solid var(--accent-dim)">
+    <div class="card-title" style="font-size:12px;margin-bottom:8px"><span class="icon">📋</span>Proposal Readiness</div>
+    <div class="pr-bar ${statusClass}"><span style="font-size:20px">${statusIcon}</span><div><div style="font-size:13px;font-weight:700">${status}</div><div style="font-size:11px;color:var(--text-muted)">${openDecisions.length} unresolved decision${openDecisions.length!==1?'s':''} · ${openWeaknesses.length} open weakness${openWeaknesses.length!==1?'es':''} · ${missing.length} missing area${missing.length!==1?'s':''}</div></div></div>
+    ${blockersHtml?`<div style="margin-bottom:8px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px">Why</div>${blockersHtml}</div>`:''}
+    <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px">Next Steps</div>${stepsHtml}</div>
+  </div>`;
+}
+
+function renderNextBestActions(r){
+  const openW=(r.weaknesses||[]).filter(w=>w.status==='open'||!w.status);
+  const openD=(r.decision_points||[]).filter(d=>d.status==='open'||!d.status);
+  const miss=(r.missing_categories||[]);
+  const actions=[];
+  for(const dp of openD.slice(0,2))actions.push({text:`Clarify ${_inferDecisionTitle(dp.text)}: ${(dp.text||'').slice(0,60)}…`,from:'Decision'});
+  for(const w of openW.filter(w=>w.category==='risks').slice(0,2))actions.push({text:`Mitigate risk: ${(w.text||'').slice(0,70)}`,from:'Risk Weakness'});
+  for(const c of miss.slice(0,2))actions.push({text:`Provide ${c.replace(/_/g,' ')} findings — currently no coverage`,from:'Missing Area'});
+  for(const w of openW.filter(w=>w.category!=='risks').slice(0,2)){if(actions.length>=5)break;actions.push({text:`Resolve unclear finding: ${(w.text||'').slice(0,70)}`,from:'Weakness'});}
+  if(!actions.length)return'';
+  const rows=actions.slice(0,5).map((a,i)=>`<div class="nba-item"><div class="nba-num">${i+1}</div><div style="flex:1"><div style="font-size:12px;color:var(--text)">${escHtml(a.text)}</div><div style="font-size:9px;color:var(--text-muted);margin-top:2px">📎 From: ${escHtml(a.from)}</div></div></div>`).join('');
+  return`<div class="card mt8" style="border-top:2px solid var(--green-dim)">
+    <div class="card-title" style="font-size:12px;margin-bottom:6px"><span class="icon">⚡</span>Next Best Actions<span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:6px">— do these to move toward proposal-ready</span></div>
+    ${rows}
+  </div>`;
+}
+
+async function updateDecisionStatus(reviewId,decisionId,status){
+  if(!state.current)return;
+  const pid=state.current.id;
+  try{await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/decision/${decisionId}/status`,{status});}
+  catch(e){console.error('Failed to update decision status',e);}
+}
+
+async function updateWeaknessStatus(reviewId,weaknessId,status,note){
+  if(!state.current)return;
+  const pid=state.current.id;
+  try{
+    const body={};
+    if(status!==null&&status!==undefined)body.status=status;
+    if(note!==null&&note!==undefined)body.user_note=note;
+    if(!Object.keys(body).length)return;
+    if(body.user_note!==undefined&&body.status===undefined){
+      const sel=document.querySelector(`select[onchange*="'${weaknessId}'"]`);
+      if(sel)body.status=sel.value;
+    }
+    await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`,body);
+  }catch(e){console.error('Failed to update weakness',e);}
+}
+
 // ── Full detail view ──────────────────────────────────────────────────────────
-// FIX #7: set state and render (viewReviews will pick up state._v2ReviewDetail)
 async function v2ViewReviewDetail(reviewId){
   const pid=state.current?.id;if(!pid)return;
   state._v2ReviewDetail=reviewId;
   render();
 }
 
-// FIX #7: complete review detail page renderer
+// Full V1-parity review detail page renderer
 async function v2RenderReviewDetailPage(reviewId){
   const pid=state.current?.id;
   if(!pid)return viewNoProject();
-  let rev={};
-  try{
-    const r=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${reviewId}`);
-    if(r&&!r.error)rev=r;
-  }catch(e){}
+  if(!reviewId||reviewId==='undefined'){toast('Invalid review ID','err');state._v2ReviewDetail=null;render();return'';}
 
-  const qs=rev.quality_status||'pending';
+  const r=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${reviewId}`);
+  if(r.error){toast(r.error,'err');state._v2ReviewDetail=null;render();return'';}
+
+  // ── Header card ────────────────────────────────────────────────────────────
+  const qs=r.quality_status||'pending';
   const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
   const qCls=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
-  const findings=rev.findings||{};
-  const CATS=['risks','constraints','dependencies','assumptions','action_items','gaps','questions','design_gaps','recommendations'];
+  const detPbs=r.prompt_builder_state;
+  const detIsCustomised=detPbs&&((detPbs.injected_questions||[]).length>0||(detPbs.user_notes||'').trim().length>0);
+  const detPromptBadge=detIsCustomised?'<span class="tag tag-purple" style="font-size:10px">Customised</span>':'<span class="tag" style="font-size:10px">Baseline</span>';
 
-  function renderFindingSection(key,items){
-    const label=key.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
-    const icon={risks:'🔴',constraints:'⛔',dependencies:'🔗',assumptions:'💭',action_items:'✅',gaps:'🔍',questions:'❓',design_gaps:'⚠️',recommendations:'💡'}[key]||'📌';
-    const rows=(items||[]).map(i=>`<div class="findings-item">${escHtml(typeof i==='object'?(i.description||JSON.stringify(i)):String(i))}</div>`).join('');
-    return`<details open style="margin-bottom:8px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
-      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
-        padding:6px 10px;background:var(--surface2);font-size:11px;font-weight:600">
-        <span class="chevron">▶</span>${icon} ${escHtml(label)}
-        <span class="tag fs10" style="margin-left:4px">${(items||[]).length}</span>
-      </summary>
-      <div style="padding:6px 10px 8px">
-        ${rows||'<p class="fs11 c-muted" style="padding:2px 0">(none)</p>'}
-      </div>
-    </details>`;
+  let html=`<div class="card">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">🔍</span>Review ${escHtml(r.review_id)}</div>
+      <button class="btn btn-sm btn-ghost" onclick="state._v2ReviewDetail=null;render()">← Back</button>
+    </div>
+    <div class="flex gap-sm mb" style="flex-wrap:wrap">
+      <span class="tag tag-blue">Version: ${escHtml(r.version_id||'–')}</span>
+      <span class="tag">${escHtml(r.phase_id||'–')}</span>
+      <span class="tag tag-purple">${escHtml(r.persona||'–')}</span>
+      <span class="tag">${escHtml(r.ai_backend||'files_only')}</span>
+      ${r.iteration_number?`<span class="tag" style="font-weight:700">R${r.iteration_number}`+`</span>`:''}
+      ${r.previous_review_id?`<span class="tag" style="color:var(--text-dim)">Follows: ${escHtml(r.previous_review_id)}</span>`:''}
+      ${detPromptBadge}
+      <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${fmtDate(r.created_at)}</span>
+    </div>
+    <div class="flex gap-sm mb" style="flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--text-dim);font-weight:600">Decision Readiness:</span>
+      <span id="v2detailReadinessBadge" class="tag" style="font-size:11px">…</span>
+      <span id="v2detailReadinessDetail" style="font-size:11px;color:var(--text-dim)"></span>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--radius);padding:7px 10px;margin-bottom:10px;font-size:11px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+      <span style="color:var(--text-dim)">📌 <strong>Context:</strong></span>
+      <span style="color:var(--text-dim)">Version <strong>${escHtml(r.version_id||'—')}</strong></span>
+      <span style="color:var(--text-dim)">Phase <strong>${escHtml(r.phase_id||'—')}</strong></span>
+      ${r.included_files?.length?`<span style="color:var(--text-muted)">${r.included_files.length} artefact${r.included_files.length!==1?'s':''} reviewed</span>`:'<span style="color:var(--text-muted)">No artefacts recorded</span>'}
+    </div>`;
+
+  // ── Files included ────────────────────────────────────────────────────────
+  if(r.included_files?.length){
+    html+=`<div class="mb"><p class="card-section">Files Included (${r.included_files.length})</p><div class="flex gap-sm" style="flex-wrap:wrap">${r.included_files.map(f=>`<span class="tag tag-green">${escHtml(f)}</span>`).join('')}</div></div>`;
+  }else{
+    html+=`<div class="mb"><p class="card-section">Files Included</p><p class="fs11 c-muted">No file information recorded for this review.</p></div>`;
   }
 
-  const allFindingKeys=[...new Set([...CATS,...Object.keys(findings)])];
-  const findingsHtml=allFindingKeys.map(k=>renderFindingSection(k,findings[k]||[])).join('');
+  // ── Summary ───────────────────────────────────────────────────────────────
+  if(r.summary){
+    html+=`<div class="mb" style="background:var(--surface2);border-radius:var(--radius);padding:10px"><p class="fs12 c-dim">${escHtml(r.summary)}</p></div>`;
+  }
 
-  const topQs=rev.questions||[];
-  const questionsSection=renderFindingSection('questions',topQs.length?topQs:(findings.questions||[]));
+  // ── Coverage Assessment ───────────────────────────────────────────────────
+  html+=renderCoverageAssessment(r);
+  html+=`</div>`;
 
-  return`<div class="card">
-    <div class="flex-between mb">
-      <button class="btn btn-sm btn-ghost" onclick="state._v2ReviewDetail=null;render()">← Back to Reviews</button>
-      <div class="flex gap-sm">
-        <span class="tag ${qCls}">${qLabel}</span>
-        ${rev.iteration_number?`<span class="tag">R${rev.iteration_number}</span>`:''}
+  // ── Findings (with expand/collapse all) ───────────────────────────────────
+  const findings=r.findings||{};
+  if(Object.keys(findings).length){
+    html+=`<div class="card">
+      <div class="flex-between mb"><p class="card-section" style="margin:0">Findings</p>
+        <button class="btn-icon" title="Toggle expand" onclick="document.querySelectorAll('#v2DetailPage details').forEach(d=>d.open=!d.open)">⊕</button>
+      </div>`;
+    for(const[s,items]of Object.entries(findings)){
+      if(!items.length)continue;
+      html+=`<details open id="v2DetailPage">
+        <summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+          <span class="chevron">▶</span>
+          <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">${escHtml(s.replace(/_/g,' '))}</strong>
+          <span class="tag" style="margin-left:4px">${items.length}</span>
+        </summary>
+        <div class="collapse-body" style="padding-left:12px">
+          ${items.map(it=>`<div class="findings-item">${escHtml(String(it))}</div>`).join('')}
+        </div>
+      </details>`;
+    }
+    html+=`</div>`;
+  }
+
+  // ── Open Questions ─────────────────────────────────────────────────────────
+  if(r.questions?.length){
+    html+=`<div class="card"><details open>
+      <summary class="collapse-header" style="list-style:none;margin-bottom:4px">
+        <span class="chevron">▶</span>
+        <strong style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Open Questions</strong>
+        <span class="tag" style="margin-left:4px">${r.questions.length}</span>
+      </summary>
+      <div class="collapse-body" style="padding-left:12px">
+        ${r.questions.map(q=>`<div class="findings-item">❓ ${escHtml(q)}</div>`).join('')}
       </div>
-    </div>
-    <div class="card-title"><span class="icon">🔍</span>${escHtml(reviewId)}</div>
-  </div>
-  <div class="card">
-    <div class="dash-section">Metadata</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
-      ${[
-        ['Persona', rev.persona||'–'],
-        ['Version', rev.version_id||'–'],
-        ['Phase', rev.phase_id||'–'],
-        ['AI Backend', rev.ai_backend||'files_only'],
-        ['Created', fmtDate(rev.created_at)],
-        ['Quality', qLabel],
-        ['Completeness', rev.completeness_score!=null?rev.completeness_score+'%':'–'],
-        ['Total Findings', rev.total_findings!=null?String(rev.total_findings):'–'],
-      ].map(([l,v])=>`<div style="background:var(--surface2);padding:8px 10px;border-radius:var(--radius)">
-        <div class="fs10 c-muted">${l}</div>
-        <div class="fs12 fw6">${escHtml(String(v))}</div>
+    </details></div>`;
+  }
+
+  // ── Prompt details (collapsible) ──────────────────────────────────────────
+  const promptCards=[];
+  if(r.prompt_used)promptCards.push(['Prompt Used',r.prompt_used]);
+  if(r.custom_prompt)promptCards.push(['Custom Prompt',r.custom_prompt]);
+  if(promptCards.length){
+    html+=`<div class="card">`;
+    for(const[lbl,txt]of promptCards){
+      html+=`<details class="mt8"><summary class="collapse-header" style="list-style:none;margin-bottom:0"><span class="chevron">▶</span> <span class="fs12 c-accent">${lbl}</span></summary><div class="prompt-box" style="margin-top:6px">${escHtml(txt)}</div></details>`;
+    }
+    html+=`</div>`;
+  }
+
+  // ── Prompt Composition ────────────────────────────────────────────────────
+  if(detPbs){
+    const pbsQs=detPbs.injected_questions||[];
+    const pbsNotes=(detPbs.user_notes||'').trim();
+    if(pbsQs.length||pbsNotes){
+      html+=`<div class="card"><details class="mt8"><summary class="collapse-header" style="list-style:none;margin-bottom:0"><span class="chevron">▶</span> <span class="fs12 c-accent">Prompt Composition</span>${pbsQs.length?`<span class="tag tag-purple" style="font-size:9px;margin-left:6px">${pbsQs.length} SME question(s)</span>`:''}</summary><div style="padding:8px 10px;background:var(--surface2);border-radius:var(--radius);margin-top:4px">${pbsQs.length?`<p class="fs10 c-dim" style="margin-bottom:4px;font-weight:600">SME Questions included:</p>${pbsQs.map(q=>`<div class="findings-item" style="font-size:11px">❓ ${escHtml(q)}</div>`).join('')}`:''}${pbsNotes?`<p class="fs10 c-dim" style="margin-top:6px;margin-bottom:2px;font-weight:600">User Context &amp; Constraints:</p><p style="font-size:11px;white-space:pre-wrap">${escHtml(pbsNotes)}</p>`:''}</div></details></div>`;
+    }
+  }
+
+  // ── AI metadata ──────────────────────────────────────────────────────────
+  if(r.ai_metadata?.tokens_used){
+    html+=`<div class="card"><p style="font-size:11px;color:var(--text-muted)">Tokens: ${r.ai_metadata.tokens_used} · Latency: ${r.ai_metadata.latency_ms}ms · Model: ${escHtml(r.ai_metadata.model||'–')}</p></div>`;
+  }
+
+  // ── Weaknesses ─────────────────────────────────────────────────────────────
+  const weaknesses=r.weaknesses||[];
+  if(weaknesses.length){
+    const _wCatOrder=['risks','assumptions','dependencies','constraints','action_items'];
+    const _wGroups={};
+    for(const w of weaknesses){const cat=w.category||'other';(_wGroups[cat]=_wGroups[cat]||[]).push(w);}
+    const _wCatMeta={risks:{icon:'⚠️',label:'Risks'},assumptions:{icon:'💡',label:'Assumptions'},dependencies:{icon:'🔗',label:'Dependencies'},constraints:{icon:'🚧',label:'Constraints'},action_items:{icon:'📋',label:'Action Items'}};
+    const _wStatusIcon={open:'🔴',addressed:'✅',validated:'🟢',rejected:'🚫'};
+    const _wGroupKeys=Object.keys(_wGroups).sort((a,b)=>{const ai=_wCatOrder.indexOf(a),bi=_wCatOrder.indexOf(b);if(ai>=0&&bi>=0)return ai-bi;if(ai>=0)return-1;if(bi>=0)return 1;return a.localeCompare(b);});
+    const _wGroupsHtml=_wGroupKeys.map(cat=>{
+      const meta=_wCatMeta[cat]||{icon:'🔍',label:cat.replace(/_/g,' ')};
+      const items=_wGroups[cat];
+      const rows=items.map(w=>`<div class="findings-item" style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <span title="${escHtml(w.status||'open')}" style="font-size:14px;line-height:1.4;flex-shrink:0">${_wStatusIcon[w.status||'open']||'🔴'}</span>
+            <span style="flex:1;line-height:1.5">${escHtml(w.text||'')}</span>
+            <select style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);flex-shrink:0" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value,null)">
+              ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${w.status===s?' selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <textarea rows="2" placeholder="Add note…" style="width:100%;margin-top:4px;font-size:11px;resize:vertical;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;box-sizing:border-box" onblur="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',null,this.value)">${escHtml(w.user_note||'')}</textarea>
+        </div>`).join('');
+      return`<details open style="margin-bottom:6px"><summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);font-size:12px;font-weight:600"><span class="chevron" style="font-size:9px">▶</span><span>${meta.icon}</span><span>${escHtml(meta.label)}</span><span class="tag" style="margin-left:4px;font-size:9px">${items.length}</span></summary><div style="padding:0 4px">${rows}</div></details>`;
+    }).join('');
+    html+=`<div class="card mt8" style="border-top:2px solid var(--yellow)">
+      <div class="flex-between mb"><div class="card-title" style="font-size:12px"><span class="icon">⚠️</span>Weaknesses <span class="tag" style="background:var(--yellow);color:#000;font-size:10px">${weaknesses.length}</span></div></div>
+      <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">Areas where the solution lacks clarity, completeness, or confidence.</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);font-size:10px;color:var(--text-dim)">
+        <strong style="font-size:10px">Status:</strong><span>🔴 Open</span><span>✅ Addressed</span><span>🟢 Validated</span><span>🚫 Rejected</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--text-muted)">Use dropdown to track progress</span>
+      </div>
+      ${_wGroupsHtml}
+    </div>`;
+  }
+
+  // ── Missing Areas ──────────────────────────────────────────────────────────
+  const missingCats=r.missing_categories||[];
+  if(missingCats.length){
+    html+=`<div class="card mt8" style="border-top:2px solid var(--text-dim)">
+      <div class="flex-between mb"><div class="card-title" style="font-size:12px"><span class="icon">🕳️</span>Missing Areas</div></div>
+      <div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:6px">${missingCats.map(c=>`<span class="tag" style="color:var(--text-dim)">${escHtml(c)}</span>`).join('')}</div>
+      <p class="fs11 c-dim">These areas had no findings — consider addressing them in the next review.</p>
+    </div>`;
+  }
+
+  // ── Decision Points (raw table) ───────────────────────────────────────────
+  const decisionPoints=r.decision_points||[];
+  if(decisionPoints.length){
+    html+=`<div class="card mt8" style="border-top:2px solid var(--accent)">
+      <div class="flex-between mb"><div class="card-title" style="font-size:12px"><span class="icon">🎯</span>Decision Points <span class="tag" style="background:var(--accent);color:#000">${decisionPoints.length}</span></div></div>
+      ${decisionPoints.map(dp=>`<div class="findings-item" style="font-size:12px;display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap">
+        <span class="tag" style="font-size:9px">${escHtml(dp.category||'')}</span>
+        <select style="font-size:9px;padding:1px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text)" onchange="updateDecisionStatus('${escHtml(r.review_id)}','${escHtml(dp.id||'')}',this.value)">
+          ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${dp.status===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+        <span style="flex:1">${escHtml(dp.text||'')}</span>
       </div>`).join('')}
+      <p class="fs11 c-dim" style="margin-top:6px">Decisions that must be made before this review can be finalised.</p>
+    </div>`;
+  }
+
+  // ── Rich panels ────────────────────────────────────────────────────────────
+  html+=renderDecisionPointsEngine(r);
+  html+=renderReviewStrength(r);
+  html+=renderProposalReadiness(r);
+  html+=renderNextBestActions(r);
+
+  // ── Review Progression (if previous review exists) ────────────────────────
+  if(r.previous_review_id){
+    let diff=null;
+    try{const d=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${r.review_id}/diff`);if(d&&!d.error)diff=d;}catch(e){}
+    html+=renderReviewProgression(diff,r.previous_review_id);
+  }
+
+  // ── Tighten button + back ─────────────────────────────────────────────────
+  html+=`<div class="card mt8">
+    <div class="flex gap-sm" style="flex-wrap:wrap">
+      <button class="btn btn-outline btn-sm" onclick="state._v2ReviewDetail=null;render()">← Back to Reviews</button>
+      <button class="btn btn-sm" onclick="state._v2ReviewDetail=null;state._injectedQuestions=[];document.getElementById('v2PreviousReviewId')&&(document.getElementById('v2PreviousReviewId').value='${escHtml(r.review_id)}');state.tab='reviews';render()">🔁 Tighten with SME Questions</button>
     </div>
-  </div>
-  ${rev.summary?`<div class="card">
-    <div class="dash-section">Summary</div>
-    <p style="font-size:12px;color:var(--text-dim);line-height:1.7;white-space:pre-wrap">${escHtml(rev.summary)}</p>
-  </div>`:`<div class="card"><div class="dash-section">Summary</div><p class="fs11 c-muted">(none)</p></div>`}
-  <div class="card">
-    <div class="dash-section">Findings by Category</div>
-    ${findingsHtml}
-  </div>
-  ${!allFindingKeys.includes('questions')?`<div class="card"><div class="dash-section">Questions</div>${questionsSection}</div>`:''}
-  <div class="card">
-    <button class="btn btn-outline btn-sm" onclick="state._v2ReviewDetail=null;render()">← Back to Reviews</button>
   </div>`;
+
+  // ── Async: load Decision Readiness badge ──────────────────────────────────
+  setTimeout(()=>{
+    if(!r.version_id)return;
+    api('GET',`/api/projects/${pid}/hierarchy/versions/${r.version_id}/readiness`).then(rd=>{
+      const badge=document.getElementById('v2detailReadinessBadge');
+      const detail=document.getElementById('v2detailReadinessDetail');
+      if(!badge)return;
+      const level=rd.level||'';
+      const icon=level==='High'?'🟢':level==='Medium'?'🟡':'🔴';
+      badge.textContent=`${icon} ${level||'–'}`;
+      if(detail)detail.textContent=level?`(${rd.open_decisions} open decisions · ${rd.open_weaknesses} open weaknesses)`:'';
+    }).catch(()=>{const b=document.getElementById('v2detailReadinessBadge');if(b)b.textContent='–';});
+  },100);
+
+  return html;
 }
 </script>
 
@@ -2003,54 +2435,69 @@ async function viewAdmin(){
   try{
     const personasResp=await api('GET','/api/personas');
     const allRoles=personasResp.personas||personasResp.roles||[];
+    if(!allRoles.length)throw new Error('No roles returned from /api/personas');
     const savedPrompts=config.persona_prompts||{};
     const seenGroups=new Map();
-    for(const r of allRoles){
-      if(r.group_id&&!seenGroups.has(r.group_id)){
-        seenGroups.set(r.group_id,{
-          group_id:r.group_id,
-          group_name:r.group_name||r.group_id,
-          roles:(allRoles.filter(x=>x.group_id===r.group_id).map(x=>x.name)),
-          prompt_template:r.prompt_template||'',
+    for(const role of allRoles){
+      const gid=role.group_id;
+      if(gid&&!seenGroups.has(gid)){
+        seenGroups.set(gid,{
+          group_id:gid,
+          group_name:role.group_name||gid,
+          roles:allRoles.filter(x=>x.group_id===gid).map(x=>x.name),
+          prompt_template:role.prompt_template||'',
         });
       }
     }
-    const groupRows=[...seenGroups.values()].map(g=>{
+    if(!seenGroups.size)throw new Error('No persona groups found');
+
+    // Build groupRows using string concat (not nested template literals) to avoid
+    // any risk of prompt text containing characters that break JS template parsing.
+    let groupRows='';
+    for(const g of seenGroups.values()){
       const hasOverride=!!(savedPrompts[g.group_id]&&savedPrompts[g.group_id].trim());
       const currentVal=hasOverride?savedPrompts[g.group_id]:g.prompt_template;
+      // Encode newlines as &#10; so multiline prompt text is safe in data attributes
+      const safeDefault=escHtml(g.prompt_template).replace(/\n/g,'&#10;');
+      const safeVal=escHtml(currentVal);
       const taId='pp_'+g.group_id;
-      return`<div style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span style="font-size:12px;font-weight:600">${escHtml(g.group_name)}</span>
-          <span style="font-size:10px;color:var(--text-muted)">(${g.roles.map(escHtml).join(', ')})</span>
-          ${hasOverride?'<span class="tag tag-purple" style="font-size:9px">Custom</span>':'<span class="tag" style="font-size:9px">YAML default</span>'}
-          ${hasOverride?`<button class="btn btn-xs btn-ghost" style="font-size:10px" onclick="resetPersonaPrompt('${g.group_id}')">Reset to default</button>`:''}
-        </div>
-        <textarea id="${taId}" rows="8"
-          style="width:100%;background:var(--surface2);border:1px solid ${hasOverride?'var(--purple)':'var(--border)'};
-            border-radius:var(--radius);color:var(--text);font-size:11px;font-family:monospace;
-            padding:8px;resize:vertical;line-height:1.5"
-          data-group-id="${g.group_id}"
-          data-yaml-default="${escHtml(g.prompt_template)}"
-          placeholder="Enter custom base prompt for this persona group…"
-        >${escHtml(currentVal)}</textarea>
-      </div>`;
-    }).join('');
-    personaPromptsCard=`<div class="card">
-      <div class="card-title mb"><span class="icon">✏️</span>Persona Base Prompts
-        <span class="tag tag-blue" style="margin-left:6px;font-size:10px">Admin editable</span>
-      </div>
-      <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
-        Edit the base prompt for each persona group. Changes take effect on next review run.
-      </p>
-      ${groupRows}
-      <div class="flex gap-sm mt">
-        <button class="btn" onclick="savePersonaPrompts()">Save Persona Prompts</button>
-      </div>
-      <div id="personaPromptsResult" class="mt"></div>
-    </div>`;
-  }catch(e){personaPromptsCard='';}
+      const overrideBadge=hasOverride
+        ?'<span class="tag tag-purple" style="font-size:9px">Custom</span>'
+        +'<button class="btn btn-xs btn-ghost" style="font-size:10px" onclick="resetPersonaPrompt(\''+escHtml(g.group_id)+'\')">Reset to default</button>'
+        :'<span class="tag" style="font-size:9px">YAML default</span>';
+      const borderColor=hasOverride?'var(--purple)':'var(--border)';
+      groupRows+='<div style="margin-bottom:16px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        +'<span style="font-size:12px;font-weight:600">'+escHtml(g.group_name)+'</span>'
+        +'<span style="font-size:10px;color:var(--text-muted)">('+g.roles.map(n=>escHtml(n)).join(', ')+')</span>'
+        +overrideBadge
+        +'</div>'
+        +'<textarea id="'+taId+'" rows="8"'
+        +' style="width:100%;background:var(--surface2);border:1px solid '+borderColor+';border-radius:var(--radius);color:var(--text);font-size:11px;font-family:monospace;padding:8px;resize:vertical;line-height:1.5"'
+        +' data-group-id="'+escHtml(g.group_id)+'"'
+        +' data-yaml-default="'+safeDefault+'"'
+        +' placeholder="Enter custom base prompt for this persona group…"'
+        +'>'+safeVal+'</textarea>'
+        +'</div>';
+    }
 
+    personaPromptsCard='<div class="card">'
+      +'<div class="card-title mb"><span class="icon">✏️</span>Persona Base Prompts'
+      +'<span class="tag tag-blue" style="margin-left:6px;font-size:10px">Admin editable</span></div>'
+      +'<p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">'
+      +'Edit the base prompt for each persona group. Changes take effect on the next review run. '
+      +'Click <strong>Save Persona Prompts</strong> to persist. Use <em>Reset to default</em> to restore the YAML prompt.'
+      +'</p>'
+      +groupRows
+      +'<div class="flex gap-sm mt">'
+      +'<button class="btn" onclick="savePersonaPrompts()">Save Persona Prompts</button>'
+      +'</div>'
+      +'<div id="personaPromptsResult" class="mt"></div>'
+      +'</div>';
+  }catch(e){
+    console.error('Admin: persona prompts card failed:', e);
+    personaPromptsCard='<div class="card"><div class="card-title mb"><span class="icon">✏️</span>Persona Base Prompts</div><p style="color:var(--red);font-size:12px">⚠ Failed to load persona prompts: '+escHtml(String(e.message||e))+'</p></div>';
+  }
   return healthCard+storageCard+configCard+personaPromptsCard+lifecycleCard+suggestCard;
 }
 
@@ -2080,7 +2527,9 @@ async function savePersonaPrompts(){
   const persona_prompts={};
   for(const ta of tas){
     const gid=ta.dataset.groupId||ta.getAttribute('data-group-id');
-    const yamlDefault=ta.dataset.yamlDefault||ta.getAttribute('data-yaml-default')||'';
+    // Decode &#10; back to newlines for comparison
+    const rawDefault=ta.getAttribute('data-yaml-default')||'';
+    const yamlDefault=rawDefault.replace(/&#10;/g,'\n').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
     const val=ta.value;
     if(val.trim()&&val.trim()!==yamlDefault.trim())persona_prompts[gid]=val;
     else persona_prompts[gid]=null;
@@ -2089,7 +2538,7 @@ async function savePersonaPrompts(){
   const el=document.getElementById('personaPromptsResult');
   if(r.config){
     toast('Persona prompts saved');
-    if(el)el.innerHTML='<p style="color:var(--green);font-size:12px">✓ Saved</p>';
+    if(el)el.innerHTML='<p style="color:var(--green);font-size:12px">✓ Saved — changes apply on next review run.</p>';
     setTimeout(()=>render(),800);
   }else{
     toast(r.error||'Save failed','err');
@@ -2100,8 +2549,10 @@ async function savePersonaPrompts(){
 function resetPersonaPrompt(groupId){
   const ta=document.getElementById('pp_'+groupId);
   if(!ta)return;
-  const yamlDefault=ta.dataset.yamlDefault||ta.getAttribute('data-yaml-default')||'';
-  ta.value=yamlDefault;
+  // data-yaml-default has &#10; encoded newlines — decode before restoring
+  const raw=ta.getAttribute('data-yaml-default')||'';
+  const decoded=raw.replace(/&#10;/g,'\n').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  ta.value=decoded;
   ta.style.borderColor='var(--border)';
   toast('Reset to YAML default — click Save Persona Prompts to persist');
 }
