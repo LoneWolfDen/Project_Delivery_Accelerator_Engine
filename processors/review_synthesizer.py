@@ -1,0 +1,1207 @@
+"""Review Synthesizer — PDAE-MS-01 Sprint 1.
+
+Standalone synthesis engine.  No imports from proposal_generator,
+handlers, services, or DB.  Safe to import at any point without
+triggering side-effects.
+
+Public API (Sprint 1)
+─────────────────────
+  normalize_review_findings(review)          -> List[NormalizedItem]
+  deduplicate_normalized(items, score_map)   -> List[NormalizedItem]
+  build_reconciliation_prompt(deduped, scope)-> str
+  parse_reconciliation_response(raw, ...)    -> ReconciliationResult
+  synthesize_reviews(anchor, supplementals,
+                     version_scope,
+                     ai_backend)             -> ReconciliationResult
+  extract_scope_themes(scope, findings)      -> List[str]
+  merge_decision_points(reviews)             -> List[Dict]
+
+Internal helpers (prefixed _) are not part of the public contract.
+
+Caching
+───────
+  Normalisation and deduplication results are cached in module-level
+  dicts keyed by review_id / frozenset(review_ids).
+  Cache is in-memory only — cleared on process restart.
+  LLM reconciliation is NEVER cached.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+import string
+from datetime import datetime, timezone
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
+
+from models.proposal import (
+    ConflictEntry,
+    NormalizedItem,
+    ReconciliationResult,
+)
+
+logger = logging.getLogger(__name__)
+
+# ── Constants ────────────────────────────────────────────────────────────────
+
+FINDING_CATEGORIES = [
+    "risks",
+    "assumptions",
+    "dependencies",
+    "constraints",
+    "action_items",
+]
+
+_DEDUP_THRESHOLD = 0.75  # Jaccard similarity above which items are duplicates
+
+# Scope-theme extraction: known platform / tech keywords kept as single tokens
+_PLATFORM_KEYWORDS = {
+    "azure", "aws", "gcp", "google cloud", "salesforce", "servicenow",
+    "kubernetes", "docker", "terraform", "jenkins", "gitlab", "github",
+    "oracle", "sap", "dynamics", "sharepoint", "confluence", "jira",
+    "postgresql", "mysql", "mongodb", "redis", "kafka", "rabbitmq",
+    "datadog", "splunk", "grafana", "prometheus",
+}
+
+# ── Module-level caches ──────────────────────────────────────────────────────
+
+_normalise_cache: Dict[str, List[NormalizedItem]] = {}
+_dedup_cache: Dict[FrozenSet[str], List[NormalizedItem]] = {}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S1-01  Normalise review findings
+# ────────────────────────────────────────────────────────────────────────────
+
+def normalize_review_findings(review: Any) -> List[NormalizedItem]:
+    """Flatten a single review's findings into typed, provenance-tagged items.
+
+    Args:
+        review: A Review dataclass instance (or duck-typed object with
+                .review_id, .persona, .findings attributes).
+
+    Returns:
+        List[NormalizedItem] — one item per non-empty finding string.
+        Empty list when findings is absent or empty.
+    """
+    review_id: str = getattr(review, "review_id", "") or ""
+    persona: str = getattr(review, "persona", "") or ""
+    findings: Dict[str, Any] = getattr(review, "findings", None) or {}
+
+    # Cache check
+    if review_id and review_id in _normalise_cache:
+        return _normalise_cache[review_id]
+
+    items: List[NormalizedItem] = []
+
+    for category in FINDING_CATEGORIES:
+        raw_list = findings.get(category, [])
+        if not isinstance(raw_list, list):
+            continue
+        for raw in raw_list:
+            text = raw if isinstance(raw, str) else str(raw)
+            text = text.strip()
+            if not text:
+                continue
+            dedup_key = _make_dedup_key(text)
+            if not dedup_key:
+                continue
+            items.append(NormalizedItem(
+                text=text,
+                category=category,
+                review_id=review_id,
+                persona=persona,
+                dedup_key=dedup_key,
+            ))
+
+    if review_id:
+        _normalise_cache[review_id] = items
+
+    return items
+
+
+def _make_dedup_key(text: str) -> str:
+    """Lowercase, strip punctuation, collapse whitespace.
+
+    AC3: 'Risk: Database access  may fail.' -> 'risk database access may fail'
+    """
+    lowered = text.lower()
+    # Remove punctuation except spaces
+    no_punct = lowered.translate(str.maketrans(string.punctuation, " " * len(string.punctuation)))
+    collapsed = " ".join(no_punct.split())
+    return collapsed
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S1-02  Deterministic deduplication
+# ────────────────────────────────────────────────────────────────────────────
+
+def deduplicate_normalized(
+    items: List[NormalizedItem],
+    review_completeness_map: Optional[Dict[str, int]] = None,
+) -> List[NormalizedItem]:
+    """Collapse near-identical findings using Jaccard similarity.
+
+    Args:
+        items:                    Normalised items spanning one or more reviews.
+        review_completeness_map:  {review_id: completeness_score}.  Used to
+                                  prefer items from higher-quality reviews on
+                                  dedup collision.  Defaults to equal priority.
+
+    Returns:
+        Deduplicated list.  Items from different categories are never merged.
+        Order within each category is preserved (first survivor wins unless a
+        later item comes from a higher-quality review).
+    """
+    score_map = review_completeness_map or {}
+
+    # Build cache key from the sorted unique review IDs present in items
+    review_ids_in = frozenset(i.review_id for i in items)
+    cache_key: FrozenSet[str] = frozenset(
+        f"{i.review_id}:{i.category}:{i.dedup_key}" for i in items
+    )
+    if cache_key in _dedup_cache:
+        return _dedup_cache[cache_key]
+
+    # Process per category to avoid cross-category merges (AC4)
+    result: List[NormalizedItem] = []
+    by_category: Dict[str, List[NormalizedItem]] = {}
+    for item in items:
+        by_category.setdefault(item.category, []).append(item)
+
+    for category in FINDING_CATEGORIES:
+        cat_items = by_category.get(category, [])
+        survivors = _dedup_category(cat_items, score_map)
+        result.extend(survivors)
+
+    _dedup_cache[cache_key] = result
+    return result
+
+
+def _dedup_category(
+    items: List[NormalizedItem],
+    score_map: Dict[str, int],
+) -> List[NormalizedItem]:
+    """Dedup within one category."""
+    survivors: List[NormalizedItem] = []
+
+    for candidate in items:
+        replaced = False
+        for idx, existing in enumerate(survivors):
+            sim = _jaccard_similarity(candidate.dedup_key, existing.dedup_key)
+            if sim >= _DEDUP_THRESHOLD:
+                # Keep the item from the higher-quality review
+                cand_score = score_map.get(candidate.review_id, 0)
+                exist_score = score_map.get(existing.review_id, 0)
+                if cand_score > exist_score:
+                    survivors[idx] = candidate
+                # Equal score: keep existing (first/older wins — stable)
+                replaced = True
+                break
+        if not replaced:
+            survivors.append(candidate)
+
+    return survivors
+
+
+def _jaccard_similarity(a: str, b: str) -> float:
+    """Token-level Jaccard similarity between two dedup_key strings."""
+    if not a and not b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    set_a = set(a.split())
+    set_b = set(b.split())
+    intersection = set_a & set_b
+    union = set_a | set_b
+    if not union:
+        return 0.0
+    return len(intersection) / len(union)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S1-03  Build and parse reconciliation prompt
+# ────────────────────────────────────────────────────────────────────────────
+
+def build_reconciliation_prompt(
+    deduped: List[NormalizedItem],
+    version_scope: str,
+) -> str:
+    """Build the structured reconciliation prompt for the LLM.
+
+    Args:
+        deduped:        Deduplicated NormalizedItems (all categories).
+        version_scope:  Version scope text — truncated to 800 chars.
+
+    Returns:
+        Formatted prompt string ready to send to the LLM.
+    """
+    scope_trunc = (version_scope or "")[:800]
+
+    # Group by category for prompt formatting
+    by_cat: Dict[str, List[NormalizedItem]] = {}
+    for item in deduped:
+        by_cat.setdefault(item.category, []).append(item)
+
+    def _format_cat(cat: str) -> str:
+        cat_items = by_cat.get(cat, [])
+        if not cat_items:
+            return "(none)"
+        lines = []
+        for it in cat_items[:15]:  # token-budget guard: max 15 per category
+            lines.append(f"  [{it.review_id} / {it.persona}] {it.text}")
+        return "\n".join(lines)
+
+    review_ids = sorted({i.review_id for i in deduped})
+    n = len(review_ids)
+
+    prompt = f"""You are a senior delivery consultant reconciling findings from {n} review(s) of the same intelligence version into a single coherent proposal-ready set.
+
+Source reviews: {', '.join(review_ids)}
+
+DEDUPLICATED FINDINGS (with review provenance):
+
+RISKS:
+{_format_cat('risks')}
+
+ASSUMPTIONS:
+{_format_cat('assumptions')}
+
+DEPENDENCIES:
+{_format_cat('dependencies')}
+
+CONSTRAINTS:
+{_format_cat('constraints')}
+
+ACTION ITEMS:
+{_format_cat('action_items')}
+
+VERSION SCOPE (max 800 chars):
+{scope_trunc}
+
+Tasks:
+1. For each category produce one merged list. Where items overlap in substance, keep the most specific and complete version. Do not invent new items.
+2. Flag genuine contradictions as CONFLICT entries with a plain-English description.
+3. Provide brief reconciliation notes explaining key merge decisions.
+
+Output (use EXACTLY these headers, no markdown):
+---RECONCILED_RISKS---
+---RECONCILED_ASSUMPTIONS---
+---RECONCILED_DEPENDENCIES---
+---RECONCILED_CONSTRAINTS---
+---RECONCILED_ACTION_ITEMS---
+---CONFLICTS---
+---RECONCILIATION_NOTES---"""
+
+    return prompt
+
+
+def parse_reconciliation_response(
+    raw: str,
+    source_ids: List[str],
+    anchor_id: str,
+    backend: str,
+) -> ReconciliationResult:
+    """Parse the LLM reconciliation response into a ReconciliationResult.
+
+    Missing sections → empty list (not an error).
+    Empty raw response → ReconciliationResult with all empty fields.
+    """
+    raw = raw or ""
+
+    category_map = {
+        "risks":        "RECONCILED_RISKS",
+        "assumptions":  "RECONCILED_ASSUMPTIONS",
+        "dependencies": "RECONCILED_DEPENDENCIES",
+        "constraints":  "RECONCILED_CONSTRAINTS",
+        "action_items": "RECONCILED_ACTION_ITEMS",
+    }
+
+    reconciled: Dict[str, List[str]] = {}
+    for cat, header in category_map.items():
+        reconciled[cat] = _extract_section_lines(raw, header)
+
+    # Parse conflicts
+    conflict_lines = _extract_section_lines(raw, "CONFLICTS")
+    contradictions: List[ConflictEntry] = []
+    for line in conflict_lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Each non-empty line is one conflict description
+        contradictions.append(ConflictEntry(
+            category="general",
+            description=line,
+            review_ids=list(source_ids),
+        ))
+
+    # Overlaps resolved = lines that appeared in multiple reviews but were merged
+    # (we surface reconciliation_notes for this; overlaps_resolved is a bonus field)
+    notes_lines = _extract_section_lines(raw, "RECONCILIATION_NOTES")
+    reconciliation_notes = "\n".join(notes_lines).strip()
+
+    return ReconciliationResult(
+        reconciled_findings=reconciled,
+        overlaps_resolved=[],      # populated by LLM notes — not separately parsed
+        contradictions=contradictions,
+        reconciliation_notes=reconciliation_notes,
+        source_review_ids=list(source_ids),
+        anchor_review_id=anchor_id,
+        generated_by=backend,
+        generated_at=_now_iso(),
+    )
+
+
+def _extract_section_lines(raw: str, header: str) -> List[str]:
+    """Extract non-empty lines between ---HEADER--- and the next ---*--- marker."""
+    pattern = rf"---{re.escape(header)}---\s*(.*?)(?=---[A-Z_]+---|$)"
+    match = re.search(pattern, raw, re.DOTALL)
+    if not match:
+        return []
+    block = match.group(1).strip()
+    lines = [ln.strip().lstrip("- ").strip() for ln in block.splitlines()]
+    return [ln for ln in lines if ln]
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S1-04  synthesize_reviews() orchestrator
+# ────────────────────────────────────────────────────────────────────────────
+
+def synthesize_reviews(
+    anchor_review: Any,
+    supplemental_reviews: List[Any],
+    version_scope: str,
+    ai_backend: str = "files_only",
+) -> ReconciliationResult:
+    """Orchestrate: normalise → dedupe → LLM reconcile (or deterministic fallback).
+
+    Args:
+        anchor_review:        The active Review (mandatory anchor).
+        supplemental_reviews: Additional Review objects from the same version.
+                              quality_status is NOT checked — user is trusted.
+        version_scope:        scope text from the hierarchy Version.
+        ai_backend:           Backend name.  'files_only' → deterministic only.
+
+    Returns:
+        ReconciliationResult
+
+    Raises:
+        ValueError: if any supplemental review has a different version_id
+                    than the anchor.
+    """
+    anchor_version_id: str = getattr(anchor_review, "version_id", "") or ""
+    anchor_id: str = getattr(anchor_review, "review_id", "") or ""
+
+    # Validate version_id consistency
+    for sup in supplemental_reviews:
+        sup_version_id = getattr(sup, "version_id", "") or ""
+        sup_review_id = getattr(sup, "review_id", "") or ""
+        if anchor_version_id and sup_version_id and sup_version_id != anchor_version_id:
+            raise ValueError(
+                f"Supplemental review '{sup_review_id}' belongs to version "
+                f"'{sup_version_id}', but anchor review '{anchor_id}' belongs to "
+                f"version '{anchor_version_id}'. All reviews must be from the same version."
+            )
+
+    all_reviews = [anchor_review] + list(supplemental_reviews)
+    source_ids = [getattr(r, "review_id", "") for r in all_reviews]
+
+    # Build completeness score map for dedup tie-breaking
+    score_map: Dict[str, int] = {
+        getattr(r, "review_id", ""): getattr(r, "completeness_score", 0)
+        for r in all_reviews
+    }
+
+    # Step 3: Normalise each review
+    all_items: List[NormalizedItem] = []
+    for review in all_reviews:
+        all_items.extend(normalize_review_findings(review))
+
+    # Step 4: Deterministic dedup
+    deduped = deduplicate_normalized(all_items, score_map)
+
+    # Steps 5a (files_only): deterministic union — skip LLM
+    if ai_backend == "files_only":
+        return _deterministic_reconcile(deduped, source_ids, anchor_id)
+
+    # Step 5b (AI): call LLM
+    try:
+        return _llm_reconcile(deduped, version_scope, source_ids, anchor_id, ai_backend)
+    except Exception as exc:
+        logger.warning(
+            "LLM reconciliation failed (%s) — falling back to deterministic. Error: %s",
+            ai_backend, exc,
+        )
+        result = _deterministic_reconcile(deduped, source_ids, anchor_id)
+        result.generated_by = f"{ai_backend}_fallback"
+        return result
+
+
+def _deterministic_reconcile(
+    deduped: List[NormalizedItem],
+    source_ids: List[str],
+    anchor_id: str,
+) -> ReconciliationResult:
+    """Deterministic reconciliation: union of deduped items per category."""
+    reconciled: Dict[str, List[str]] = {cat: [] for cat in FINDING_CATEGORIES}
+    for item in deduped:
+        reconciled[item.category].append(item.text)
+
+    return ReconciliationResult(
+        reconciled_findings=reconciled,
+        overlaps_resolved=[],
+        contradictions=[],
+        reconciliation_notes="",
+        source_review_ids=list(source_ids),
+        anchor_review_id=anchor_id,
+        generated_by="deterministic",
+        generated_at=_now_iso(),
+    )
+
+
+def _llm_reconcile(
+    deduped: List[NormalizedItem],
+    version_scope: str,
+    source_ids: List[str],
+    anchor_id: str,
+    ai_backend: str,
+) -> ReconciliationResult:
+    """Call the LLM and parse its response."""
+    from ai_backends import get_backend  # deferred import — no side-effects at module load
+
+    prompt = build_reconciliation_prompt(deduped, version_scope)
+    backend = get_backend(ai_backend)
+
+    system_prompt = (
+        "You are a senior delivery consultant. "
+        "Reconcile the provided review findings into a clean, proposal-ready set. "
+        "Be concise. Do not invent items not present in the source findings."
+    )
+
+    response = backend.generate(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=0.2,
+        max_tokens=2500,
+    )
+
+    if not response.success:
+        raise RuntimeError(f"LLM call failed: {response.error}")
+
+    return parse_reconciliation_response(response.text, source_ids, anchor_id, ai_backend)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S1-05  Scope theme extraction
+# ────────────────────────────────────────────────────────────────────────────
+
+def extract_scope_themes(
+    version_scope: str,
+    findings: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """Extract named deliverables, systems, and workstreams.
+
+    Sources:
+      1. version_scope text (capitalised noun phrases ≥ 2 words, platform names,
+         quoted strings)
+      2. action_items from findings
+
+    Returns:
+        Lowercase, deduplicated list of themes.  Empty list on empty input.
+    """
+    scope = version_scope or ""
+    findings = findings or {}
+    action_items: List[str] = [
+        it if isinstance(it, str) else str(it)
+        for it in findings.get("action_items", [])
+    ]
+
+    raw_themes: List[str] = []
+
+    # 1. Quoted strings in scope
+    raw_themes.extend(re.findall(r'"([^"]{4,})"', scope))
+    raw_themes.extend(re.findall(r"'([^']{4,})'", scope))
+
+    # 2. Known platform keywords in scope (case-insensitive)
+    scope_lower = scope.lower()
+    for kw in _PLATFORM_KEYWORDS:
+        if kw in scope_lower:
+            raw_themes.append(kw)
+
+    # 3. Capitalised noun phrases ≥ 2 consecutive Title-Case words in scope
+    cap_phrases = re.findall(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b', scope)
+    raw_themes.extend(cap_phrases)
+
+    # 4. Known platform keywords in action_items
+    for ai_text in action_items:
+        ai_lower = ai_text.lower()
+        for kw in _PLATFORM_KEYWORDS:
+            if kw in ai_lower:
+                raw_themes.append(kw)
+        # Capitalised phrases in action items
+        cap_in_action = re.findall(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b', ai_text)
+        raw_themes.extend(cap_in_action)
+
+    # Normalise and deduplicate
+    seen: set = set()
+    result: List[str] = []
+    for theme in raw_themes:
+        norm = theme.strip().lower()
+        if norm and norm not in seen:
+            seen.add(norm)
+            result.append(norm)
+
+    return result
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S1-06  Merge decision points
+# ────────────────────────────────────────────────────────────────────────────
+
+def merge_decision_points(selected_reviews: List[Any]) -> List[Dict[str, Any]]:
+    """Collect and deduplicate decision_points across selected reviews.
+
+    Anchor review's version of a duplicate takes precedence on status.
+    The first review in the list is treated as the anchor.
+
+    Args:
+        selected_reviews: List of Review objects (anchor first).
+
+    Returns:
+        List of dicts with keys: text, category, status, source_review_id.
+    """
+    if not selected_reviews:
+        return []
+
+    anchor_id: str = getattr(selected_reviews[0], "review_id", "") or ""
+    merged: List[Dict[str, Any]] = []
+    seen_keys: List[str] = []  # dedup_key for each survivor
+
+    # Anchor first, then supplementals — so anchor wins on ties
+    for review in selected_reviews:
+        review_id = getattr(review, "review_id", "") or ""
+        dps = getattr(review, "decision_points", None) or []
+
+        for dp in dps:
+            if not isinstance(dp, dict):
+                continue
+            text = dp.get("text", "") or ""
+            if not text:
+                continue
+            key = _make_dedup_key(text)
+
+            # Check for near-duplicate
+            is_dup = False
+            for idx, existing_key in enumerate(seen_keys):
+                if _jaccard_similarity(key, existing_key) >= _DEDUP_THRESHOLD:
+                    # Duplicate found — anchor wins on status
+                    if review_id == anchor_id:
+                        merged[idx]["status"] = dp.get("status", "open")
+                        merged[idx]["source_review_id"] = anchor_id
+                    is_dup = True
+                    break
+
+            if not is_dup:
+                seen_keys.append(key)
+                merged.append({
+                    "text":             text,
+                    "category":         dp.get("category", "general"),
+                    "status":           dp.get("status", "open"),
+                    "source_review_id": review_id,
+                })
+
+    return merged
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Prompt builders for later sprints (defined here for testability)
+# ────────────────────────────────────────────────────────────────────────────
+
+# ────────────────────────────────────────────────────────────────────────────
+# S3-01  Proposal Coverage (deterministic)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Signal words used to classify items into coverage domains.
+# Lists are ordered by specificity — first match wins for gap_notes generation.
+_COVERAGE_SIGNALS: Dict[str, List[str]] = {
+    "scope":               ["scope", "deliver", "objective", "requirement",
+                            "in scope", "out of scope", "feature", "capability"],
+    "architecture":        ["architecture", "design", "integration", "platform",
+                            "infrastructure", "api", "system", "component",
+                            "service", "database", "cloud", "network"],
+    "delivery":            ["timeline", "phase", "milestone", "sprint", "delivery",
+                            "schedule", "deadline", "roadmap", "release", "iteration"],
+    "security_compliance": ["security", "compliance", "gdpr", "auth", "encryption",
+                            "audit", "access", "iso", "pen test", "vulnerability",
+                            "identity", "rbac", "privilege", "certificate"],
+    "operations":          ["monitor", "sla", "runbook", "support", "handover",
+                            "alert", "incident", "operations", "observability",
+                            "logging", "backup", "disaster recovery", "on-call"],
+    "commercials":         ["budget", "cost", "commercial", "pricing", "contract",
+                            "margin", "invoic", "payment", "licence", "subscription",
+                            "commercia", "revenue", "spend"],
+}
+
+# Human-readable domain labels for gap_notes messages.
+_DOMAIN_LABELS: Dict[str, str] = {
+    "scope":               "Scope",
+    "architecture":        "Architecture",
+    "delivery":            "Delivery",
+    "security_compliance": "Security / Compliance",
+    "operations":          "Operations",
+    "commercials":         "Commercials",
+}
+
+
+def compute_proposal_coverage(
+    reconciliation: Optional[Any],
+    review_pass: Optional[Any],
+    scope_themes: List[str],
+) -> "ProposalCoverage":
+    """Compute six-domain coverage map deterministically.
+
+    Sources:
+      - reconciliation.reconciled_findings (merged findings from all selected reviews)
+        OR a plain dict with the same structure when reconciliation is None
+        (single-review path uses doc findings directly)
+      - review_pass  — a ProposalReviewPass dataclass or plain dict with per-domain
+        still_weak / may_block_signoff lists
+      - scope_themes — list of extracted scope theme strings
+
+    Status rules (spec §11):
+      Addressed         — ≥2 matched items AND no blocker for this domain in review_pass
+      Partial           — 1 matched item, OR matched items but domain flagged in still_weak
+      Not Yet Addressed — 0 matched items
+
+    Always returns a fully-populated ProposalCoverage.  Deterministic.
+    """
+    from models.proposal import ProposalCoverage, CoverageDomain
+    from datetime import datetime, timezone as _tz
+
+    computed_at = datetime.now(_tz.utc).isoformat()
+
+    # Flatten all text from findings for signal matching
+    findings: Dict[str, List[str]] = {}
+    if reconciliation is not None:
+        if hasattr(reconciliation, "reconciled_findings"):
+            findings = reconciliation.reconciled_findings or {}
+        elif isinstance(reconciliation, dict):
+            findings = reconciliation.get("reconciled_findings", {})
+
+    all_items: List[str] = []
+    for cat_items in findings.values():
+        if isinstance(cat_items, list):
+            all_items.extend(str(it) for it in cat_items if it)
+
+    # Build per-domain still_weak and blocker sets from review_pass
+    rp_weak:    Dict[str, List[str]] = {}
+    rp_blockers: Dict[str, List[str]] = {}
+    if review_pass is not None:
+        for domain in _COVERAGE_SIGNALS:
+            if hasattr(review_pass, domain):
+                dom_obj = getattr(review_pass, domain)
+                rp_weak[domain]    = list(getattr(dom_obj, "still_weak", []) or [])
+                rp_blockers[domain] = list(getattr(dom_obj, "may_block_signoff", []) or [])
+            elif isinstance(review_pass, dict):
+                dom_dict = review_pass.get(domain, {}) or {}
+                rp_weak[domain]    = list(dom_dict.get("still_weak", []) or [])
+                rp_blockers[domain] = list(dom_dict.get("may_block_signoff", []) or [])
+
+    def _assess_domain(domain: str) -> CoverageDomain:
+        signals = _COVERAGE_SIGNALS[domain]
+        label   = _DOMAIN_LABELS[domain]
+
+        # Find items (from findings) that match domain signals
+        matched: List[str] = [
+            item for item in all_items
+            if any(sig in item.lower() for sig in signals)
+        ]
+
+        # Also check scope_themes for domain relevance
+        theme_matches: List[str] = [
+            t for t in scope_themes
+            if any(sig in t.lower() for sig in signals)
+        ]
+        matched_themes = list(dict.fromkeys(theme_matches))  # deduplicate, preserve order
+
+        count = len(matched)
+        has_blocker = bool(rp_blockers.get(domain))
+        is_weak     = bool(rp_weak.get(domain))
+
+        if count == 0:
+            status   = "Not Yet Addressed"
+            gap_notes = f"No {label} content found in proposal findings."
+        elif count == 1:
+            status   = "Partial"
+            gap_notes = f"Only one {label} item identified — needs further development."
+        elif is_weak:
+            status   = "Partial"
+            gap_notes = (
+                f"{label} has items but quality assessment flagged weaknesses: "
+                + "; ".join(rp_weak[domain][:2])
+            )
+        else:
+            # count >= 2 and not weak
+            if has_blocker:
+                status   = "Partial"
+                gap_notes = (
+                    f"{label} has coverage but sign-off blockers remain: "
+                    + "; ".join(rp_blockers[domain][:2])
+                )
+            else:
+                status    = "Addressed"
+                gap_notes = ""
+
+        return CoverageDomain(
+            status=status,
+            matched_themes=matched_themes,
+            gap_notes=gap_notes,
+        )
+
+    return ProposalCoverage(
+        scope=_assess_domain("scope"),
+        architecture=_assess_domain("architecture"),
+        delivery=_assess_domain("delivery"),
+        security_compliance=_assess_domain("security_compliance"),
+        operations=_assess_domain("operations"),
+        commercials=_assess_domain("commercials"),
+        source_theme_count=len(scope_themes),
+        computed_at=computed_at,
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S3-02  Decision Summary (LLM + deterministic fallback)
+# ────────────────────────────────────────────────────────────────────────────
+
+# Blocker keywords for deterministic classification
+_DS_BLOCKER_KEYWORDS = frozenset([
+    "must", "required", "block", "cannot proceed", "prevent",
+    "blocks", "blocker", "blocking", "prerequisite", "mandatory",
+    "sign-off required", "approval required",
+])
+
+
+def _run_decision_summary(
+    merged_decisions: List[Dict[str, Any]],
+    reconciliation_notes: str,
+    selected_review_ids: List[str],
+    ai_backend: str,
+) -> "DecisionSummary":
+    """Classify merged decision points into confirmed / open / sign-off blockers.
+
+    AI path:  single LLM call → structured three-bucket output.
+    files_only: deterministic classification using decision_point status field
+                + keyword-based blocker detection.
+
+    Always returns a fully-populated DecisionSummary.  Never raises.
+    """
+    from models.proposal import DecisionSummary, DecisionItem
+    from datetime import datetime, timezone as _tz
+
+    generated_at = datetime.now(_tz.utc).isoformat()
+
+    if ai_backend != "files_only":
+        try:
+            result = _decision_summary_ai(
+                merged_decisions, reconciliation_notes,
+                selected_review_ids, ai_backend, generated_at,
+            )
+            if result is not None:
+                return result
+        except Exception as exc:
+            logger.warning(
+                "Decision summary LLM call failed (%s): %s — using deterministic fallback",
+                ai_backend, exc,
+            )
+
+    return _decision_summary_deterministic(
+        merged_decisions, selected_review_ids, generated_at, ai_backend,
+    )
+
+
+def _decision_summary_deterministic(
+    merged_decisions: List[Dict[str, Any]],
+    selected_review_ids: List[str],
+    generated_at: str,
+    ai_backend: str,
+) -> "DecisionSummary":
+    """Deterministic classification:
+      status == 'addressed' → confirmed
+      status == 'open'      → open; if text contains blocker keyword → also sign_off_blockers
+      status == 'validated' → confirmed
+      anything else         → open
+    sign_off_blockers is always a strict subset of open (AC4).
+    """
+    from models.proposal import DecisionSummary, DecisionItem
+
+    confirmed:      List[DecisionItem] = []
+    open_items:     List[DecisionItem] = []
+    blockers:       List[DecisionItem] = []
+
+    for dp in merged_decisions:
+        text     = dp.get("text", "")
+        category = dp.get("category", "general")
+        source   = dp.get("source_review_id", "")
+        status   = (dp.get("status") or "open").lower()
+
+        item = DecisionItem(text=text, category=category, source_review_id=source)
+
+        if status in ("addressed", "validated"):
+            confirmed.append(item)
+        else:
+            open_items.append(item)
+            # Blocker detection: keyword match on text (AC3)
+            text_lower = text.lower()
+            if any(kw in text_lower for kw in _DS_BLOCKER_KEYWORDS):
+                blockers.append(item)
+
+    return DecisionSummary(
+        confirmed=confirmed,
+        open=open_items,
+        sign_off_blockers=blockers,
+        source_review_ids=list(selected_review_ids),
+        generated_by=(
+            f"{ai_backend}_deterministic" if ai_backend != "files_only" else "files_only"
+        ),
+        generated_at=generated_at,
+    )
+
+
+def _decision_summary_ai(
+    merged_decisions: List[Dict[str, Any]],
+    reconciliation_notes: str,
+    selected_review_ids: List[str],
+    ai_backend: str,
+    generated_at: str,
+) -> Optional["DecisionSummary"]:
+    """Call LLM to classify decisions.  Returns None on failure."""
+    from ai_backends import get_backend
+    from models.proposal import DecisionSummary, DecisionItem
+
+    prompt = build_decision_summary_prompt(merged_decisions, reconciliation_notes)
+    backend = get_backend(ai_backend)
+    response = backend.generate(
+        prompt=prompt,
+        system_prompt=(
+            "You are a senior delivery assurance reviewer. "
+            "Classify each decision point accurately and concisely."
+        ),
+        temperature=0.2,
+        max_tokens=1000,
+    )
+    if not response.success:
+        return None
+
+    raw = response.text or ""
+
+    def _parse_items(header: str) -> List[DecisionItem]:
+        lines = _extract_section_lines(raw, header)
+        items: List[DecisionItem] = []
+        for line in lines:
+            if not line:
+                continue
+            # Format: "text | category | source_review_id"  or plain text
+            parts = [p.strip() for p in line.split("|")]
+            text     = parts[0] if parts else line
+            category = parts[1] if len(parts) > 1 else "general"
+            source   = parts[2] if len(parts) > 2 else (
+                selected_review_ids[0] if selected_review_ids else ""
+            )
+            if text:
+                items.append(DecisionItem(
+                    text=text, category=category, source_review_id=source,
+                ))
+        return items
+
+    confirmed = _parse_items("CONFIRMED")
+    open_items = _parse_items("OPEN")
+    blockers   = _parse_items("BLOCKERS")
+
+    # Ensure sign_off_blockers is a subset of open (LLM may not respect this)
+    open_texts = {i.text for i in open_items}
+    validated_blockers = [b for b in blockers if b.text in open_texts]
+    # If LLM put blockers that aren't in open, add them to open too
+    for b in blockers:
+        if b.text not in open_texts:
+            open_items.append(b)
+
+    return DecisionSummary(
+        confirmed=confirmed,
+        open=open_items,
+        sign_off_blockers=validated_blockers if validated_blockers else blockers,
+        source_review_ids=list(selected_review_ids),
+        generated_by=ai_backend,
+        generated_at=generated_at,
+    )
+
+
+def build_decision_summary_prompt(
+    merged_decisions: List[Dict[str, Any]],
+    reconciliation_notes: str,
+) -> str:
+    """Build the decision summary classification prompt."""
+    n = len(merged_decisions)
+    lines = [
+        f"  {d['text']} | {d.get('category','general')} | {d.get('source_review_id','')}"
+        for d in merged_decisions
+    ]
+    items_block = "\n".join(lines) if lines else "  (none)"
+
+    return f"""You are reviewing decision points extracted from {n} review(s).
+Classify each as CONFIRMED, OPEN, or BLOCKER.
+
+CONFIRMED: clearly resolved in the findings
+OPEN: unresolved or deferred — needs a decision
+BLOCKER: unresolved and directly risks sign-off or delivery
+
+MERGED DECISION POINTS:
+{items_block}
+
+RECONCILIATION NOTES:
+{reconciliation_notes or '(none)'}
+
+Output (use EXACTLY these headers):
+---CONFIRMED---
+---OPEN---
+---BLOCKERS---"""
+
+
+def build_forward_guidance_prompt(
+    review_pass_dict: Dict[str, Any],
+    decision_summary_dict: Dict[str, Any],
+    conflicts: List[ConflictEntry],
+    version_scope: str,
+    coverage_gaps: Optional[List[str]] = None,
+) -> str:
+    """Build the forward guidance prompt (Step 10 of PDAE-MS-01 pipeline).
+
+    Args:
+        review_pass_dict:      ProposalReviewPass.to_dict() — source of still_weak items.
+        decision_summary_dict: DecisionSummary.to_dict() — source of open decisions.
+        conflicts:             List[ConflictEntry] from ReconciliationResult.
+        version_scope:         Version scope text, truncated to 600 chars in prompt.
+        coverage_gaps:         Domain names where ProposalCoverage status != "Addressed".
+                               When None, gaps are not included in the prompt.
+    """
+    scope_trunc = (version_scope or "")[:600]
+
+    # Collect still_weak across all domains
+    still_weak: List[str] = []
+    for domain in ["scope", "architecture", "delivery", "security_compliance",
+                   "operations", "commercials"]:
+        domain_data = review_pass_dict.get(domain, {})
+        still_weak.extend(domain_data.get("still_weak", []))
+
+    open_decisions = [d.get("text", "") for d in decision_summary_dict.get("open", [])]
+    conflict_descs = [c.description for c in conflicts]
+    gap_list: List[str] = coverage_gaps or []
+
+    def _block(title: str, items: List[str]) -> str:
+        if not items:
+            return f"{title}:\n  (none)"
+        return f"{title}:\n" + "\n".join(f"  - {it}" for it in items)
+
+    return f"""You are a senior delivery advisor. Based only on the data provided, identify recommended focus areas to strengthen this proposal toward sign-off readiness.
+
+Rules:
+- Recommendations must be grounded in the data below
+- Respect stated constraints: budget, timeline, client preferences, delivery model
+- Do not invent new facts or unsupported scope
+- Optional enhancements must be clearly viable given current context
+
+{_block('UNRESOLVED WEAKNESSES', still_weak)}
+
+{_block('OPEN DECISIONS', open_decisions)}
+
+{_block('CONFLICTS', conflict_descs)}
+
+{_block('COVERAGE GAPS', gap_list)}
+
+VERSION SCOPE:
+{scope_trunc}
+
+For each recommendation include:
+- issue
+- why_it_matters
+- suggested_action
+- trade_off_or_constraint (empty string if none)
+
+Each item must be formatted as exactly four lines:
+issue: <text>
+why_it_matters: <text>
+suggested_action: <text>
+trade_off_or_constraint: <text or empty>
+
+Output (use EXACTLY these headers):
+---STRENGTHEN_WEAK_AREAS---
+---RESOLVE_KEY_DECISIONS---
+---IMPROVE_CREDIBILITY---
+---ACCELERATE_CLIENT_ALIGNMENT---
+---OPTIONAL_ENHANCEMENTS---"""
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# S4-01  Parse forward guidance response
+# ────────────────────────────────────────────────────────────────────────────
+
+def parse_forward_guidance_response(
+    raw: str,
+    ai_backend: str,
+) -> "ForwardGuidance":
+    """Parse the LLM forward guidance response into a ForwardGuidance dataclass.
+
+    Each section contains zero or more items.  Each item is four key: value lines.
+    Missing sections → empty list.  Malformed items → silently skipped.
+    Empty raw response → ForwardGuidance with all empty sections.
+
+    Args:
+        raw:        Raw LLM response text.
+        ai_backend: Backend name recorded on the result.
+
+    Returns:
+        ForwardGuidance with all five sections populated (may be empty lists).
+    """
+    from models.proposal import ForwardGuidance, ForwardGuidanceItem
+
+    raw = raw or ""
+    generated_at = _now_iso()
+
+    _SECTION_HEADERS = [
+        ("strengthen_weak_areas",       "STRENGTHEN_WEAK_AREAS"),
+        ("resolve_key_decisions",        "RESOLVE_KEY_DECISIONS"),
+        ("improve_credibility",          "IMPROVE_CREDIBILITY"),
+        ("accelerate_client_alignment",  "ACCELERATE_CLIENT_ALIGNMENT"),
+        ("optional_enhancements",        "OPTIONAL_ENHANCEMENTS"),
+    ]
+
+    sections: Dict[str, List[ForwardGuidanceItem]] = {}
+    for field_name, header in _SECTION_HEADERS:
+        sections[field_name] = _parse_guidance_section(raw, header)
+
+    return ForwardGuidance(
+        strengthen_weak_areas=sections["strengthen_weak_areas"],
+        resolve_key_decisions=sections["resolve_key_decisions"],
+        improve_credibility=sections["improve_credibility"],
+        accelerate_client_alignment=sections["accelerate_client_alignment"],
+        optional_enhancements=sections["optional_enhancements"],
+        generated_by=ai_backend,
+        generated_at=generated_at,
+    )
+
+
+def _parse_guidance_section(raw: str, header: str) -> "List[ForwardGuidanceItem]":
+    """Extract ForwardGuidanceItems from a single ---HEADER--- section.
+
+    Items are separated by blank lines within the section block.
+    Each item has four key: value lines:
+        issue: ...
+        why_it_matters: ...
+        suggested_action: ...
+        trade_off_or_constraint: ...
+
+    Lines not matching a known key are appended to the most recent key value.
+    """
+    # Extract the raw block preserving blank lines (needed for item separation).
+    # Cannot use _extract_section_lines() here — that helper strips blank lines.
+    pattern = rf"---{re.escape(header)}---[ \t]*\n?(.*?)(?=---[A-Z_]+---|$)"
+    match = re.search(pattern, raw, re.DOTALL)
+    if not match:
+        return []
+    block_raw = match.group(1)
+
+    # Split into lines, stripping leading/trailing whitespace per line
+    all_lines = [ln.strip() for ln in block_raw.splitlines()]
+    if not any(ln for ln in all_lines):
+        return []
+
+    items: List[ForwardGuidanceItem] = []
+    # Group lines into item blocks separated by blank lines
+    blocks: List[List[str]] = [[]]
+    for line in all_lines:
+        if line == "":
+            blocks.append([])
+        else:
+            blocks[-1].append(line)
+
+    for block in blocks:
+        if not block:
+            continue
+        item = _parse_guidance_item(block)
+        if item is not None:
+            items.append(item)
+
+    return items
+
+
+def _parse_guidance_item(lines: List[str]) -> "Optional[ForwardGuidanceItem]":
+    """Parse one item block (list of non-empty lines) into a ForwardGuidanceItem.
+
+    Accepts:
+    - Four-line structured format: "key: value"
+    - Plain-text format (single line or paragraph) — treated as issue text only
+
+    Returns None when the block produces an empty issue after stripping.
+    """
+    from models.proposal import ForwardGuidanceItem
+
+    _KEYS = {
+        "issue":                   "issue",
+        "why_it_matters":          "why_it_matters",
+        "why it matters":          "why_it_matters",
+        "suggested_action":        "suggested_action",
+        "suggested action":        "suggested_action",
+        "trade_off_or_constraint": "trade_off_or_constraint",
+        "trade-off or constraint": "trade_off_or_constraint",
+        "trade_off":               "trade_off_or_constraint",
+    }
+
+    fields: Dict[str, str] = {
+        "issue": "",
+        "why_it_matters": "",
+        "suggested_action": "",
+        "trade_off_or_constraint": "",
+    }
+    current_key = "issue"
+
+    for line in lines:
+        # Try "key: value" split
+        if ":" in line:
+            candidate_key, _, rest = line.partition(":")
+            normalised = candidate_key.strip().lower()
+            if normalised in _KEYS:
+                current_key = _KEYS[normalised]
+                fields[current_key] = (fields[current_key] + " " + rest.strip()).strip()
+                continue
+        # Continuation line — append to current key
+        fields[current_key] = (fields[current_key] + " " + line.strip()).strip()
+
+    # Fallback: if the whole block was plain text (no keys matched), treat
+    # the joined text as the issue.
+    if not fields["issue"]:
+        fields["issue"] = " ".join(lines).strip()
+
+    if not fields["issue"]:
+        return None
+
+    return ForwardGuidanceItem(
+        issue=fields["issue"],
+        why_it_matters=fields["why_it_matters"],
+        suggested_action=fields["suggested_action"],
+        trade_off_or_constraint=fields["trade_off_or_constraint"],
+    )
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# Cache management (test helper)
+# ────────────────────────────────────────────────────────────────────────────
+
+def _clear_caches() -> None:
+    """Clear all module-level caches.  Intended for test isolation only."""
+    global _normalise_cache, _dedup_cache
+    _normalise_cache = {}
+    _dedup_cache = {}

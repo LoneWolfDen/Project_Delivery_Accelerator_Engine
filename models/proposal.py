@@ -421,6 +421,17 @@ class ProposalDocument:
     # Metadata
     word_count: int = 0
 
+    # ── PDAE-MS-01 synthesis fields (Sprint 2+) ───────────────
+    # All None by default — populated only on multi-review path or
+    # when review pass / coverage / guidance have been computed.
+    # Existing single-review documents are unaffected.
+    input_snapshot:        Optional[Dict[str, Any]] = field(default=None)
+    reconciliation_result: Optional[Dict[str, Any]] = field(default=None)
+    review_pass:           Optional[Dict[str, Any]] = field(default=None)
+    proposal_coverage:     Optional[Dict[str, Any]] = field(default=None)
+    decision_summary:      Optional[Dict[str, Any]] = field(default=None)
+    forward_guidance:      Optional[Dict[str, Any]] = field(default=None)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "doc_id":               self.doc_id,
@@ -442,5 +453,381 @@ class ProposalDocument:
             "responsibilities":     self.responsibilities,
             "acceptance_criteria":  self.acceptance_criteria,
             "word_count":           self.word_count,
+            # PDAE-MS-01 synthesis fields
+            "input_snapshot":        self.input_snapshot,
+            "reconciliation_result": self.reconciliation_result,
+            "review_pass":           self.review_pass,
+            "proposal_coverage":     self.proposal_coverage,
+            "decision_summary":      self.decision_summary,
+            "forward_guidance":      self.forward_guidance,
         }
 
+
+
+# ── Multi-Review Synthesis Dataclasses — PDAE-MS-01 ───────────
+# All fields below are additive. Existing dataclasses are unchanged.
+
+
+@dataclass
+class NormalizedItem:
+    """One typed, provenance-tagged finding item (Sprint 1 — S1-01).
+
+    Produced by processors.review_synthesizer.normalize_review_findings().
+    """
+    text: str = ""
+    category: str = ""        # risks|assumptions|dependencies|constraints|action_items
+    review_id: str = ""
+    persona: str = ""
+    dedup_key: str = ""       # lowercase, stripped, whitespace-collapsed
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "text":      self.text,
+            "category":  self.category,
+            "review_id": self.review_id,
+            "persona":   self.persona,
+            "dedup_key": self.dedup_key,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "NormalizedItem":
+        return cls(
+            text=d.get("text", ""),
+            category=d.get("category", ""),
+            review_id=d.get("review_id", ""),
+            persona=d.get("persona", ""),
+            dedup_key=d.get("dedup_key", ""),
+        )
+
+
+@dataclass
+class ConflictEntry:
+    """One detected contradiction between two or more reviews (Sprint 1 — S1-03)."""
+    category: str = ""
+    description: str = ""      # human-readable statement of the contradiction
+    review_ids: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "category":    self.category,
+            "description": self.description,
+            "review_ids":  self.review_ids,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ConflictEntry":
+        return cls(
+            category=d.get("category", ""),
+            description=d.get("description", ""),
+            review_ids=d.get("review_ids", []),
+        )
+
+
+@dataclass
+class ReconciliationResult:
+    """Full LLM reconcile output: merged findings, conflicts, notes (Sprint 1 — S1-03/S1-04)."""
+    reconciled_findings: Dict[str, List[str]] = field(default_factory=dict)
+    overlaps_resolved: List[str] = field(default_factory=list)
+    contradictions: List[ConflictEntry] = field(default_factory=list)
+    reconciliation_notes: str = ""
+    source_review_ids: List[str] = field(default_factory=list)
+    anchor_review_id: str = ""
+    generated_by: str = ""     # backend name or "deterministic"
+    generated_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "reconciled_findings":  self.reconciled_findings,
+            "overlaps_resolved":    self.overlaps_resolved,
+            "contradictions":       [c.to_dict() for c in self.contradictions],
+            "reconciliation_notes": self.reconciliation_notes,
+            "source_review_ids":    self.source_review_ids,
+            "anchor_review_id":     self.anchor_review_id,
+            "generated_by":         self.generated_by,
+            "generated_at":         self.generated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ReconciliationResult":
+        return cls(
+            reconciled_findings=d.get("reconciled_findings", {}),
+            overlaps_resolved=d.get("overlaps_resolved", []),
+            contradictions=[
+                ConflictEntry.from_dict(c)
+                for c in d.get("contradictions", [])
+            ],
+            reconciliation_notes=d.get("reconciliation_notes", ""),
+            source_review_ids=d.get("source_review_ids", []),
+            anchor_review_id=d.get("anchor_review_id", ""),
+            generated_by=d.get("generated_by", ""),
+            generated_at=d.get("generated_at", ""),
+        )
+
+
+@dataclass
+class ProposalInputSnapshot:
+    """Immutable record of anchor + supplementals + version at generation time (Sprint 2 — S2-01)."""
+    anchor_review_id: str = ""
+    selected_review_ids: List[str] = field(default_factory=list)
+    selected_version_id: str = ""
+    generation_mode: str = "single"    # "single" | "multi"
+    captured_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "anchor_review_id":    self.anchor_review_id,
+            "selected_review_ids": self.selected_review_ids,
+            "selected_version_id": self.selected_version_id,
+            "generation_mode":     self.generation_mode,
+            "captured_at":         self.captured_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ProposalInputSnapshot":
+        return cls(
+            anchor_review_id=d.get("anchor_review_id", ""),
+            selected_review_ids=d.get("selected_review_ids", []),
+            selected_version_id=d.get("selected_version_id", ""),
+            generation_mode=d.get("generation_mode", "single"),
+            captured_at=d.get("captured_at", ""),
+        )
+
+
+@dataclass
+class ReviewPassDomain:
+    """Per-domain critique: covered_well, still_weak, may_block_signoff (Sprint 2 — S2-03)."""
+    covered_well: List[str] = field(default_factory=list)
+    still_weak: List[str] = field(default_factory=list)
+    may_block_signoff: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "covered_well":      self.covered_well,
+            "still_weak":        self.still_weak,
+            "may_block_signoff": self.may_block_signoff,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ReviewPassDomain":
+        return cls(
+            covered_well=d.get("covered_well", []),
+            still_weak=d.get("still_weak", []),
+            may_block_signoff=d.get("may_block_signoff", []),
+        )
+
+
+@dataclass
+class ProposalReviewPass:
+    """Six-domain proposal quality critique (Sprint 2 — S2-03)."""
+    scope: ReviewPassDomain = field(default_factory=ReviewPassDomain)
+    architecture: ReviewPassDomain = field(default_factory=ReviewPassDomain)
+    delivery: ReviewPassDomain = field(default_factory=ReviewPassDomain)
+    security_compliance: ReviewPassDomain = field(default_factory=ReviewPassDomain)
+    operations: ReviewPassDomain = field(default_factory=ReviewPassDomain)
+    commercials: ReviewPassDomain = field(default_factory=ReviewPassDomain)
+    generated_by: str = ""
+    generated_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "scope":                self.scope.to_dict(),
+            "architecture":         self.architecture.to_dict(),
+            "delivery":             self.delivery.to_dict(),
+            "security_compliance":  self.security_compliance.to_dict(),
+            "operations":           self.operations.to_dict(),
+            "commercials":          self.commercials.to_dict(),
+            "generated_by":         self.generated_by,
+            "generated_at":         self.generated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ProposalReviewPass":
+        return cls(
+            scope=ReviewPassDomain.from_dict(d.get("scope", {})),
+            architecture=ReviewPassDomain.from_dict(d.get("architecture", {})),
+            delivery=ReviewPassDomain.from_dict(d.get("delivery", {})),
+            security_compliance=ReviewPassDomain.from_dict(d.get("security_compliance", {})),
+            operations=ReviewPassDomain.from_dict(d.get("operations", {})),
+            commercials=ReviewPassDomain.from_dict(d.get("commercials", {})),
+            generated_by=d.get("generated_by", ""),
+            generated_at=d.get("generated_at", ""),
+        )
+
+
+@dataclass
+class CoverageDomain:
+    """Per-domain coverage status (Sprint 3 — S3-01)."""
+    status: str = "Not Yet Addressed"  # "Addressed"|"Partial"|"Not Yet Addressed"
+    matched_themes: List[str] = field(default_factory=list)
+    gap_notes: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status":         self.status,
+            "matched_themes": self.matched_themes,
+            "gap_notes":      self.gap_notes,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CoverageDomain":
+        return cls(
+            status=d.get("status", "Not Yet Addressed"),
+            matched_themes=d.get("matched_themes", []),
+            gap_notes=d.get("gap_notes", ""),
+        )
+
+
+@dataclass
+class ProposalCoverage:
+    """Six-domain coverage map (Sprint 3 — S3-01)."""
+    scope: CoverageDomain = field(default_factory=CoverageDomain)
+    architecture: CoverageDomain = field(default_factory=CoverageDomain)
+    delivery: CoverageDomain = field(default_factory=CoverageDomain)
+    security_compliance: CoverageDomain = field(default_factory=CoverageDomain)
+    operations: CoverageDomain = field(default_factory=CoverageDomain)
+    commercials: CoverageDomain = field(default_factory=CoverageDomain)
+    source_theme_count: int = 0
+    computed_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "scope":               self.scope.to_dict(),
+            "architecture":        self.architecture.to_dict(),
+            "delivery":            self.delivery.to_dict(),
+            "security_compliance": self.security_compliance.to_dict(),
+            "operations":          self.operations.to_dict(),
+            "commercials":         self.commercials.to_dict(),
+            "source_theme_count":  self.source_theme_count,
+            "computed_at":         self.computed_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ProposalCoverage":
+        return cls(
+            scope=CoverageDomain.from_dict(d.get("scope", {})),
+            architecture=CoverageDomain.from_dict(d.get("architecture", {})),
+            delivery=CoverageDomain.from_dict(d.get("delivery", {})),
+            security_compliance=CoverageDomain.from_dict(d.get("security_compliance", {})),
+            operations=CoverageDomain.from_dict(d.get("operations", {})),
+            commercials=CoverageDomain.from_dict(d.get("commercials", {})),
+            source_theme_count=d.get("source_theme_count", 0),
+            computed_at=d.get("computed_at", ""),
+        )
+
+
+@dataclass
+class DecisionItem:
+    """One classified decision point (Sprint 3 — S3-02)."""
+    text: str = ""
+    category: str = ""
+    source_review_id: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "text":             self.text,
+            "category":         self.category,
+            "source_review_id": self.source_review_id,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "DecisionItem":
+        return cls(
+            text=d.get("text", ""),
+            category=d.get("category", ""),
+            source_review_id=d.get("source_review_id", ""),
+        )
+
+
+@dataclass
+class DecisionSummary:
+    """Confirmed / open / sign-off blockers (Sprint 3 — S3-02)."""
+    confirmed: List[DecisionItem] = field(default_factory=list)
+    open: List[DecisionItem] = field(default_factory=list)
+    sign_off_blockers: List[DecisionItem] = field(default_factory=list)
+    source_review_ids: List[str] = field(default_factory=list)
+    generated_by: str = ""
+    generated_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "confirmed":        [d.to_dict() for d in self.confirmed],
+            "open":             [d.to_dict() for d in self.open],
+            "sign_off_blockers":[d.to_dict() for d in self.sign_off_blockers],
+            "source_review_ids":self.source_review_ids,
+            "generated_by":     self.generated_by,
+            "generated_at":     self.generated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "DecisionSummary":
+        return cls(
+            confirmed=[DecisionItem.from_dict(x) for x in d.get("confirmed", [])],
+            open=[DecisionItem.from_dict(x) for x in d.get("open", [])],
+            sign_off_blockers=[DecisionItem.from_dict(x) for x in d.get("sign_off_blockers", [])],
+            source_review_ids=d.get("source_review_ids", []),
+            generated_by=d.get("generated_by", ""),
+            generated_at=d.get("generated_at", ""),
+        )
+
+
+@dataclass
+class ForwardGuidanceItem:
+    """One recommendation item (Sprint 4 — S4-01)."""
+    issue: str = ""
+    why_it_matters: str = ""
+    suggested_action: str = ""
+    trade_off_or_constraint: str = ""   # empty string when none
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "issue":                   self.issue,
+            "why_it_matters":          self.why_it_matters,
+            "suggested_action":        self.suggested_action,
+            "trade_off_or_constraint": self.trade_off_or_constraint,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ForwardGuidanceItem":
+        return cls(
+            issue=d.get("issue", ""),
+            why_it_matters=d.get("why_it_matters", ""),
+            suggested_action=d.get("suggested_action", ""),
+            trade_off_or_constraint=d.get("trade_off_or_constraint", ""),
+        )
+
+
+@dataclass
+class ForwardGuidance:
+    """Five-section recommendation set (Sprint 4 — S4-01)."""
+    strengthen_weak_areas: List[ForwardGuidanceItem] = field(default_factory=list)
+    resolve_key_decisions: List[ForwardGuidanceItem] = field(default_factory=list)
+    improve_credibility: List[ForwardGuidanceItem] = field(default_factory=list)
+    accelerate_client_alignment: List[ForwardGuidanceItem] = field(default_factory=list)
+    optional_enhancements: List[ForwardGuidanceItem] = field(default_factory=list)
+    generated_by: str = ""
+    generated_at: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "strengthen_weak_areas":       [i.to_dict() for i in self.strengthen_weak_areas],
+            "resolve_key_decisions":       [i.to_dict() for i in self.resolve_key_decisions],
+            "improve_credibility":         [i.to_dict() for i in self.improve_credibility],
+            "accelerate_client_alignment": [i.to_dict() for i in self.accelerate_client_alignment],
+            "optional_enhancements":       [i.to_dict() for i in self.optional_enhancements],
+            "generated_by":                self.generated_by,
+            "generated_at":                self.generated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ForwardGuidance":
+        def _items(key: str) -> List[ForwardGuidanceItem]:
+            return [ForwardGuidanceItem.from_dict(x) for x in d.get(key, [])]
+        return cls(
+            strengthen_weak_areas=_items("strengthen_weak_areas"),
+            resolve_key_decisions=_items("resolve_key_decisions"),
+            improve_credibility=_items("improve_credibility"),
+            accelerate_client_alignment=_items("accelerate_client_alignment"),
+            optional_enhancements=_items("optional_enhancements"),
+            generated_by=d.get("generated_by", ""),
+            generated_at=d.get("generated_at", ""),
+        )
