@@ -459,6 +459,308 @@ details[open] .chevron{transform:rotate(90deg);}
 <!-- Sprint 1: Review Full Details panel — must load before dashboard scripts -->
 <script src="/static/v2/js/review_detail.js"></script>
 
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   REVIEW DETAIL STYLES  (rd-*, ri-*, rc-*)
+   Scoped to the Review Detail drawer rendered by review_detail.js.
+   Sprint 1: header, prompt, top-risks, artifact provenance, findings,
+             weaknesses (F3 status+note), decision points.
+   Sprint 2: iteration lineage banner, create-iteration form + result.
+   Sprint 3: reconciliation panel, review checkboxes, result card.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Layout / wrapper ──────────────────────────────────────────── */
+#rd-body { font-size: 13px; }
+
+/* ── F1: Header ────────────────────────────────────────────────── */
+.rd-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+.rd-header-top { margin-bottom: 6px; }
+.rd-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.rd-review-id { font-size: 18px; font-weight: 700; color: var(--text); }
+.rd-review-raw-id { font-size: 10px; color: var(--text-muted); font-family: monospace; }
+.rd-badges { display: flex; gap: 5px; flex-wrap: wrap; }
+.rd-meta-grid { display: flex; flex-direction: column; gap: 3px; }
+.rd-detail-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.rd-detail-label { color: var(--text-muted); min-width: 90px; font-size: 11px; font-weight: 600; }
+.rd-detail-value { color: var(--text-dim); }
+.rd-persona { color: var(--purple); font-weight: 600; }
+.rd-score { color: var(--green); font-weight: 700; }
+
+/* ── Badges (reused across sections) ──────────────────────────── */
+.badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+.badge-secondary { background: var(--surface3); color: var(--text-dim); border: 1px solid var(--border2); }
+.badge-green  { background: rgba(63,185,80,.12); color: var(--green); border: 1px solid var(--green-dim); }
+.badge-amber  { background: rgba(210,153,34,.12); color: var(--yellow); border: 1px solid var(--yellow); }
+.badge-default{ background: var(--surface3); color: var(--text-muted); border: 1px solid var(--border); }
+.badge-primary{ background: rgba(88,166,255,.12); color: var(--accent); border: 1px solid var(--accent-dim); }
+
+/* ── F1: Expandable sections (shared) ─────────────────────────── */
+.rd-expandable { border: 1px solid var(--border); border-radius: var(--radius); margin: 8px 16px; overflow: hidden; }
+.rd-expandable-summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; background: var(--surface2); transition: background .15s; }
+.rd-expandable-summary:hover { background: var(--surface3); }
+.rd-expandable-summary::-webkit-details-marker { display: none; }
+.rd-section-label { font-size: 11px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .5px; }
+.rd-expand-hint { font-size: 9px; color: var(--text-muted); margin-left: auto; transition: transform .2s; }
+details[open] .rd-expand-hint { transform: rotate(90deg); }
+.rd-expandable-body { padding: 8px 12px 10px; }
+.rd-count-badge { font-size: 10px; background: var(--surface3); border-radius: 20px;
+  padding: 1px 6px; color: var(--text-dim); font-weight: 600; }
+.rd-empty-note { font-size: 11px; color: var(--text-muted); padding: 4px 0; font-style: italic; }
+.rd-section { margin: 8px 16px; }
+.rd-more-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── F1: Summary ───────────────────────────────────────────────── */
+.rd-summary-text { font-size: 12px; color: var(--text-dim); line-height: 1.65; padding: 2px 0; }
+
+/* ── F1: Top Risks ─────────────────────────────────────────────── */
+.rd-risk-list { display: flex; flex-direction: column; gap: 5px; }
+.rd-risk-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+.rd-risk-marker { flex-shrink: 0; }
+.rd-risk-text { color: var(--text-dim); line-height: 1.5; }
+
+/* ── F1: Prompt used ───────────────────────────────────────────── */
+.rd-prompt-text { font-size: 11px; color: var(--text-dim); line-height: 1.6; font-family: monospace;
+  white-space: pre-wrap; word-break: break-word; }
+.rd-prompt-full { font-size: 11px; color: var(--text-dim); line-height: 1.6; font-family: monospace;
+  white-space: pre-wrap; word-break: break-word; }
+.rd-show-more-btn { font-size: 11px; color: var(--accent); background: transparent; border: none;
+  cursor: pointer; padding: 2px 0; margin-top: 4px; }
+
+/* ── F2: Artifact provenance chips ────────────────────────────── */
+.rd-prov-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rd-prov-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px;
+  border: 1px solid var(--border2); border-radius: 20px; font-size: 11px; cursor: default;
+  background: var(--surface2); transition: border-color .15s; }
+.rd-prov-chip:hover { border-color: var(--accent); }
+.rd-prov-chip--document { border-color: var(--border2); }
+.rd-prov-chip--slides   { border-color: rgba(188,140,255,.4); }
+.rd-prov-chip--email    { border-color: rgba(88,166,255,.4);  }
+.rd-prov-chip--meeting_notes { border-color: rgba(63,185,80,.4); }
+.rd-prov-chip--spreadsheet   { border-color: rgba(210,153,34,.4); }
+.rd-prov-chip--more  { color: var(--text-muted); font-size: 10px; }
+.rd-prov-name   { font-weight: 600; color: var(--text); max-width: 160px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.rd-prov-detail { color: var(--text-muted); font-size: 10px; }
+
+/* ── F1: Findings ──────────────────────────────────────────────── */
+.rd-finding-block { margin-bottom: 8px; }
+.rd-finding-cat { font-size: 11px; font-weight: 700; color: var(--text-dim);
+  text-transform: capitalize; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+.rd-finding-item { font-size: 12px; padding: 3px 0 3px 8px; color: var(--text-dim);
+  border-left: 2px solid var(--border); margin-bottom: 2px; line-height: 1.5; }
+.rd-finding-item--question { border-left-color: var(--yellow); }
+
+/* ── F3: Weakness status + note ────────────────────────────────── */
+.rd-weakness-list { display: flex; flex-direction: column; gap: 10px; }
+.rd-weakness-item { background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px; }
+.rd-weakness-header { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 8px; }
+.rd-weakness-icon { color: var(--yellow); flex-shrink: 0; margin-top: 1px; }
+.rd-weakness-text { font-size: 12px; color: var(--text-dim); flex: 1; line-height: 1.5; }
+.rd-weakness-cat { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--text-muted); background: var(--surface3); border-radius: 20px;
+  padding: 1px 6px; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
+.rd-weakness-controls { display: flex; flex-direction: column; gap: 5px; }
+.rd-ctrl-label { font-size: 10px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .4px; }
+.rd-ctrl-note-label { margin-top: 4px; }
+.rd-status-select { width: auto; min-width: 110px; font-size: 11px; padding: 4px 8px;
+  border-radius: var(--radius); cursor: pointer; }
+.rd-weakness-status--open      { border-color: var(--red);     color: var(--red);    }
+.rd-weakness-status--resolved  { border-color: var(--green);   color: var(--green);  }
+.rd-weakness-status--mitigated { border-color: var(--yellow);  color: var(--yellow); }
+.rd-weakness-status--other     { border-color: var(--border2); color: var(--text-dim); }
+.rd-note-textarea { font-size: 11px; resize: vertical; min-height: 44px; }
+.rd-note-saved { font-size: 10px; color: var(--green); height: 14px; display: block; }
+
+/* ── Decision points ───────────────────────────────────────────── */
+.rd-dp-list { display: flex; flex-direction: column; gap: 6px; }
+.rd-dp-item { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+.rd-dp-icon { flex-shrink: 0; }
+.rd-dp-text { flex: 1; color: var(--text-dim); line-height: 1.5; }
+.rd-dp-status { font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1px 6px;
+  border-radius: 20px; flex-shrink: 0; align-self: flex-start; margin-top: 2px; }
+.rd-dp-status--resolved { background: rgba(63,185,80,.12); color: var(--green); }
+.rd-dp-status--accepted  { background: rgba(88,166,255,.12); color: var(--accent); }
+.rd-dp-status--open      { background: rgba(210,153,34,.12); color: var(--yellow); }
+
+/* ── Compare action ────────────────────────────────────────────── */
+.rd-compare-action { padding: 8px 16px; border-top: 1px solid var(--border); }
+
+/* ══════════════════════════════════════════════════════════════════
+   SPRINT 2 — Iteration lineage + create-iteration form (ri-*)
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Lineage banner ────────────────────────────────────────────── */
+.ri-lineage-banner { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+  background: rgba(88,166,255,.06); border-bottom: 1px solid rgba(88,166,255,.15);
+  font-size: 12px; }
+.ri-lineage-icon { font-size: 14px; flex-shrink: 0; }
+.ri-lineage-body { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ri-lineage-label { color: var(--text-muted); font-size: 11px; }
+.ri-lineage-base-id { font-weight: 700; color: var(--accent); font-size: 12px; }
+.ri-lineage-persona { color: var(--text-dim); font-size: 11px; }
+.ri-lineage-changed { font-size: 9px; font-weight: 700; text-transform: uppercase;
+  color: var(--yellow); background: rgba(210,153,34,.12); padding: 1px 6px; border-radius: 20px; }
+
+/* ── Create iteration section ──────────────────────────────────── */
+.ri-create-section { margin: 8px 16px; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden; }
+.ri-create-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  background: var(--surface2); }
+.ri-create-icon { font-size: 14px; flex-shrink: 0; }
+.ri-create-title { font-size: 12px; font-weight: 700; color: var(--text); flex: 1; }
+.ri-create-toggle { flex-shrink: 0; }
+
+/* ── Create iteration form ─────────────────────────────────────── */
+.ri-create-form { padding: 12px 14px; border-top: 1px solid var(--border); }
+.ri-create-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; }
+.ri-form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.ri-form-label { font-size: 11px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .4px; }
+.ri-optional { font-weight: 400; color: var(--text-muted); text-transform: none; font-size: 10px; }
+.ri-form-hint { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.ri-persona-select { font-size: 12px; }
+.ri-prompt-input  { font-size: 11px; resize: vertical; min-height: 48px; }
+.ri-form-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+/* ── Iteration result card ─────────────────────────────────────── */
+.ri-result { margin-top: 10px; }
+.ri-result-card { background: rgba(63,185,80,.06); border: 1px solid var(--green-dim);
+  border-radius: var(--radius-lg); padding: 12px 14px; }
+.ri-result-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ri-result-icon { font-size: 16px; }
+.ri-result-title { font-size: 13px; font-weight: 700; color: var(--green); }
+.ri-result-rows { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+.ri-result-row { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+.ri-result-row--summary { flex-direction: column; gap: 3px; }
+.ri-result-label { color: var(--text-muted); min-width: 90px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.ri-result-value { color: var(--text-dim); }
+.ri-result-value--id { font-weight: 700; color: var(--accent); font-family: monospace; }
+.ri-result-raw-id { font-size: 9px; color: var(--text-muted); font-family: monospace; margin-left: 4px; }
+.ri-result-base-persona { font-size: 10px; color: var(--text-muted); margin-left: 4px; }
+.ri-result-summary { display: block; color: var(--text-dim); font-size: 11px; line-height: 1.5; }
+.ri-result-note { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+.ri-persona-changed-badge { font-size: 9px; font-weight: 700; color: var(--yellow);
+  background: rgba(210,153,34,.12); padding: 1px 5px; border-radius: 10px; margin-left: 4px; }
+.ri-persona-same-badge { font-size: 9px; font-weight: 700; color: var(--text-muted);
+  background: var(--surface3); padding: 1px 5px; border-radius: 10px; margin-left: 4px; }
+.ri-result-loading { display: flex; align-items: center; gap: 8px;
+  padding: 10px; color: var(--text-dim); font-size: 12px; }
+.ri-result-error { padding: 8px 12px; color: var(--red); font-size: 12px;
+  background: rgba(248,81,73,.06); border: 1px solid var(--red); border-radius: var(--radius); }
+
+/* ══════════════════════════════════════════════════════════════════
+   SPRINT 3 — Reconciliation panel (rc-*)
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Panel shell ───────────────────────────────────────────────── */
+.rc-panel { margin: 8px 16px; border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden; }
+.rc-panel-header { display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: var(--surface2); }
+.rc-panel-icon  { font-size: 14px; flex-shrink: 0; }
+.rc-panel-title { font-size: 12px; font-weight: 700; color: var(--text); flex: 1; }
+.rc-toggle { flex-shrink: 0; }
+
+/* ── Panel body ────────────────────────────────────────────────── */
+.rc-body { padding: 12px 14px; border-top: 1px solid var(--border); }
+.rc-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.55; }
+.rc-section-label { font-size: 10px; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .5px; margin: 8px 0 4px; }
+.rc-required { color: var(--red); }
+
+/* ── Anchor chip ───────────────────────────────────────────────── */
+.rc-anchor-row { margin-bottom: 10px; }
+.rc-review-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+  border: 1px solid var(--border2); border-radius: 20px; font-size: 11px; background: var(--surface2); }
+.rc-review-chip--anchor { border-color: var(--accent); background: rgba(88,166,255,.08); }
+.rc-chip-icon   { font-size: 12px; }
+.rc-chip-id     { font-weight: 700; color: var(--accent); font-size: 11px; }
+.rc-chip-persona{ color: var(--text-muted); font-size: 10px; }
+.rc-anchor-badge { font-size: 9px; font-weight: 700; text-transform: uppercase;
+  background: rgba(88,166,255,.15); color: var(--accent); padding: 1px 5px; border-radius: 10px; }
+.rc-supp-badge { font-size: 9px; font-weight: 700; text-transform: uppercase;
+  background: rgba(63,185,80,.12); color: var(--green); padding: 1px 5px; border-radius: 10px; }
+.rc-anchor-hint { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Review checkbox list ──────────────────────────────────────── */
+.rc-review-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px;
+  max-height: 160px; overflow-y: auto; padding-right: 4px; }
+.rc-review-list::-webkit-scrollbar { width: 4px; }
+.rc-review-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+.rc-review-row { padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); transition: border-color .15s; }
+.rc-review-row--anchor { border-color: var(--accent-dim); background: rgba(88,166,255,.04); }
+.rc-review-row:hover { border-color: var(--border2); }
+.rc-review-label { display: flex; align-items: center; gap: 7px; cursor: pointer;
+  font-size: 11px; color: var(--text-dim); }
+.rc-review-label input[type="checkbox"] { width: auto; min-width: unset;
+  accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.rc-loading-reviews { font-size: 11px; color: var(--text-muted); padding: 6px 0; }
+.rc-empty-note { font-size: 11px; color: var(--text-muted); padding: 4px 0; font-style: italic; }
+
+/* ── Form actions ──────────────────────────────────────────────── */
+.rc-form-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+
+/* ── Result card ───────────────────────────────────────────────── */
+.rc-result { margin-top: 10px; }
+.rc-result-card { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.rc-result-header { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+  background: rgba(63,185,80,.06); border-bottom: 1px solid var(--border); }
+.rc-result-icon  { font-size: 18px; flex-shrink: 0; }
+.rc-result-meta  { display: flex; flex-direction: column; gap: 2px; }
+.rc-result-title { font-size: 13px; font-weight: 700; color: var(--green); }
+.rc-result-sub   { font-size: 11px; color: var(--text-muted); }
+.rc-result-note  { font-size: 10px; color: var(--text-muted); padding: 8px 14px;
+  border-top: 1px solid var(--border); }
+
+/* ── Provenance block ──────────────────────────────────────────── */
+.rc-prov-block { padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface2); }
+.rc-prov-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text-muted); margin-bottom: 5px; }
+.rc-prov-row { display: flex; align-items: center; gap: 7px; font-size: 11px;
+  padding: 3px 0; color: var(--text-dim); }
+.rc-prov-count { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+
+/* ── Result sections (collapsible) ────────────────────────────── */
+.rc-section { border-bottom: 1px solid var(--border); }
+.rc-section:last-of-type { border-bottom: none; }
+.rc-expandable summary { list-style: none; cursor: pointer; }
+.rc-expandable summary::-webkit-details-marker { display: none; }
+.rc-section-header { display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; background: var(--surface2); transition: background .15s; }
+.rc-section-header:hover { background: var(--surface3); }
+.rc-section-icon  { font-size: 13px; flex-shrink: 0; }
+.rc-section-title { font-size: 11px; font-weight: 700; color: var(--text); flex: 1; }
+.rc-count-badge { font-size: 10px; background: var(--surface3); border-radius: 20px;
+  padding: 1px 6px; color: var(--text-dim); font-weight: 600; }
+.rc-expand-hint { font-size: 9px; color: var(--text-muted); margin-left: 4px; transition: transform .2s; }
+details[open] .rc-expand-hint { transform: rotate(90deg); }
+.rc-section-body { padding: 6px 14px 10px; }
+
+/* ── Reconciled items ──────────────────────────────────────────── */
+.rc-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 0;
+  border-bottom: 1px solid var(--border); font-size: 12px; }
+.rc-item:last-child { border-bottom: none; }
+.rc-item-cat  { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--text-muted); }
+.rc-item-text { color: var(--text-dim); line-height: 1.5; }
+.rc-item-prov { font-size: 10px; color: var(--text-muted); font-style: italic; }
+.rc-absent-hint { font-size: 10px; color: var(--yellow); }
+.rc-more-note  { font-size: 10px; color: var(--text-muted); margin-top: 4px; font-style: italic; }
+
+/* ── Loading / error states ────────────────────────────────────── */
+.rc-result-loading { display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; color: var(--text-dim); font-size: 12px; }
+.rc-result-error { padding: 8px 12px; color: var(--red); font-size: 12px;
+  background: rgba(248,81,73,.06); border: 1px solid var(--red);
+  border-radius: var(--radius); margin: 8px 0; }
+</style>
+
 <script>
 // ── Utilities ────────────────────────────────────────────────────────────────
 function escHtml(s){
@@ -673,28 +975,58 @@ function renderHeader(){
   if(window._searchAdapterReady) return;
   window._searchAdapterReady = true;
 
-  // Minimal AppState shim — QuickSearch only calls:
-  //   AppState.get('versions')   → returns flat version list with nested reviews
-  //   AppState.subscribe('versions', cb) → notified when versions change
-  //   AppState.selectVersion(v)  → no-op here (dashboard_v2 manages its own state)
-  //   AppState.selectReview(r)   → no-op
-  const _subs = new Set();
+  // AppState shim — bridges dashboard_v2.html inline state to the modular v2
+  // components (QuickSearch, ReviewDetail, reconciliation panel).
+  //
+  // ReviewDetail needs:
+  //   AppState.get('selectedProject') → { id, name } — for weakness/note API calls
+  //   AppState.get('selectedVersion')  → { version_id, reviews[] } — for reconciliation review list
+  //   AppState.get('metrics')          → { available_reviews[] } — reconciliation fallback
+  //
+  // QuickSearch needs:
+  //   AppState.get('versions')         → flat version list with nested reviews
+  //   AppState.subscribe('versions', cb)
+  const _subs = new Map(); // key → Set<fn>
+  function _notify(key, val){
+    const s = _subs.get(key);
+    if(s) s.forEach(fn => { try{ fn(key, val); }catch(e){} });
+  }
+
   window.AppState = {
     get(key){
-      if(key === 'versions') return window._qs_versions || [];
+      if(key === 'versions')        return window._qs_versions || [];
+      if(key === 'selectedProject') return state.current || null;
+      if(key === 'selectedVersion'){
+        // Return the full version object that matches the current _dashVersion
+        const vers = window._qs_versions || [];
+        const vid  = state._dashVersion;
+        return vid ? (vers.find(v => v.version_id === vid) || null) : (vers[0] || null);
+      }
+      if(key === 'metrics'){
+        // Expose a minimal metrics-like object so reconciliation panel can
+        // fall back to available_reviews when version.reviews is empty.
+        return { available_reviews: [] };
+      }
       return null;
     },
     subscribe(keys, fn){
       const ks = Array.isArray(keys) ? keys : [keys];
-      if(ks.includes('versions')) _subs.add(fn);
-      return () => _subs.delete(fn);
+      for(const k of ks){
+        if(!_subs.has(k)) _subs.set(k, new Set());
+        _subs.get(k).add(fn);
+      }
+      return () => { for(const k of ks){ _subs.get(k)?.delete(fn); } };
     },
-    selectVersion(){ /* no-op */ },
-    selectReview(){ /* no-op */ },
+    // ReviewDetail calls these after iteration/compare actions — treat as soft no-ops
+    // but update inline state so the drawer can react if needed.
+    selectVersion(v){ if(v && v.version_id) state._dashVersion = v.version_id; },
+    selectReview(r){  if(r && r.review_id)  state._dashReview  = r.review_id;  },
+    openDrawer(type, data){ /* ReviewDetail doesn't call this in v2 drawer mode */ },
+    closeDrawer(){ closeReviewDrawer(); },
     /** Internal: called by _mountSearch() to push fresh data and notify subs. */
     _setVersions(versions){
       window._qs_versions = versions;
-      _subs.forEach(fn => { try{ fn('versions', versions); }catch(e){} });
+      _notify('versions', versions);
     }
   };
 })();
@@ -1449,194 +1781,117 @@ async function deleteReviewV2(rid){
 </script>
 
 <script>
-// ── Review Full Detail — right-side drawer (v2 UX, no page reload) ────────────
+// ── Review Full Detail — right-side drawer ────────────────────────────────────
+//
+// Delegates ALL rendering to ReviewDetail.renderReview() (review_detail.js).
+// That module provides Sprint 1 (full details + weakness notes + artifact refs),
+// Sprint 2 (iteration lineage + create-new-review form), and
+// Sprint 3 (reconciliation panel) in one unified renderer.
+//
+// This block is intentionally thin: open shell → fetch → delegate → close.
+
 async function openReviewDetail(rid, versionId){
-  if(!rid||!state.current) return;
-  const pid=state.current.id;
-  _openReviewDrawerShell(rid);
-  const r=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${rid}`);
-  const body=document.getElementById('rd-body');
-  if(!body) return;
-  if(r.error){
-    body.innerHTML=`<div style="padding:20px;color:var(--red)">⚠ ${escHtml(r.error)}</div>`;
-    return;
+  if(!rid || !state.current) return;
+  const pid = state.current.id;
+
+  // Sync AppState so ReviewDetail reads the right project + version context
+  if(versionId) state._dashVersion = versionId;
+  state._dashReview = rid;
+
+  _openReviewDrawerShell();
+
+  try{
+    const r = await api('GET', `/api/projects/${pid}/hierarchy/reviews/${rid}`);
+    const body = document.getElementById('rd-body');
+    if(!body) return;
+
+    if(r.error){
+      body.innerHTML = `<div style="padding:20px;color:var(--red)">⚠ ${escHtml(r.error)}</div>`;
+      return;
+    }
+
+    // ReviewDetail.renderReview() is the Sprint 1-3 full renderer.
+    // It reads window.AppState.get('selectedProject') for weakness/note API calls,
+    // and window.AppState.get('selectedVersion') for the reconciliation review list.
+    if(window.ReviewDetail){
+      body.style.padding = '0';   // ReviewDetail manages its own padding
+      body.innerHTML = ReviewDetail.renderReview(r);
+    } else {
+      // Fallback: ReviewDetail not loaded yet — show basic info
+      body.innerHTML = _rdFallback(r);
+    }
+  } catch(err){
+    const body = document.getElementById('rd-body');
+    if(body) body.innerHTML = `<div style="padding:20px;color:var(--red)">⚠ ${escHtml(err.message||'Failed to load review')}</div>`;
   }
-  _renderReviewDrawerContent(r, versionId||r.version_id||'');
 }
 
-function _openReviewDrawerShell(rid){
-  const existing=document.getElementById('rd-overlay');
+function _openReviewDrawerShell(){
+  const existing = document.getElementById('rd-overlay');
   if(existing) existing.remove();
-  const ov=document.createElement('div');
-  ov.id='rd-overlay';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1800;'+
+
+  const ov = document.createElement('div');
+  ov.id = 'rd-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1800;' +
     'opacity:0;transition:opacity .25s ease;pointer-events:none;';
-  ov.innerHTML=`<div id="rd-drawer" style="position:fixed;top:0;right:0;height:100%;width:560px;
-    max-width:96vw;background:var(--surface);border-left:1px solid var(--border2);z-index:1801;
-    display:flex;flex-direction:column;transform:translateX(100%);
-    transition:transform .28s ease;box-shadow:-4px 0 24px rgba(0,0,0,.5);">
-    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-      border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;">
-      <span style="font-size:14px;font-weight:700;flex:1">🔍 Review Detail</span>
-      <button onclick="closeReviewDrawer()" style="background:transparent;border:none;
-        color:var(--text-dim);font-size:17px;cursor:pointer;padding:2px 7px;
-        border-radius:var(--radius);line-height:1">✕</button>
-    </div>
-    <div id="rd-body" style="flex:1;overflow-y:auto;padding:16px;">
-      <div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--text-dim)">
-        <span class="spin">⟳</span> Loading…
+  ov.innerHTML = `
+    <div id="rd-drawer" style="position:fixed;top:0;right:0;height:100%;width:600px;
+      max-width:96vw;background:var(--surface);border-left:1px solid var(--border2);
+      z-index:1801;display:flex;flex-direction:column;transform:translateX(100%);
+      transition:transform .28s ease;box-shadow:-4px 0 24px rgba(0,0,0,.5);">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
+        border-bottom:1px solid var(--border);background:var(--surface2);flex-shrink:0;">
+        <span style="font-size:14px;font-weight:700;flex:1">🔍 Review Detail</span>
+        <button onclick="closeReviewDrawer()" style="background:transparent;border:none;
+          color:var(--text-dim);font-size:17px;cursor:pointer;padding:2px 7px;
+          border-radius:var(--radius);line-height:1" aria-label="Close">✕</button>
       </div>
-    </div>
-  </div>`;
-  ov.addEventListener('click',e=>{ if(e.target===ov) closeReviewDrawer(); });
-  ov._kh=e=>{ if(e.key==='Escape') closeReviewDrawer(); };
-  document.addEventListener('keydown',ov._kh);
+      <div id="rd-body" style="flex:1;overflow-y:auto;padding:16px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--text-dim)">
+          <span class="spin">⟳</span> Loading…
+        </div>
+      </div>
+    </div>`;
+
+  ov.addEventListener('click', e => { if(e.target === ov) closeReviewDrawer(); });
+  ov._kh = e => { if(e.key === 'Escape') closeReviewDrawer(); };
+  document.addEventListener('keydown', ov._kh);
   document.body.appendChild(ov);
-  requestAnimationFrame(()=>{
-    ov.style.opacity='1'; ov.style.pointerEvents='all';
-    document.getElementById('rd-drawer').style.transform='translateX(0)';
+
+  requestAnimationFrame(() => {
+    ov.style.opacity = '1';
+    ov.style.pointerEvents = 'all';
+    document.getElementById('rd-drawer').style.transform = 'translateX(0)';
   });
 }
 
 function closeReviewDrawer(){
-  const ov=document.getElementById('rd-overlay');
+  const ov = document.getElementById('rd-overlay');
   if(!ov) return;
-  if(ov._kh) document.removeEventListener('keydown',ov._kh);
-  ov.style.opacity='0';
-  const dr=document.getElementById('rd-drawer');
-  if(dr) dr.style.transform='translateX(100%)';
-  setTimeout(()=>{ if(ov.parentNode) ov.remove(); },300);
+  if(ov._kh) document.removeEventListener('keydown', ov._kh);
+  ov.style.opacity = '0';
+  const dr = document.getElementById('rd-drawer');
+  if(dr) dr.style.transform = 'translateX(100%)';
+  setTimeout(() => { if(ov.parentNode) ov.remove(); }, 300);
 }
 
-function _renderReviewDrawerContent(r, versionId){
-  const body=document.getElementById('rd-body');
-  if(!body) return;
-  const pid=state.current?.id||'';
-  const rid=r.review_id||'';
-  const qs=r.quality_status||'pending';
-  const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
-  const qCls=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
-  const score=r.completeness_score||0;
-  const scoreCol=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
-  const findings=r.findings||{};
-  const FICONS={risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',
-    action_items:'✅',gaps:'🔍',recommendations:'💡',questions:'❓'};
-
-  let sBtns='';
-  if(qs==='pending'){
-    sBtns=`<button class="btn btn-sm btn-ghost" onclick="_rdMark('${escHtml(rid)}','interim')">Mark Draft</button>
-           <button class="btn btn-sm btn-ghost" onclick="_rdMark('${escHtml(rid)}','complete')">Mark Final</button>`;
-  } else if(qs==='interim'){
-    sBtns=`<button class="btn btn-sm btn-ghost" onclick="_rdMark('${escHtml(rid)}','complete')">Mark Final</button>`;
-  } else {
-    sBtns=`<span style="font-size:10px;color:var(--green)">✓ Final</span>`;
-  }
-
-  let html=`<div style="background:var(--surface2);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
-    <div class="flex" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
-      <span class="tag tag-blue">v: ${escHtml(r.version_id||versionId||'–')}</span>
-      <span class="tag tag-purple">${escHtml(r.persona||'–')}</span>
-      <span class="tag ${qCls}">${qLabel}</span>
-      ${r.iteration_number?`<span class="tag" style="font-weight:700">R${r.iteration_number}</span>`:''}
-      <span style="font-size:10px;color:${scoreCol};background:var(--surface3);
-        padding:1px 6px;border-radius:10px">${score}% complete</span>
-      <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${fmtDate(r.created_at)}</span>
+// Minimal fallback shown only if ReviewDetail script failed to load
+function _rdFallback(r){
+  const rid = r.review_id || '';
+  const qs  = r.quality_status || 'pending';
+  const qLabel = qs === 'complete' ? 'Final' : qs === 'interim' ? 'Draft' : 'Pending';
+  return `<div style="padding:16px">
+    <div style="background:var(--surface2);border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
+        <span class="tag tag-blue">v: ${escHtml(r.version_id||'–')}</span>
+        <span class="tag tag-purple">${escHtml(r.persona||'–')}</span>
+        <span class="tag">${qLabel}</span>
+        ${r.iteration_number ? `<span class="tag" style="font-weight:700">R${r.iteration_number}</span>` : ''}
+      </div>
+      ${r.summary ? `<p style="font-size:12px;color:var(--text-dim)">${escHtml(r.summary)}</p>` : ''}
     </div>
-    ${r.summary?`<p style="font-size:12px;color:var(--text-dim);line-height:1.6">${escHtml(r.summary)}</p>`:''}
-  </div>
-  <div class="flex gap-sm" style="flex-wrap:wrap;margin-bottom:10px">
-    ${sBtns}
-    <button class="btn btn-sm btn-ghost" onclick="openCompare()">⇄ Compare</button>
-    <button class="btn btn-sm btn-ghost"
-      onclick="state._dashVersion='${escHtml(r.version_id||versionId||'')}';state._dashReview='${escHtml(rid)}';closeReviewDrawer();openProposalPanel()"
-      style="color:var(--green);border-color:var(--green-dim)">📄 Proposal</button>
-  </div>
-  <div id="rd-mc" style="display:none;margin-bottom:10px;padding:8px 10px;
-    background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
-    <p class="fs11 c-dim" style="margin-bottom:5px">Your name</p>
-    <div class="flex gap-sm">
-      <input id="rd-mc-name" placeholder="Your name" style="flex:1">
-      <button class="btn btn-sm btn-ghost" id="rd-btn-d"
-        onclick="_rdSubmit('${escHtml(rid)}','interim')">Save Draft</button>
-      <button class="btn btn-sm" id="rd-btn-f" style="background:var(--green-dim);color:#fff"
-        onclick="_rdSubmit('${escHtml(rid)}','complete')">Mark Final</button>
-      <button class="btn btn-xs btn-ghost"
-        onclick="document.getElementById('rd-mc').style.display='none'">✕</button>
-    </div>
+    <p style="font-size:11px;color:var(--text-muted)">Review detail module not loaded — refresh the page.</p>
   </div>`;
-
-  // Files included
-  if(r.included_files?.length){
-    html+=`<div style="margin-bottom:10px">
-      <p style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;
-        letter-spacing:.5px;margin-bottom:5px">Files Reviewed (${r.included_files.length})</p>
-      <div class="flex" style="flex-wrap:wrap;gap:4px">
-        ${r.included_files.map(f=>`<span class="tag tag-green" style="font-size:10px">${escHtml(f)}</span>`).join('')}
-      </div></div>`;
-  }
-
-  // Findings sections
-  const fKeys=Object.keys(findings).filter(k=>Array.isArray(findings[k])&&findings[k].length);
-  if(fKeys.length){
-    html+=`<p style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;
-      letter-spacing:.5px;margin-bottom:6px">Findings</p>`;
-    for(const sec of fKeys){
-      const items=findings[sec];
-      html+=`<details open style="border:1px solid var(--border);border-radius:var(--radius);
-        margin-bottom:5px;overflow:hidden">
-        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
-          padding:7px 10px;background:var(--surface2)"
-          onmouseover="this.style.background='var(--surface3)'"
-          onmouseout="this.style.background='var(--surface2)'">
-          <span class="chevron">▶</span><span>${FICONS[sec]||'📌'}</span>
-          <strong style="font-size:11px;text-transform:capitalize">${escHtml(sec.replace(/_/g,' '))}</strong>
-          <span class="tag" style="margin-left:4px">${items.length}</span>
-        </summary>
-        <div style="padding:6px 10px 8px">
-          ${items.map(it=>`<div style="font-size:12px;padding:3px 0 3px 8px;color:var(--text-dim);
-            border-left:2px solid var(--border);margin-bottom:2px">${escHtml(String(it))}</div>`).join('')}
-        </div></details>`;
-    }
-  } else {
-    html+=`<p style="font-size:12px;color:var(--text-muted);font-style:italic">No findings recorded yet.</p>`;
-  }
-
-  if(r.questions?.length){
-    html+=`<details style="border:1px solid var(--border);border-radius:var(--radius);
-      margin-top:6px;overflow:hidden">
-      <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
-        padding:7px 10px;background:var(--surface2)">
-        <span class="chevron">▶</span>
-        <strong style="font-size:11px">❓ Open Questions</strong>
-        <span class="tag" style="margin-left:4px">${r.questions.length}</span>
-      </summary>
-      <div style="padding:6px 10px 8px">
-        ${r.questions.map(q=>`<div style="font-size:12px;padding:3px 0 3px 8px;color:var(--text-dim);
-          border-left:2px solid var(--yellow);margin-bottom:2px">${escHtml(q)}</div>`).join('')}
-      </div></details>`;
-  }
-  body.innerHTML=html;
-}
-
-function _rdMark(rid, targetStatus){
-  const form=document.getElementById('rd-mc');
-  if(!form) return;
-  const bd=document.getElementById('rd-btn-d');
-  const bf=document.getElementById('rd-btn-f');
-  if(bd) bd.style.display=targetStatus==='interim'?'':'none';
-  if(bf) bf.style.display=targetStatus==='complete'?'':'none';
-  form.style.display='';
-  document.getElementById('rd-mc-name')?.focus();
-}
-async function _rdSubmit(rid, qualityStatus){
-  const name=(document.getElementById('rd-mc-name')?.value||'').trim();
-  if(!name){ toast('Enter your name first','err'); return; }
-  const pid=state.current?.id; if(!pid) return;
-  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${rid}/complete`,
-    {completed_by:name, quality_status:qualityStatus});
-  if(r.error){ toast(r.error,'err'); return; }
-  toast(`Review marked as ${qualityStatus==='complete'?'Final':'Draft'}`);
-  closeReviewDrawer(); render();
 }
 </script>
 
