@@ -256,7 +256,8 @@ class TestReviewFullDetails:
 
     def test_detail_page_shows_metadata_section(self, html):
         body = _fn_body(html, "v2RenderReviewDetailPage")
-        assert "Metadata" in body
+        # Metadata is shown inline in the header card (version, phase, persona, ai_backend)
+        assert "version_id" in body or "phase_id" in body or "ai_backend" in body
 
     def test_detail_page_shows_summary_section(self, html):
         body = _fn_body(html, "v2RenderReviewDetailPage")
@@ -268,8 +269,8 @@ class TestReviewFullDetails:
 
     def test_detail_page_shows_empty_sections(self, html):
         body = _fn_body(html, "v2RenderReviewDetailPage")
-        # Empty state must show "(none)" not just blank
-        assert "(none)" in body
+        # Empty included_files shows a clear message
+        assert "No file information recorded" in body or "No artefacts recorded" in body
 
     def test_full_details_button_calls_view_detail(self, html):
         assert "v2ViewReviewDetail" in html
@@ -386,3 +387,277 @@ class TestAdminTab:
     def test_admin_persona_prompts_show_all_groups(self, html):
         body = _fn_body(html, "viewAdmin")
         assert "group_id" in body or "seenGroups" in body
+
+
+
+# ── Admin Tab: Persona Base Prompts fix ───────────────────────────────────────
+
+class TestAdminPersonaBasePrompts:
+    """Issue fix: Persona Base Prompts not populating in Admin tab.
+
+    Root cause: nested template literals + silent catch swallowed the card.
+    Fix: string concatenation build, &#10; encoding of newlines, visible error on failure.
+    """
+
+    def test_persona_prompts_built_with_string_concat(self, html):
+        """viewAdmin uses += string concat for groupRows, not template literal map."""
+        body = _fn_body(html, "viewAdmin")
+        # String concat pattern (groupRows += '...') rather than .map(...).join('')
+        assert "groupRows+=" in body or "groupRows +=" in body
+
+    def test_persona_prompts_encodes_newlines_in_attribute(self, html):
+        """data-yaml-default encodes newlines as &#10; to survive HTML attribute parsing."""
+        body = _fn_body(html, "viewAdmin")
+        assert "&#10;" in body
+
+    def test_persona_prompts_catch_logs_to_console(self, html):
+        """catch block logs to console.error instead of silently discarding."""
+        body = _fn_body(html, "viewAdmin")
+        assert "console.error" in body
+
+    def test_persona_prompts_catch_shows_error_card(self, html):
+        """catch block renders a visible error card rather than empty string."""
+        body = _fn_body(html, "viewAdmin")
+        # Error card has red text — not just personaPromptsCard=''
+        assert "var(--red)" in body or "color:var(--red)" in body
+
+    def test_persona_prompts_validates_roles_returned(self, html):
+        """viewAdmin checks that allRoles is non-empty before building the card."""
+        body = _fn_body(html, "viewAdmin")
+        assert "allRoles.length" in body or "!allRoles.length" in body
+
+    def test_save_persona_prompts_decodes_attribute(self, html):
+        """savePersonaPrompts decodes &#10; back to newlines before comparing."""
+        body = _fn_body(html, "savePersonaPrompts")
+        assert "&#10;" in body
+        assert "replace" in body
+
+    def test_reset_persona_prompt_decodes_attribute(self, html):
+        """resetPersonaPrompt decodes &#10; back to newlines when restoring."""
+        body = _fn_body(html, "resetPersonaPrompt")
+        assert "&#10;" in body
+        assert "replace" in body
+
+    def test_persona_prompts_uses_escHtml_for_group_name(self, html):
+        """Group name is HTML-escaped before insertion."""
+        body = _fn_body(html, "viewAdmin")
+        assert "escHtml(g.group_name)" in body
+
+    def test_persona_prompts_uses_escHtml_for_prompt_template(self, html):
+        """prompt_template is HTML-escaped (safeDefault / safeVal)."""
+        body = _fn_body(html, "viewAdmin")
+        assert "safeDefault" in body or "escHtml(g.prompt_template)" in body
+
+
+# ── Review Full Details: V1 feature parity ────────────────────────────────────
+
+class TestReviewFullDetailsV1Parity:
+    """Verify full V1 viewReviewDetail feature parity in v2RenderReviewDetailPage."""
+
+    def test_coverage_assessment_function_defined(self, html):
+        assert _fn_exists(html, "renderCoverageAssessment")
+
+    def test_review_strength_function_defined(self, html):
+        assert _fn_exists(html, "renderReviewStrength")
+
+    def test_decision_points_engine_function_defined(self, html):
+        assert _fn_exists(html, "renderDecisionPointsEngine")
+
+    def test_review_progression_function_defined(self, html):
+        assert _fn_exists(html, "renderReviewProgression")
+
+    def test_proposal_readiness_function_defined(self, html):
+        assert _fn_exists(html, "renderProposalReadiness")
+
+    def test_next_best_actions_function_defined(self, html):
+        assert _fn_exists(html, "renderNextBestActions")
+
+    def test_coverage_baseline_constant_defined(self, html):
+        assert "COVERAGE_BASELINE" in html
+
+    def test_coverage_persona_constant_defined(self, html):
+        assert "COVERAGE_PERSONA" in html
+
+    def test_impact_map_constant_defined(self, html):
+        assert "_IMPACT_MAP" in html
+
+    def test_infer_decision_title_helper_defined(self, html):
+        assert _fn_exists(html, "_inferDecisionTitle")
+
+    def test_infer_options_helper_defined(self, html):
+        assert _fn_exists(html, "_inferOptions")
+
+    def test_update_weakness_status_defined(self, html):
+        assert _fn_exists(html, "updateWeaknessStatus")
+
+    def test_update_decision_status_defined(self, html):
+        assert _fn_exists(html, "updateDecisionStatus")
+
+    def test_detail_calls_coverage_assessment(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "renderCoverageAssessment(r)" in body
+
+    def test_detail_calls_review_strength(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "renderReviewStrength(r)" in body
+
+    def test_detail_calls_decision_engine(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "renderDecisionPointsEngine(r)" in body
+
+    def test_detail_calls_proposal_readiness(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "renderProposalReadiness(r)" in body
+
+    def test_detail_calls_next_best_actions(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "renderNextBestActions(r)" in body
+
+    def test_detail_calls_review_progression(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "renderReviewProgression" in body
+
+    def test_detail_shows_decision_readiness_badge(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "v2detailReadinessBadge" in body
+
+    def test_detail_loads_readiness_async(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "/readiness" in body
+
+    def test_detail_shows_files_included(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "included_files" in body
+
+    def test_detail_shows_weaknesses_section(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "weaknesses" in body
+        assert "Weaknesses" in body
+
+    def test_detail_weakness_has_status_dropdown(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "updateWeaknessStatus" in body
+        assert "open" in body and "addressed" in body and "validated" in body and "rejected" in body
+
+    def test_detail_weakness_has_note_textarea(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "user_note" in body
+
+    def test_detail_shows_missing_areas(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "missing_categories" in body
+
+    def test_detail_shows_decision_points_raw(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "decision_points" in body
+        assert "updateDecisionStatus" in body
+
+    def test_detail_shows_prompt_used_collapsible(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "prompt_used" in body
+
+    def test_detail_shows_custom_prompt_collapsible(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "custom_prompt" in body
+
+    def test_detail_shows_prompt_composition(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "prompt_builder_state" in body
+        assert "injected_questions" in body
+
+    def test_detail_shows_ai_metadata(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "ai_metadata" in body
+        assert "tokens_used" in body
+
+    def test_detail_has_tighten_button(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "Tighten" in body
+
+    def test_detail_has_back_button_top_and_bottom(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert body.count("← Back") >= 2
+
+    def test_detail_fetches_review_diff_for_progression(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "previous_review_id" in body
+        assert "/diff" in body
+
+    def test_detail_shows_customised_baseline_badge(self, html):
+        body = _fn_body(html, "v2RenderReviewDetailPage")
+        assert "Customised" in body and "Baseline" in body
+
+    def test_coverage_assessment_uses_coverage_baseline(self, html):
+        body = _fn_body(html, "renderCoverageAssessment")
+        assert "COVERAGE_BASELINE" in body
+
+    def test_coverage_assessment_uses_persona_dims(self, html):
+        body = _fn_body(html, "renderCoverageAssessment")
+        assert "COVERAGE_PERSONA" in body
+
+    def test_coverage_assessment_renders_bar(self, html):
+        body = _fn_body(html, "renderCoverageAssessment")
+        assert "coverage-bar-outer" in body
+
+    def test_coverage_assessment_renders_pills(self, html):
+        body = _fn_body(html, "renderCoverageAssessment")
+        assert "coverage-pill" in body
+
+    def test_review_strength_uses_impact_map(self, html):
+        body = _fn_body(html, "renderReviewStrength")
+        assert "_IMPACT_MAP" in body
+
+    def test_review_strength_shows_missing_weak_unresolved(self, html):
+        body = _fn_body(html, "renderReviewStrength")
+        assert "Missing" in body
+        assert "Weak" in body
+        assert "Unresolved" in body
+
+    def test_proposal_readiness_has_three_levels(self, html):
+        body = _fn_body(html, "renderProposalReadiness")
+        assert "Not Ready" in body
+        assert "Partially Ready" in body
+        assert "Ready" in body
+
+    def test_review_progression_shows_four_tiles(self, html):
+        body = _fn_body(html, "renderReviewProgression")
+        assert "Resolved" in body
+        assert "New Findings" in body
+        assert "Still Open" in body
+        assert "Unchanged" in body
+
+    def test_decision_engine_infers_title(self, html):
+        body = _fn_body(html, "renderDecisionPointsEngine")
+        assert "_inferDecisionTitle" in body
+
+    def test_decision_engine_infers_options(self, html):
+        body = _fn_body(html, "renderDecisionPointsEngine")
+        assert "_inferOptions" in body
+
+    # CSS classes added for full-detail panels
+    def test_css_coverage_bar_defined(self, html):
+        assert ".coverage-bar-outer" in html
+
+    def test_css_coverage_pills_defined(self, html):
+        assert ".coverage-pill" in html
+
+    def test_css_rs_grid_defined(self, html):
+        assert ".rs-grid" in html
+
+    def test_css_pr_bar_defined(self, html):
+        assert ".pr-bar" in html
+
+    def test_css_nba_item_defined(self, html):
+        assert ".nba-item" in html
+
+    def test_css_dp_card_defined(self, html):
+        assert ".dp-card" in html
+
+    def test_css_prog_row_defined(self, html):
+        assert ".prog-row" in html
+
+    def test_css_prop_strength_area_defined(self, html):
+        assert ".prop-strength-area" in html
+
+    def test_css_prompt_box_defined(self, html):
+        assert ".prompt-box" in html
