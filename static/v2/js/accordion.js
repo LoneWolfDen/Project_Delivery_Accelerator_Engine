@@ -142,6 +142,13 @@ const VersionAccordion = (() => {
                   style="margin-left:4px">
             ↗
           </button>
+          <button class="btn-icon btn-sm"
+                  title="Reconcile reviews in this version"
+                  aria-label="Reconcile reviews for ${_esc(vid)}"
+                  onclick="event.stopPropagation();if(window.Dashboard&&Dashboard.openReconcileDrawer)Dashboard.openReconcileDrawer('${_esc(vid)}')"
+                  style="margin-left:2px;color:var(--accent)">
+            ⇄
+          </button>
         </div>
         <div class="accordion-body"
              id="accordion-body-${_esc(vid)}"

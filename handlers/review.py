@@ -153,3 +153,51 @@ def handle_decision_status(
         respond(result, status=400)
     else:
         respond(result)
+
+
+def handle_iterate_review(
+    project_id: str, previous_review_id: str,
+    body: Dict[str, Any], respond: Callable,
+) -> None:
+    """POST /api/projects/{pid}/hierarchy/reviews/{rid}/iterate
+
+    Creates a new review that is explicitly linked to ``previous_review_id``
+    (the review identified by ``{rid}`` in the URL).
+
+    Required body fields:
+      roles / persona  – persona name or list of persona names to run
+    Optional body fields:
+      ai_backend       – default "files_only"
+      custom_prompt    – additional prompt text injected into the review run
+
+    Returns the same shape as POST /api/review on success.
+    """
+    roles = body.get("roles") or body.get("persona")
+    if not roles:
+        respond({"error": "roles (or persona) required"}, status=400)
+        return
+    if not previous_review_id:
+        respond({"error": "previous_review_id required (derived from URL {rid})"}, status=400)
+        return
+
+    # Delegate to the same review service that /api/review uses, but with
+    # previous_review_id set so the new review is chained to its predecessor.
+    from contracts.types import ReviewRequest
+    from contracts.protocols import ServiceReviewAgent
+
+    request = ReviewRequest(
+        project_id=project_id,
+        roles=roles if isinstance(roles, list) else [roles],
+        ai_backend=body.get("ai_backend", "files_only"),
+        custom_prompt=body.get("custom_prompt"),
+        previous_review_id=previous_review_id,
+        prompt_builder_state=body.get("prompt_builder_state"),
+    )
+
+    try:
+        result = ServiceReviewAgent().run(request)
+        respond(result.raw)
+    except ValueError as e:
+        respond({"error": str(e)}, status=400)
+    except Exception as e:
+        respond({"error": str(e)}, status=500)

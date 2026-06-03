@@ -148,3 +148,55 @@ def get_run_history_for_project(project_id: str) -> List[Dict[str, Any]]:
 
 def get_file_snapshot(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
     return get_file_snapshot_for_version(PROJECTS_DIR / project_id, version_id)
+
+
+# ── Phase 4: Reconciliation ───────────────────────────────────────────────────
+
+def reconcile_reviews(
+    project_id: str,
+    anchor_review_id: str,
+    supplemental_review_ids: list,
+    ai_backend: str = "files_only",
+) -> Dict[str, Any]:
+    """Reconcile an anchor review with zero or more supplementals.
+
+    Loads all named reviews from the hierarchy store, validates they share
+    the same version_id, then delegates to
+    ``processors.review_synthesizer.synthesize_reviews()``.
+
+    Returns a plain dict (ReconciliationResult.to_dict()).
+
+    Raises:
+        ValueError – if any review is not found or version_ids disagree.
+    """
+    from processors.review_synthesizer import synthesize_reviews
+
+    store = _make_hierarchy_store(project_id)
+
+    anchor = store.get_review(anchor_review_id)
+    if anchor is None:
+        raise ValueError(f"Anchor review not found: {anchor_review_id}")
+
+    supplementals = []
+    for rid in (supplemental_review_ids or []):
+        rev = store.get_review(rid)
+        if rev is None:
+            raise ValueError(f"Supplemental review not found: {rid}")
+        supplementals.append(rev)
+
+    # Resolve version scope text for the LLM prompt (best-effort)
+    version_scope = ""
+    try:
+        version = store.get_version(anchor.version_id)
+        if version:
+            version_scope = version.scope or ""
+    except Exception:
+        pass
+
+    result = synthesize_reviews(
+        anchor_review=anchor,
+        supplemental_reviews=supplementals,
+        version_scope=version_scope,
+        ai_backend=ai_backend,
+    )
+    return result.to_dict()

@@ -586,3 +586,179 @@ sequenceDiagram
 | ReviewHandler | `handlers/review.py` |
 | ReviewService | `services/review.py` |
 | HierarchyStore | `models/hierarchy.py` |
+
+
+---
+
+## Sequence 14: Phase 3 — Review Iteration (Drawer → New Linked Review)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant DetailPanel
+    participant API
+    participant Server
+    participant ReviewHandler
+    participant ReviewService
+    participant HierarchyStore
+
+    Note over Browser: Review detail drawer is open.<br/>User expands "↩ Iterate from this review" panel.
+
+    User->>Browser: Click "↩ Iterate from this review" summary
+    Browser->>DetailPanel: _onIterateSummaryClick(summaryEl)
+    DetailPanel->>DetailPanel: Derive rid from details#id
+    DetailPanel->>Browser: Check data-loaded attribute on persona <select>
+    alt First open — personas not yet loaded
+        DetailPanel->>Server: GET /api/personas
+        Server->>DetailPanel: 200 { personas: [{id, name, ...}] }
+        DetailPanel->>Browser: Populate persona <select> options
+        DetailPanel->>Browser: Set data-loaded="1"
+    end
+    Browser->>User: Persona dropdown + prompt textarea visible
+
+    User->>Browser: Select persona, optionally add context, click "▶ Run Iteration"
+    Browser->>DetailPanel: _onIterateSubmit(btn)
+    DetailPanel->>DetailPanel: Read data-review-id from btn
+    DetailPanel->>DetailPanel: Read persona from #v2-iterate-persona-{rid}
+    DetailPanel->>DetailPanel: Read custom_prompt from #v2-iterate-prompt-{rid}
+    DetailPanel->>Browser: btn.disabled=true, show "Running…"
+    DetailPanel->>API: iterateReview(pid, rid, persona, 'files_only', customPrompt)
+    API->>Server: POST /api/projects/{pid}/hierarchy/reviews/{rid}/iterate<br/>body: { roles:[persona], ai_backend, custom_prompt? }
+
+    Server->>ReviewHandler: handle_iterate_review(pid, rid, body)
+    ReviewHandler->>ReviewHandler: Validate roles present<br/>Validate previous_review_id (rid) non-empty
+    ReviewHandler->>ReviewHandler: Build ReviewRequest(previous_review_id=rid)
+    ReviewHandler->>ReviewService: ServiceReviewAgent().run(request)
+    ReviewService->>ReviewService: run_persona_review(project_id, roles,<br/>   previous_review_id=rid, ...)
+    Note over ReviewService: Open decision points from predecessor<br/>are inherited into the new review.
+    ReviewService->>HierarchyStore: create_review(version_id, ..., previous_review_id=rid)
+    HierarchyStore->>ReviewService: Review dataclass (new review_id)
+    ReviewService->>ReviewHandler: ReviewResult.raw (dict with review_id)
+    ReviewHandler->>Server: respond(result, 200)
+    Server->>API: 200 { review_id: "r8", previous_review_id: "r7", ... }
+    API->>DetailPanel: result
+
+    DetailPanel->>Browser: Show "✓ Iteration created: r8"
+    DetailPanel->>Browser: Close <details> panel
+    DetailPanel->>AppState: closeDrawer()
+    DetailPanel->>Dashboard: Dashboard.loadAll(silent=true)
+    Note over Dashboard: Hierarchy re-fetched silently.<br/>New review r8 appears in accordion.
+    Browser->>User: Drawer closed, accordion updated with new review
+```
+
+### Key rules enforced (Phase 3)
+| Rule | Where |
+|------|-------|
+| `previous_review_id` set from URL `{rid}`, not body | `handlers/review.py → handle_iterate_review()` |
+| Open decision points from predecessor inherited | `services/review.py → run_persona_review()` |
+| Persona lazily loaded from `/api/personas` on first panel open | `ui/v2/components/DetailPanel.js → _onIterateSummaryClick()` |
+| Hierarchy silently refreshed after success | `ui/v2/components/DetailPanel.js → _onIterateSubmit()` |
+| `DashboardRefresh` global available as alternative refresh trigger | `static/v2/js/dashboard.js` |
+
+---
+
+## Sequence 15: Phase 4 — Reconciliation (Version ⇄ Button → Panel → Result)
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Accordion
+    participant Dashboard
+    participant AppState
+    participant ReconciliationPanel
+    participant API
+    participant Server
+    participant HierarchyHandler
+    participant HierarchyService
+    participant Synthesizer
+
+    User->>Browser: Click ⇄ button on version header in accordion
+    Browser->>Accordion: onclick — Dashboard.openReconcileDrawer(vid)
+    Accordion->>Dashboard: openReconcileDrawer(vid)
+    Dashboard->>AppState: selectVersion(version)
+    Dashboard->>AppState: openDrawer('reconcile', { version, projectId })
+    AppState->>Dashboard: notify 'drawerOpen'
+    Dashboard->>Dashboard: _renderDrawerContent(entity)
+    Dashboard->>Browser: Inject drawer HTML with #v2-reconcile-panel-container
+    Dashboard->>ReconciliationPanel: ReconciliationPanel.render(container, pid, vid, reviews, null)
+    ReconciliationPanel->>Browser: Render anchor <select> + supplemental checkboxes + backend <select>
+    Browser->>User: Reconciliation panel visible in drawer
+
+    User->>Browser: Optionally check supplemental review(s), click "⇄ Reconcile Reviews"
+    Browser->>ReconciliationPanel: onRunReconcile(btnEl)
+    ReconciliationPanel->>ReconciliationPanel: Read anchorId from #rec-anchor-{vid}
+    ReconciliationPanel->>ReconciliationPanel: Collect checked .rec-supp-check-{vid}
+    ReconciliationPanel->>Browser: btn.disabled=true, show "Reconciling…"
+    ReconciliationPanel->>API: reconcileReviews(pid, anchorId, supplementalIds, aiBackend)
+    API->>Server: POST /api/projects/{pid}/hierarchy/reconcile<br/>body: { anchor_review_id, supplemental_review_ids[], ai_backend }
+
+    Server->>HierarchyHandler: handle_reconcile_reviews(pid, body)
+    HierarchyHandler->>HierarchyHandler: Validate anchor_review_id present
+    HierarchyHandler->>HierarchyService: reconcile_reviews(pid, anchorId, suppIds, aiBackend)
+
+    HierarchyService->>HierarchyService: store.get_review(anchorId) → anchor
+    loop Each supplemental_review_id
+        HierarchyService->>HierarchyService: store.get_review(rid) → supplemental
+    end
+    HierarchyService->>HierarchyService: store.get_version(anchor.version_id) → version_scope
+    HierarchyService->>Synthesizer: synthesize_reviews(anchor, supplementals, version_scope, ai_backend)
+    Note over Synthesizer: normalize → deduplicate → LLM or deterministic
+    Synthesizer->>HierarchyService: ReconciliationResult
+    HierarchyService->>HierarchyHandler: result.to_dict()
+    HierarchyHandler->>Server: respond(result, 200)
+    Server->>API: 200 ReconciliationResult
+
+    API->>ReconciliationPanel: result
+    ReconciliationPanel->>Browser: Show "✓ Reconciliation complete."
+    ReconciliationPanel->>ReconciliationPanel: renderResult(result)
+    ReconciliationPanel->>Browser: Render findings by category + conflicts + notes
+    Browser->>User: Reconciled output visible in drawer
+```
+
+---
+
+## Sequence 16: Phase 4 — Anchor Change Rebuilds Supplemental List
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant ReconciliationPanel
+
+    Note over Browser: Reconciliation panel is rendered.<br/>User changes the anchor review selection.
+
+    User->>Browser: Change anchor <select> to different review
+    Browser->>ReconciliationPanel: onAnchorChange(selectEl)
+    ReconciliationPanel->>ReconciliationPanel: Derive vid from selectEl.id
+    ReconciliationPanel->>ReconciliationPanel: Read newAnchorId = selectEl.value
+    ReconciliationPanel->>ReconciliationPanel: Parse container.dataset.recReviews → reviews[]
+    ReconciliationPanel->>ReconciliationPanel: _renderSupplementalCheckboxes(reviews, newAnchorId, vid)
+    Note over ReconciliationPanel: New anchor is excluded from supplemental list.<br/>Previous checkboxes are replaced.
+    ReconciliationPanel->>Browser: Update #rec-supp-area-{vid} innerHTML
+    Browser->>User: Supplemental checkboxes rebuilt (old anchor now selectable as supplemental)
+```
+
+### Key rules enforced (Phase 4)
+| Rule | Where |
+|------|-------|
+| `anchor_review_id` required; returns 400 when absent | `handlers/hierarchy.py → handle_reconcile_reviews()` |
+| All reviews must share the same `version_id` | `processors/review_synthesizer.py → synthesize_reviews()` |
+| `files_only` path is always deterministic (no LLM) | `processors/review_synthesizer.py → _deterministic_reconcile()` |
+| Anchor excluded from supplemental checkbox list | `ui/v2/components/ReconciliationPanel.js → _renderSupplementalCheckboxes()` |
+| onComplete callback fired on success (Phase 6 hook) | `ui/v2/components/ReconciliationPanel.js → onRunReconcile()` |
+| Served static copy (`reconciliation_panel.js`) must stay in sync | `static/v2/js/reconciliation_panel.js` |
+
+### Linked components — Phase 3 + 4 additions
+| Participant | File |
+|-------------|------|
+| ReconciliationPanel | `ui/v2/components/ReconciliationPanel.js` (source) |
+| ReconciliationPanel (served) | `static/v2/js/reconciliation_panel.js` |
+| ReviewHandler | `handlers/review.py` — `handle_iterate_review()` |
+| HierarchyHandler | `handlers/hierarchy.py` — `handle_reconcile_reviews()` |
+| HierarchyService | `services/hierarchy.py` — `reconcile_reviews()` |
+| Synthesizer | `processors/review_synthesizer.py` — `synthesize_reviews()` |
+| API | `static/v2/js/api.js` — `iterateReview()`, `reconcileReviews()` |
+| Dashboard | `static/v2/js/dashboard.js` — `openReconcileDrawer()` |
+| Accordion | `static/v2/js/accordion.js` — ⇄ button |

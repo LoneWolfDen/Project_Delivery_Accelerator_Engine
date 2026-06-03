@@ -493,16 +493,16 @@ tests and affected diagrams updated with each module change
 | Core data model (Phase → Version → Review) | ✅ Complete |
 | Backend processors (synthesis, quality, proposal) | ✅ Complete |
 | Backend services and handlers (CRUD, metrics, diff, gate) | ✅ Complete |
-| Server routes (hierarchy, review, proposal, presales) | ⚠️ Partial — missing 7 routes |
+| Server routes (hierarchy, review, proposal, presales) | ⚠️ Partial — missing 5 routes |
 | V2 frontend shell (state, API layer, layout, accordion) | ✅ Complete |
 | V2 frontend — live data connection (mock flag off) | ✅ **Phase 1 — Done** |
 | V2 DetailPanel — weakness notes + decision status | ✅ **Phase 2 — Done** |
 | V2 DetailPanel — provenance line on findings | ✅ **Phase 2.3 — Done** |
-| Review Iteration workflow (UI + route) | ❌ Not done — Phase 3 |
-| Reconciliation workflow (UI + route) | ❌ Not done — Phase 4 |
+| Review Iteration workflow (UI + route) | ✅ **Phase 3 — Done** |
+| Reconciliation workflow (UI + route) | ✅ **Phase 4 — Done** |
+| Coverage Map (UI + route) | ❌ Not done — Phase 5 |
 | Proposal Data Pack workflow (UI + route) | ❌ Not done — Phase 6 |
 | Proposal Review Pass (UI + route) | ❌ Not done — Phase 7 |
-| Coverage Map (UI + route) | ❌ Not done — Phase 5 |
 | Forward Guidance (UI + route) | ❌ Not done — Phase 7 |
 | Provenance endpoint + full chips | ❌ Not done — Phase 8 |
 
@@ -707,26 +707,92 @@ Work is sequenced so each item builds on the previous. Items within a phase are 
 
 ---
 
-#### Phase 3 — Review Iteration Route + UI
-*Closes GAP-2 (partial) and GAP-4.*
+#### Phase 3 — Review Iteration Route + UI ✅ COMPLETE
+*Completed: 2026-06-03*
 
-| # | Item | File(s) | Work |
-|---|------|---------|------|
-| 3.1 | Add `POST .../iterate` route | `server.py`, `handlers/review.py` | New route: validates `previous_review_id` present; delegates to `svc.run_persona_review()` with `previous_review_id`; identical to `/api/review` but semantically explicit |
-| 3.2 | Add `iterateReview()` to API layer | `static/v2/js/api.js` | `POST /api/projects/{pid}/hierarchy/reviews/{rid}/iterate` |
-| 3.3 | Iteration trigger in DetailPanel | `ui/v2/components/DetailPanel.js` | "Iterate from this review" button in review detail; opens modal with persona selector + optional custom prompt; calls `API.iterateReview()`; on success refreshes hierarchy |
+| # | Item | File(s) | Status |
+|---|------|---------|--------|
+| 3.1 | Add `POST .../iterate` route | `server.py`, `handlers/review.py` | ✅ Done |
+| 3.2 | Add `iterateReview()` to API layer | `static/v2/js/api.js` | ✅ Done |
+| 3.3 | Iteration trigger in DetailPanel | `ui/v2/components/DetailPanel.js` | ✅ Done |
+
+**What was implemented:**
+
+`handlers/review.py` — `handle_iterate_review(project_id, previous_review_id, body, respond)`:
+- Validates `roles`/`persona` present; returns 400 if missing
+- Validates `previous_review_id` non-empty; returns 400 if absent
+- Builds `ReviewRequest(previous_review_id=previous_review_id)` and delegates to `ServiceReviewAgent`
+- Returns identical shape to `POST /api/review`
+
+`server.py` — route: `POST /api/projects/{pid}/hierarchy/reviews/{rid}/iterate`:
+- Extracts `pid` from `parts[3]`, `rid` from `parts[6]`
+- Passes `rid` as `previous_review_id` to `handle_iterate_review`
+
+`static/v2/js/api.js` — `iterateReview(projectId, previousReviewId, roles, aiBackend, customPrompt)`:
+- POSTs to `/api/projects/{pid}/hierarchy/reviews/{rid}/iterate`
+- Wraps scalar `roles` in array; includes `custom_prompt` only if provided
+
+`ui/v2/components/DetailPanel.js` — iteration panel in `renderReview()`:
+- `<details>` panel with "↩ Iterate from this review" summary
+- `_onIterateSummaryClick`: lazily loads `/api/personas` into the dropdown on first open
+- `_onIterateSubmit`: POSTs to `/iterate`, shows inline success/error, calls `Dashboard.loadAll(true)` on success
+- Both handlers exported from IIFE and accessible as `DetailPanel._onIterateSummaryClick` / `DetailPanel._onIterateSubmit`
+
+`static/v2/js/dashboard.js` — `window.DashboardRefresh` global exported for use by components.
 
 ---
 
-#### Phase 4 — Reconciliation Route + UI
-*Closes GAP-2 (partial) and GAP-5.*
+#### Phase 4 — Reconciliation Route + UI ✅ COMPLETE
+*Completed: 2026-06-03*
 
-| # | Item | File(s) | Work |
-|---|------|---------|------|
-| 4.1 | Add `POST .../reconcile` route | `server.py`, `handlers/hierarchy.py`, `services/hierarchy.py` | Body: `{ anchor_review_id, supplemental_review_ids[], ai_backend }`. Load reviews from store, call `synthesize_reviews()`, return `ReconciliationResult` |
-| 4.2 | Add `reconcileReviews()` to API layer | `static/v2/js/api.js` | `POST /api/projects/{pid}/hierarchy/reconcile` |
-| 4.3 | Reconciliation panel component | `ui/v2/components/ReconciliationPanel.js` | Multi-select of reviews (anchor + supplementals) from current version; trigger button; result view showing: reconciled findings by category, conflicts, reconciliation notes; provenance attribution per item |
-| 4.4 | Wire panel into dashboard | `static/v2/js/dashboard.js`, `static/v2/dashboard_v2.html` | Add "Reconcile" action to version detail; render `ReconciliationPanel` in drawer or modal |
+| # | Item | File(s) | Status |
+|---|------|---------|--------|
+| 4.1 | Add `POST .../reconcile` route | `server.py`, `handlers/hierarchy.py`, `services/hierarchy.py` | ✅ Done |
+| 4.2 | Add `reconcileReviews()` to API layer | `static/v2/js/api.js` | ✅ Done |
+| 4.3 | Reconciliation panel component | `ui/v2/components/ReconciliationPanel.js` + `static/v2/js/reconciliation_panel.js` | ✅ Done |
+| 4.4 | Wire panel into dashboard + HTML | `static/v2/js/dashboard.js`, `static/v2/js/accordion.js`, `static/v2/dashboard_v2.html` | ✅ Done |
+
+**What was implemented:**
+
+`handlers/hierarchy.py` — `handle_reconcile_reviews(project_id, body, respond)`:
+- Validates `anchor_review_id` present; returns 400 if missing
+- Delegates to `svc.reconcile_reviews(pid, anchor_id, supplemental_ids, ai_backend)`
+
+`services/hierarchy.py` — `reconcile_reviews(project_id, anchor_review_id, supplemental_review_ids, ai_backend)`:
+- Loads anchor and all supplemental reviews from hierarchy store
+- Raises `ValueError` if any review not found
+- Resolves `version_scope` from the anchor's version (best-effort)
+- Calls `synthesize_reviews(anchor, supplementals, version_scope, ai_backend)`
+- Returns `ReconciliationResult.to_dict()`
+
+`server.py` — route: `POST /api/projects/{pid}/hierarchy/reconcile`
+
+`static/v2/js/api.js` — `reconcileReviews(projectId, anchorReviewId, supplementalReviewIds, aiBackend)`:
+- POSTs to `/api/projects/{pid}/hierarchy/reconcile`
+- Passes `{ anchor_review_id, supplemental_review_ids[], ai_backend }`
+
+`ui/v2/components/ReconciliationPanel.js` (source) + `static/v2/js/reconciliation_panel.js` (served):
+- `render(containerEl, projectId, versionId, reviews, onComplete)` — renders anchor dropdown + supplemental checkboxes + backend selector into any container
+- `onAnchorChange(selectEl)` — rebuilds supplemental checkboxes when anchor changes
+- `onRunReconcile(btnEl)` — collects selections, calls `API.reconcileReviews()`, calls `renderResult()` on success, fires `onComplete` callback
+- `renderResult(result)` — renders findings by category + conflicts + reconciliation notes
+- State stored in `container.dataset` so multiple panels can coexist
+
+`static/v2/js/dashboard.js` — `openReconcileDrawer(versionId)`:
+- Reads version from AppState, opens drawer with entity type `'reconcile'`
+- `_renderDrawerContent` handles `'reconcile'` type: injects panel container and mounts `ReconciliationPanel`
+
+`static/v2/js/accordion.js` — ⇄ button added to each version header, calls `Dashboard.openReconcileDrawer(vid)`
+
+**Test coverage added** (`tests/test_v2_phase3_and_phase4.py`):
+- 66 tests covering Phase 3 (20), Phase 4 backend (8), Phase 4 frontend (38); all pass
+- Service unit tests: anchor-only reconciliation, unknown-anchor ValueError, unknown-supplemental ValueError
+- Static analysis: route patterns, handler source, all API functions, component public API
+
+**Sequence flows added** (`docs/architecture/sequence_flows.md`):
+- Sequence 14: Phase 3 — review iteration full message flow
+- Sequence 15: Phase 4 — reconciliation full message flow
+- Sequence 16: Phase 4 — anchor change rebuilds supplemental list
 
 ---
 
@@ -781,8 +847,8 @@ Work is sequenced so each item builds on the previous. Items within a phase are 
 |-------|-----------|----------------|
 | 1 ✅ | — | `static/v2/dashboard_v2.html` |
 | 2 ✅ | `tests/test_v2_phase1_and_phase2.py` | `ui/v2/components/DetailPanel.js`, `static/v2/js/api.js`, `docs/architecture/sequence_flows.md`, `docs/architecture/review_proposal_workbench_end_to_end.md` |
-| 3 | — | `server.py`, `handlers/review.py`, `static/v2/js/api.js`, `ui/v2/components/DetailPanel.js` |
-| 4 | `ui/v2/components/ReconciliationPanel.js` | `server.py`, `handlers/hierarchy.py`, `services/hierarchy.py`, `static/v2/js/api.js`, `static/v2/js/dashboard.js`, `static/v2/dashboard_v2.html` |
+| 3 ✅ | — | `server.py`, `handlers/review.py`, `static/v2/js/api.js`, `ui/v2/components/DetailPanel.js`, `static/v2/js/dashboard.js` |
+| 4 ✅ | `ui/v2/components/ReconciliationPanel.js`, `static/v2/js/reconciliation_panel.js`, `tests/test_v2_phase3_and_phase4.py` | `server.py`, `handlers/hierarchy.py`, `services/hierarchy.py`, `static/v2/js/api.js`, `static/v2/js/dashboard.js`, `static/v2/js/accordion.js`, `static/v2/dashboard_v2.html` |
 | 5 | `ui/v2/components/CoverageMap.js` | `server.py`, `handlers/proposal.py`, `services/proposal.py`, `static/v2/js/api.js` |
 | 6 | `ui/v2/components/ProposalWorkbench.js` | `server.py`, `handlers/proposal.py`, `services/proposal.py`, `static/v2/js/api.js`, `static/v2/js/dashboard.js`, `static/v2/dashboard_v2.html` |
 | 7 | — | `server.py`, `handlers/proposal.py`, `services/proposal.py`, `static/v2/js/api.js`, `ui/v2/components/ProposalWorkbench.js` |
@@ -806,8 +872,8 @@ Work is sequenced so each item builds on the previous. Items within a phase are 
 |-------|-----------|
 | 1 ✅ | v2 loads real project list; version/review selection fetches live metrics; drawer shows real review data |
 | 2 ✅ | Weakness status and note can be saved from v2 drawer; decision points render with status control; provenance line shown above findings |
-| 3 | "Iterate" button creates a new review linked to prior review; new review appears in accordion; `previous_review_id` is set |
-| 4 | Reconciliation panel renders reconciled findings + conflicts for two or more selected reviews from the same version |
+| 3 ✅ | "Iterate" button creates a new review linked to prior review; new review appears in accordion; `previous_review_id` is set |
+| 4 ✅ | Reconciliation panel renders reconciled findings + conflicts for two or more selected reviews from the same version |
 | 5 | Coverage map renders six-domain grid with correct Addressed / Partial / Not Yet Addressed status after reconciliation |
 | 6 | Proposal data pack generates end-to-end from version selection through to displayed output sections |
 | 7 | Review pass domain critique and forward guidance items display in proposal output panel |

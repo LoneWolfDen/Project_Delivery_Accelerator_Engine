@@ -309,6 +309,113 @@ const DetailPanel = (() => {
     }
   }
 
+  // ── Iteration handlers ────────────────────────────────────
+
+  /**
+   * Called when the "Iterate from this review" <summary> is clicked.
+   * Lazily loads /api/personas into the persona <select> the first time
+   * the panel is opened.
+   * @param {HTMLElement} summaryEl
+   */
+  async function _onIterateSummaryClick(summaryEl) {
+    const detailsEl = summaryEl.closest('details');
+    if (!detailsEl) return;
+    // Derive review_id from the details element id: v2-iterate-panel-{rid}
+    const rid = detailsEl.id.replace('v2-iterate-panel-', '');
+    const selectEl = document.getElementById('v2-iterate-persona-' + rid);
+    if (!selectEl || selectEl.dataset.loaded) return;
+
+    // Fetch personas from /api/personas
+    try {
+      const res = await fetch('/api/personas', { method: 'GET' });
+      const data = await res.json();
+      const roles = (data.personas || data.roles || []);
+      if (roles.length) {
+        selectEl.innerHTML = roles.map(r =>
+          `<option value="${_esc(r.id || r.name)}">${_esc(r.name)}</option>`
+        ).join('');
+        selectEl.dataset.loaded = '1';
+      } else {
+        selectEl.innerHTML = '<option value="solution_architect">Solution Architect</option>'
+          + '<option value="delivery_manager">Delivery Manager</option>'
+          + '<option value="product_owner">Product Owner</option>';
+        selectEl.dataset.loaded = '1';
+      }
+    } catch (e) {
+      selectEl.innerHTML = '<option value="solution_architect">Solution Architect</option>'
+        + '<option value="delivery_manager">Delivery Manager</option>'
+        + '<option value="product_owner">Product Owner</option>';
+      selectEl.dataset.loaded = '1';
+    }
+  }
+
+  /**
+   * Called when "Run Iteration" button is clicked inside the iteration panel.
+   * POSTs to /iterate, shows inline result, refreshes hierarchy on success.
+   * @param {HTMLButtonElement} btn
+   */
+  async function _onIterateSubmit(btn) {
+    const rid = btn.dataset.reviewId;
+    if (!rid) return;
+
+    const state = window.AppState;
+    const api   = window.API;
+    if (!state || !api || !api.iterateReview) return;
+
+    const proj = state.get('selectedProject');
+    if (!proj) return;
+
+    const personaSel  = document.getElementById('v2-iterate-persona-' + rid);
+    const promptTa    = document.getElementById('v2-iterate-prompt-' + rid);
+    const resultEl    = document.getElementById('v2-iterate-result-' + rid);
+
+    const persona     = personaSel ? personaSel.value : 'solution_architect';
+    const customPrompt = promptTa  ? promptTa.value.trim() : '';
+
+    if (!persona) {
+      if (resultEl) resultEl.innerHTML =
+        '<p style="color:var(--red);font-size:11px">⚠ Select a persona to continue.</p>';
+      return;
+    }
+
+    // Disable button while running
+    btn.disabled = true;
+    btn.textContent = '⟳ Running…';
+    if (resultEl) resultEl.innerHTML =
+      '<p style="color:var(--text-muted);font-size:11px">Running review iteration…</p>';
+
+    try {
+      const result = await api.iterateReview(
+        proj.id, rid, persona,
+        'files_only',
+        customPrompt || undefined,
+      );
+
+      if (result && result.error) {
+        if (resultEl) resultEl.innerHTML =
+          `<p style="color:var(--red);font-size:11px">⚠ ${_esc(result.error)}</p>`;
+      } else {
+        const newRid = result.review_id || '(new review)';
+        if (resultEl) resultEl.innerHTML =
+          `<p style="color:var(--green);font-size:11px">✓ Iteration created: <strong>${_esc(newRid)}</strong></p>`;
+        // Close the panel
+        const detailsEl = document.getElementById('v2-iterate-panel-' + rid);
+        if (detailsEl) detailsEl.open = false;
+        // Refresh hierarchy so the new review appears in the accordion
+        state.closeDrawer();
+        if (window.Dashboard && window.Dashboard.loadAll) {
+          await window.Dashboard.loadAll(true);
+        }
+      }
+    } catch (e) {
+      if (resultEl) resultEl.innerHTML =
+        `<p style="color:var(--red);font-size:11px">⚠ ${_esc(e.message || 'Unexpected error')}</p>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '▶ Run Iteration';
+    }
+  }
+
   // ── Review detail ─────────────────────────────────────────
   /**
    * TRACE: DetailPanel.renderReview → Data: Review entity
@@ -435,6 +542,49 @@ const DetailPanel = (() => {
       ${decisionHtml}
 
       <div class="drawer-section">
+        <div class="drawer-label">Actions</div>
+        <div id="v2-iterate-result-${_esc(r.review_id)}" style="margin-bottom:8px"></div>
+        <details id="v2-iterate-panel-${_esc(r.review_id)}">
+          <summary style="list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+            padding:5px 10px;background:var(--surface2);border:1px solid var(--border);
+            border-radius:var(--radius);font-size:11px;font-weight:600;color:var(--accent);
+            user-select:none"
+            onclick="DetailPanel._onIterateSummaryClick(this)">
+            ↩ Iterate from this review
+          </summary>
+          <div style="margin-top:8px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)">
+            <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+              Creates a new review chained to <strong>${_esc(r.review_id)}</strong> as its predecessor.
+              Open decision points are carried forward automatically.
+            </p>
+            <div style="margin-bottom:8px">
+              <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">Persona</label>
+              <select id="v2-iterate-persona-${_esc(r.review_id)}"
+                style="width:100%;font-size:12px;padding:5px 8px;background:var(--surface);
+                       border:1px solid var(--border);color:var(--text);border-radius:var(--radius)">
+                <option value="">Loading personas…</option>
+              </select>
+            </div>
+            <div style="margin-bottom:10px">
+              <label style="font-size:10px;color:var(--text-muted);display:block;margin-bottom:4px">
+                Additional context <span style="font-style:italic">(optional)</span>
+              </label>
+              <textarea id="v2-iterate-prompt-${_esc(r.review_id)}" rows="2"
+                placeholder="e.g. Focus on security and DR gaps from prior review"
+                style="width:100%;font-size:11px;background:var(--surface);border:1px solid var(--border);
+                       color:var(--text);border-radius:var(--radius);padding:5px 8px;resize:vertical;
+                       font-family:inherit;line-height:1.5"></textarea>
+            </div>
+            <button class="btn btn-sm"
+              data-review-id="${_esc(r.review_id)}"
+              onclick="DetailPanel._onIterateSubmit(this)">
+              ▶ Run Iteration
+            </button>
+          </div>
+        </details>
+      </div>
+
+      <div class="drawer-section">
         <button class="btn btn-outline btn-sm"
                 onclick="AppState.closeDrawer()"
                 style="width:100%">
@@ -474,6 +624,9 @@ const DetailPanel = (() => {
     _onWeaknessStatusChange,
     _onWeaknessNoteBlur,
     _onDecisionStatusChange,
+    // Phase 3: iteration handlers
+    _onIterateSummaryClick,
+    _onIterateSubmit,
   };
 })();
 
