@@ -901,6 +901,12 @@ async function viewReviews(){
     return await v2RenderReviewDetailPage(rid);
   }
 
+  // Fetch personas locally — same pattern as V1 viewReviews
+  const personasResp=await api('GET','/api/personas');
+  const allPersonaRoles=personasResp.personas||personasResp.roles||[];
+  // Cache so v2UpdateAllBaselinePreviews can read prompt_template
+  state._v2Personas=allPersonaRoles;
+
   const backendOpts=(state.backends||[]).map(b=>
     `<option value="${escHtml(b.name)}">${escHtml(b.display_name||b.name)}${b.available?'':' (not configured)'}</option>`
   ).join('');
@@ -926,7 +932,7 @@ async function viewReviews(){
     <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">&#x21C4; Compare Reviews</button>
   </div>`;
 
-  const roleChips=(personas.roles||[]).map(r=>
+  const roleChips=allPersonaRoles.map(r=>
     '<label class="tag" style="cursor:pointer;gap:4px"><input type="checkbox" class="v2-role-check" value="'+escHtml(r.role_id||r.name||'')+'" onchange="v2OnRoleCheck()"> '+escHtml(r.name||r.role_id||'')+'</label>'
   ).join('');
   const sortNow=state._reviewSort||'newest';
@@ -1161,7 +1167,14 @@ function v2UpdateAllBaselinePreviews(){
   const el=document.getElementById('v2BaselinePreview');if(!el)return;
   const roles=Array.from(checks).map(cb=>cb.value);
   if(!roles.length){el.innerHTML='<p class="fs11 c-dim">Select a persona role to see the base prompt.</p>';return;}
-  const previews=roles.map(r=>'<strong>'+escHtml(r)+'</strong>').join('<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">');
+  const personaMap={};
+  (state._v2Personas||[]).forEach(p=>{personaMap[p.id||p.name]=p;});
+  const previews=roles.map(roleId=>{
+    const p=personaMap[roleId]||{};
+    const prompt=p.prompt_template||'';
+    return '<div class="mb8"><strong class="fs12">'+escHtml(p.name||roleId)+'</strong>'+
+           (prompt?'<pre style="font-size:10px;white-space:pre-wrap;background:var(--surface2);padding:6px 8px;border-radius:4px;margin-top:4px;max-height:120px;overflow-y:auto">'+escHtml(prompt)+'</pre>':'<p class="fs11 c-dim">No prompt template.</p>')+'</div>';
+  }).join('<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">');
   el.innerHTML=previews;
 }
 
@@ -1472,9 +1485,13 @@ async function savePersonaPrompts(){
   });
   const el=document.getElementById('personaPromptsResult');
   if(!Object.keys(updates).length){if(el)el.innerHTML='<p class="fs12 c-dim">No changes to save.</p>';return;}
-  const r=await api('POST','/api/admin/persona-prompts',{updates});
+  const r=await api('POST','/api/admin/config',{persona_prompts:updates});
   if(r.error){if(el)el.innerHTML='<p style="color:var(--red);font-size:12px">'+escHtml(r.error)+'</p>';}
-  else{if(el)el.innerHTML='<p style="color:var(--green);font-size:12px">&#x2713; Prompts saved</p>';}
+  else{
+    if(el)el.innerHTML='<p style="color:var(--green);font-size:12px">&#x2713; Prompts saved</p>';
+    // Re-render so Admin tab reflects the newly-saved prompts immediately
+    setTimeout(()=>render(),400);
+  }
 }
 
 function resetPersonaPrompt(groupId){
@@ -1498,7 +1515,8 @@ async function v2RunReview(){
   const resultEl=document.getElementById('v2ReviewResult');
   if(resultEl)resultEl.innerHTML='<div style="padding:8px;font-size:12px;color:var(--text-dim)">Running review…</div>';
   try{
-    const body={ai_backend:backend||undefined,user_notes:userNotes||undefined};
+    const checkedRoles=Array.from(document.querySelectorAll('.v2-role-check:checked')).map(cb=>cb.value);
+  const body={ai_backend:backend||undefined,user_notes:userNotes||undefined,roles:checkedRoles.length?checkedRoles:undefined};
     if(prevId)body.previous_review_id=prevId;
     const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/run`,body);
     if(r.error){
