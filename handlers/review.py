@@ -90,6 +90,17 @@ def handle_complete_review(
         respond({"error": str(e)}, status=400)
 
 
+def handle_reset_review_status(
+    project_id: str, review_id: str, respond: Callable
+) -> None:
+    """Reset quality_status back to 'pending' (clear draft or final status)."""
+    result = svc.reset_review_status(project_id, review_id)
+    if result.get("error"):
+        respond(result, status=400)
+    else:
+        respond(result)
+
+
 def handle_delete_review(project_id: str, review_id: str, respond: Callable) -> None:
     from services.hierarchy import delete_hierarchy_review
     result = delete_hierarchy_review(project_id, review_id)
