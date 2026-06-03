@@ -1061,7 +1061,35 @@ async function viewReviews(){
   }
   listHtml+=`</div>`;
 
-  return runCard+listHtml;
+  // ── Reconciliation panel ─────────────────────────────────────────────────
+  // Collect all reviews across versions for the reconciliation panel
+  const allReviewsFlat=versionsWithReviews.flatMap(v=>(v.reviews||[]).map(r=>({...r,version_id:v.version_id})));
+  const currentVersionId=state._dashVersion||
+    (versionsWithReviews.length?versionsWithReviews[0].version_id:'');
+
+  const reconcileCard=`<div class="card" style="border-top:2px solid var(--accent-dim)">
+    <div class="flex-between mb">
+      <div class="card-title"><span class="icon">⇄</span>Reconcile Reviews</div>
+      <span class="fs11 c-dim">Merge findings from multiple reviews into one trusted output</span>
+    </div>
+    <div id="v2ReconcileContainer"></div>
+  </div>`;
+
+  setTimeout(()=>{
+    const el=document.getElementById('v2ReconcileContainer');
+    if(!el)return;
+    if(!allReviewsFlat.length){
+      el.innerHTML='<p class="fs12 c-dim">No reviews to reconcile yet.</p>';
+      return;
+    }
+    if(typeof ReconciliationPanel!=='undefined'){
+      ReconciliationPanel.render(el,pid,currentVersionId,allReviewsFlat,null);
+    }else{
+      el.innerHTML='<p style="color:var(--red);font-size:12px">⚠ Reconciliation module not loaded.</p>';
+    }
+  },50);
+
+  return runCard+listHtml+reconcileCard;
 }
 
 function v2SetReviewSort(s){state._reviewSort=s;render();}
@@ -1127,7 +1155,7 @@ async function v2RunDeepDive(){
   const el=document.getElementById('v2DeepDiveResult');
   if(el)el.innerHTML='<div class="fs12 c-dim">Loading questions&#x2026;</div>';
   try{
-    const r=await api('GET',`/api/projects/${pid}/sme-questions`);
+    const r=await api('GET',`/api/projects/${pid}/deep-dive`);
     const qs=r.questions||[];
     if(!qs.length){if(el)el.innerHTML='<p class="fs12 c-dim">No SME questions available.</p>';return;}
     let html='<div style="margin-top:8px"><div class="flex gap-sm mb" style="flex-wrap:wrap">';
@@ -1298,7 +1326,7 @@ async function viewIngest(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
   let arts=[];
-  try{const r=await api('GET',`/api/projects/${pid}/artefacts`);arts=r.artefacts||r.artifacts||[];}catch(e){}
+  try{const r=await api('GET',`/api/v1/projects/${pid}/artifacts`);arts=r.artifacts||r.artefacts||[];}catch(e){}
   const catOpts=ARTIFACT_CATEGORIES.map(c=>'<option value="'+escHtml(c)+'">'+escHtml(c)+'</option>').join('');
   const regRows=arts.length?arts.map(a=>{
     const inc=a.included!==false;
@@ -1337,16 +1365,16 @@ async function doSubmitPaste(){
   const name=(document.getElementById('ingestPasteName')?.value||'').trim()||'Pasted artefact';
   const cat=document.getElementById('ingestCat')?.value||'Other';
   if(!text){toast('Enter artefact content','err');return;}
-  const r=await api('POST',`/api/projects/${pid}/artefacts`,{name,category:cat,content:text});
+  const r=await api('POST',`/api/v1/projects/${pid}/artifacts/text`,{name,category:cat,content:text});
   if(r.error){toast(r.error,'err');}else{toast('Artefact saved');render();}
 }
 async function toggleArtifact(id,included){
   const pid=state.current?.id;if(!pid)return;
-  await api('POST',`/api/projects/${pid}/artefacts/${id}/toggle`,{included});
+  await api('POST',`/api/v1/projects/${pid}/artifacts/${id}/toggle`,{included});
 }
 async function processArtifact(id){
   const pid=state.current?.id;if(!pid)return;
-  const r=await api('POST',`/api/projects/${pid}/artefacts/${id}/process`,{});
+  const r=await api('POST',`/api/v1/projects/${pid}/artifacts/${id}/process`,{});
   if(r.error){toast(r.error,'err');}else toast('Processed');
 }
 async function buildContext(){
@@ -1534,7 +1562,7 @@ async function v2RunReview(){
 
 async function v2SetActiveReview(versionId,reviewId){
   const pid=state.current?.id;if(!pid)return;
-  const r=await api('POST',`/api/projects/${pid}/hierarchy/versions/${versionId}/active-review`,{review_id:reviewId});
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/versions/${versionId}/set-active-review`,{review_id:reviewId});
   if(r.error){toast(r.error,'err');return;}
   toast('Active review updated');render();
 }
@@ -1658,13 +1686,13 @@ async function v2RenderReviewDetailPage(rid){
       html+=`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">
         <strong>${escHtml(w.description||w.weakness||'\u2013')}</strong>
         <span class="tag" style="font-size:10px;margin-left:6px">${escHtml(w.category||'')}</span>
-        <select style="font-size:11px;margin-left:8px"
+        <select id="wsel_${rid}_${wid}" style="font-size:11px;margin-left:8px"
           onchange="updateWeaknessStatus('${rid}','${wid}',this.value,null)">
           ${wSel}
         </select>
         <div><textarea rows="2" style="width:100%;font-size:11px;margin-top:4px;resize:vertical"
           placeholder="Add justification of the status"
-          onblur="updateWeaknessStatus('${rid}','${wid}',this.previousElementSibling.value,this.value)"
+          onblur="updateWeaknessStatus('${rid}','${wid}',document.getElementById('wsel_${rid}_${wid}').value,this.value)"
           >${escHtml(w.user_note||'')}</textarea></div>
       </div>`;
     });

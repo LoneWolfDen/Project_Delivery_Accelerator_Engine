@@ -234,6 +234,12 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             result = svc_review.get_review_diff(pid, rid)
             R(result, status=404 if result.get("error") else 200)
 
+        elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path and clean_path.endswith("/readiness"):
+            parts = clean_path.split("/")
+            pid, rid = parts[3], parts[6]
+            result = svc_review.get_review_readiness(pid, rid)
+            R(result, status=404 if result.get("error") else 200)
+
         elif clean_path.startswith("/api/projects/") and "/hierarchy/reviews/" in clean_path:
             parts = clean_path.split("/")
             pid, rid = parts[3], parts[6]
