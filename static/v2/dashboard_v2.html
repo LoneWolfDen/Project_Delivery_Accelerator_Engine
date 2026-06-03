@@ -43,6 +43,21 @@ nav button.active{background:var(--surface2);color:var(--accent);}
   font-size:12px;font-weight:600;transition:all var(--transition);white-space:nowrap;}
 .btn-compare:hover{background:rgba(88,166,255,.1);border-color:var(--accent);}
 .btn-compare .cmp-icon{font-size:13px;}
+
+.coverage-bar-outer{background:var(--surface2);border-radius:4px;height:8px;overflow:hidden;margin:6px 0}
+.coverage-bar-inner{height:100%;background:var(--accent);border-radius:4px;transition:width .3s}
+.coverage-pills{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.coverage-pill{font-size:10px;padding:2px 7px;border-radius:10px;background:var(--surface2);color:var(--text)}
+.rs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-top:8px}
+.rs-cell{background:var(--surface2);border-radius:var(--radius);padding:8px 10px}
+.rs-item{font-size:11px;color:var(--text-dim);margin-top:4px}
+.pr-bar{height:10px;border-radius:5px;background:var(--surface2);margin:6px 0;overflow:hidden}
+.nba-item{font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)}
+.dp-card{background:var(--surface);border-radius:var(--radius);padding:8px 10px;margin-bottom:6px;font-size:12px}
+.prog-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.prop-strength-area{font-size:11px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);margin-bottom:4px}
+.prompt-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-size:11px;font-family:monospace;white-space:pre-wrap;overflow-x:auto}
+.mb8{margin-bottom:8px}.mt8{margin-top:8px}
 </style>
 
 <style>
@@ -408,7 +423,7 @@ async function api(method,path,body){
 
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
-const TABS=['dashboard','versions','reviews'];
+const TABS=['dashboard','versions','reviews','ingest','settings','admin'];
 
 let state={
   projects:[],current:null,tab:'dashboard',
@@ -475,7 +490,7 @@ async function render(){
   if(state.current)state._lastRenderedProject=state.current.id;
   const main=document.getElementById('main');
   main.innerHTML=`<div style="padding:20px;text-align:center"><div class="loading-bar"></div></div>`;
-  const views={dashboard:viewDashboard,versions:viewVersions,reviews:viewReviews};
+  const views={dashboard:viewDashboard,versions:viewVersions,reviews:viewReviews,ingest:viewIngest,settings:viewSettings,admin:viewAdmin};
   try{
     main.innerHTML=await(views[state.tab]||viewDashboard)();
   }catch(e){
@@ -633,7 +648,17 @@ async function viewDashboard(){
       </div>`:''}
   </div>`;
 
-  return ctxCard+overviewCard+insightCard;
+  const proposalCard=`<div class="card">
+    <div class="card-title mb"><span class="icon">&#x1F4CB;</span>Proposal &amp; Outcomes</div>
+    <p class="fs12 c-dim">Run reviews to generate proposal insights and track outcomes.</p>
+    <div class="flex gap-sm" style="flex-wrap:wrap;margin-top:8px">
+      <button class="btn btn-sm" onclick="switchTab('reviews')">View Reviews</button>
+      <button class="btn btn-sm btn-ghost" onclick="switchTab('ingest')">Manage Artefacts</button>
+    </div>
+    <div id="v2ProposalSummaryResult" class="mt"></div>
+  </div>`;
+  setTimeout(()=>v2LoadProposalSummary(),100);
+  return ctxCard+overviewCard+insightCard+proposalCard;
 }
 </script>
 
@@ -876,7 +901,6 @@ async function viewReviews(){
     return await v2RenderReviewDetailPage(rid);
   }
 
-  const personas=await api('GET','/api/personas');
   const backendOpts=(state.backends||[]).map(b=>
     `<option value="${escHtml(b.name)}">${escHtml(b.display_name||b.name)}${b.available?'':' (not configured)'}</option>`
   ).join('');
@@ -896,49 +920,62 @@ async function viewReviews(){
   const sort=state._reviewSort||'newest';
   const sortBar=`<div class="sort-bar">
     <span>Sort:</span>
-    ${['newest','oldest','most-findings'].map(s=>
-      `<button class="sort-btn ${sort===s?'active':''}"
-        onclick="state._reviewSort='${s}';render()">${
-          s==='newest'?'Newest First':s==='oldest'?'Oldest First':'Most Findings'
-        }</button>`).join('')}
-    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">⇄ Compare Reviews</button>
+    <button class="sort-btn ${sort==='newest'?'active':''}" onclick="v2SetReviewSort('newest')">Newest First</button>
+    <button class="sort-btn ${sort==='oldest'?'active':''}" onclick="v2SetReviewSort('oldest')">Oldest First</button>
+    <button class="sort-btn ${sort==='most-findings'?'active':''}" onclick="v2SetReviewSort('most-findings')">Most Findings</button>
+    <button class="btn-compare" style="margin-left:auto" onclick="openCompare()">&#x21C4; Compare Reviews</button>
   </div>`;
 
-  if(!versionsWithReviews.length){
-    return`<div class="card">
-      <div class="flex-between mb">
-        <div class="card-title"><span class="icon">🔍</span>Review History</div>
-        <button class="btn-compare" onclick="openCompare()">⇄ Compare</button>
-      </div>
-      <div style="padding:8px 10px;background:var(--surface)">
-        <label class="fs11 fw6 c-dim" style="display:block;margin-bottom:4px">
-          ③ Your Context &amp; Constraints <span class="fs10 c-muted">(optional)</span>
-        </label>
-        <textarea id="v2UserNotes" rows="2" placeholder="e.g. Budget capped at £500K. AWS only."
-          style="width:100%;font-size:12px;resize:vertical"></textarea>
-      </div>
-    </div>
-    <input type="hidden" id="v2PreviousReviewId" value="">
-    <div class="flex gap-sm mt8">
-      <button id="v2RunReviewBtn" class="btn" onclick="v2RunReview()">▶ Run Review</button>
-    </div>
-    <div id="v2DeepDiveResult" class="mt"></div>
-    <div id="v2ReviewResult" class="mt"></div>
-  </div>`;
+  const roleChips=(personas.roles||[]).map(r=>
+    '<label class="tag" style="cursor:pointer;gap:4px"><input type="checkbox" class="v2-role-check" value="'+escHtml(r.role_id||r.name||'')+'" onchange="v2OnRoleCheck()"> '+escHtml(r.name||r.role_id||'')+'</label>'
+  ).join('');
+  const sortNow=state._reviewSort||'newest';
+  const runCard='<div class="card">'+
+    '<div class="flex-between mb">'+
+    '<div class="card-title"><span class="icon">&#x1F50D;</span>Review History</div>'+
+    '<button class="btn-compare" onclick="openCompare()">&#x21C4; Compare</button>'+
+    '</div>'+
+    '<div style="padding:8px 10px;background:var(--surface);border-radius:var(--radius);margin-bottom:8px">'+
+    '<div class="fs11 fw6 c-dim mb8">① Role Persona Prompt</div>'+
+    '<div id="v2RoleGrid" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">'+roleChips+'</div>'+
+    '<div id="v2BaselinePreview" style="font-size:11px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);min-height:28px"><p class="c-dim">Select a persona role to see the base prompt.</p></div>'+
+    '</div>'+
+    '<div style="padding:8px 10px;background:var(--surface);border-radius:var(--radius);margin-bottom:8px">'+
+    '<div class="fs11 fw6 c-dim mb8">② SME Questions</div>'+
+    '<button class="btn btn-xs btn-ghost" onclick="v2RunDeepDive()">Ask SME Questions</button>'+
+    '<div id="v2InjectedChips" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px"></div>'+
+    '<div id="v2InjectedQuestions"></div>'+
+    '</div>'+
+    '<div style="padding:8px 10px;background:var(--surface);border-radius:var(--radius);margin-bottom:8px">'+
+    '<label class="fs11 fw6 c-dim" style="display:block;margin-bottom:4px">③ Your Context &amp; Constraints</label>'+
+    '<textarea id="v2UserNotes" rows="2" placeholder="e.g. Budget capped at &#xA3;500K. AWS only." style="width:100%;font-size:12px;resize:vertical"></textarea>'+
+    '</div>'+
+    '<input type="hidden" id="v2PreviousReviewId" value="">'+
+    '<div class="flex gap-sm mt8">'+
+    '<select id="v2BackendSelect" style="font-size:11px">'+backendOpts+'</select>'+
+    '<button id="v2RunReviewBtn" class="btn" onclick="v2RunReview()">&#x25B6; Run Review</button>'+
+    '</div>'+
+    '<div style="margin-top:8px">Sort: '+
+    '<button class="sort-btn '+(sortNow===\'newest\'?\'active\':'')+\'" onclick="v2SetReviewSort(\'newest\')">\'+'Newest First</button>'+
+    '<button class="sort-btn '+(sortNow===\'oldest\'?\'active\':'')+\'" onclick="v2SetReviewSort(\'oldest\')">\'+'Oldest First</button>'+
+    '<button class="sort-btn '+(sortNow===\'most-findings\'?\'active\':'')+\'" onclick="v2SetReviewSort(\'most-findings\')">\'+'Most Findings</button>'+
+    '</div>'+
+    '<div id="v2ReviewResult" class="mt"></div>'+
+    '</div>';
 
   if(!versionsWithReviews.length){
     return runCard+`<div class="card">
       ${sortBar}
       <div class="empty" style="padding:24px 0">
-        <div class="empty-icon">🔍</div>
-        <p>No reviews yet. Run a Persona Review from the main dashboard.</p>
+        <div class="empty-icon">&#x1F50D;</div>
+        <p>No reviews yet. Run a Persona Review above.</p>
       </div>
     </div>`;
   }
 
   let listHtml=`<div class="card">
     <div class="flex-between mb">
-      <div class="card-title"><span class="icon">🔍</span>Review History
+      <div class="card-title"><span class="icon">&#x1F50D;</span>Review History
         ${state._dashVersion?`<span class="tag tag-blue fs10">v: ${escHtml(state._dashVersion)}</span>`:''}
       </div>
     </div>
@@ -955,9 +992,9 @@ async function viewReviews(){
       <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
         padding:5px 6px;border-radius:var(--radius)"
         onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-        <span class="chevron">▶</span>
+        <span class="chevron">&#x25B6;</span>
         <strong class="fs12">${escHtml(ver.version_id)}</strong>
-        ${ver.label?`<span class="c-dim fs12">– ${escHtml(ver.label)}</span>`:''}
+        ${ver.label?`<span class="c-dim fs12">&#x2013; ${escHtml(ver.label)}</span>`:''}
         <span class="tag">${escHtml(ver.phase_label||'')}</span>
         <span class="tag tag-blue">${revs.length} review${revs.length===1?'':'s'}</span>
       </summary>`;
@@ -967,29 +1004,52 @@ async function viewReviews(){
       const isActive=rid===activeId;
       const qStatus=rev.quality_status||'pending';
       const qCls=qStatus==='complete'?'tag-green':qStatus==='interim'?'tag-yellow':'';
-      const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'In Progress':'Draft';
+      const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'Draft':'New';
+      const score=rev.completeness_score||0;
+      const scoreColor=score>=80?'var(--green)':score>=50?'var(--yellow)':'var(--text-muted)';
+      const promptBadge=rev.custom_prompt?'<span class="tag tag-purple" style="font-size:9px">custom</span>':'';
 
       listHtml+=`<details style="margin:4px 0;background:var(--bg);
         border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:var(--radius);overflow:hidden">
         <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:7px 10px"
           onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
-          <span class="chevron">▶</span>
+          <span class="chevron">&#x25B6;</span>
           <span class="tag" style="font-size:10px;padding:1px 6px;font-weight:700;
             background:var(--surface3)">R${rev.iteration_number||'?'}</span>
           <strong class="fs11">${rid}</strong>
           ${isActive?'<span class="tag tag-green">active</span>':''}
-          <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
+          <span class="tag tag-purple">${escHtml(rev.persona||'&#x2013;')}</span>
           ${promptBadge}
           <span class="tag ${qCls}" style="font-size:9px">${qLabel}</span>
-          <span style="font-size:10px;color:${scoreColor};background:var(--surface3);padding:1px 6px;border-radius:10px">${rev.completeness_score||0}%</span>
+          <span style="font-size:10px;color:${scoreColor};background:var(--surface3);padding:1px 6px;border-radius:10px">${score}%</span>
           ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
           <span class="fs10 c-muted ml-auto">${relativeTime(rev.created_at)}</span>
         </summary>
         <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
           ${rev.summary?`<p class="fs12 c-dim" style="margin-bottom:8px">${escHtml(rev.summary.slice(0,200))}</p>`:''}
-          <div class="flex gap-sm">
+          <div class="flex gap-sm" style="flex-wrap:wrap">
+            <button class="btn btn-xs btn-outline" onclick="v2ViewReviewDetail('${rid}')">Full Details</button>
+            ${!isActive?`<button class="btn btn-xs btn-ghost" onclick="v2SetActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
+            ${qStatus==='pending'
+              ?`<button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','interim')">Mark Draft</button>
+                <button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark Final</button>`
+              :(qStatus==='interim'
+                ?`<button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark Final</button>
+                  <button class="btn btn-xs btn-ghost" onclick="v2ResetReviewStatus('${rid}')">Clear Draft</button>`
+                :`<span class="fs10" style="color:var(--green)">&#x2713; Final</span>`)}
             <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
-              onclick="openCompare()">⇄ Compare Reviews</button>
+              onclick="openCompare()">&#x21C4; Compare</button>
+            <button class="btn btn-xs" style="background:var(--red);color:#fff;margin-left:auto"
+              onclick="v2DeleteReview('${rid}')">Delete</button>
+          </div>
+          <div id="v2mc_${rid}" style="display:none;margin-top:6px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+            <label class="fs11 c-dim">Your name</label>
+            <div class="flex gap-sm" style="margin-top:4px">
+              <input id="v2cb_${rid}" placeholder="Your name" style="flex:1;font-size:11px">
+              <button class="btn btn-xs btn-ghost" onclick="v2SubmitMarkComplete('${rid}','interim')">Draft</button>
+              <button class="btn btn-xs" style="background:var(--green-dim);color:#fff" onclick="v2SubmitMarkComplete('${rid}','complete')">Final</button>
+              <button class="btn btn-xs btn-ghost" onclick="document.getElementById('v2mc_${rid}').style.display='none'">&#x2715;</button>
+            </div>
           </div>
         </div>
       </details>`;
@@ -998,62 +1058,12 @@ async function viewReviews(){
   }
   listHtml+=`</div>`;
 
-  setTimeout(()=>v2RenderInjectedChips(),50);
   return runCard+listHtml;
 }
 
 function v2SetReviewSort(s){state._reviewSort=s;render();}
 </script>
 
-
-<script>
-// ── Project actions ───────────────────────────────────────────────────────────
-async function selectProject(id){
-  state.current=state.projects.find(x=>x.id===id)||state.current;
-  try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
-  state._dashVersion='';state._dashReview='';
-  state.tab='dashboard';render();
-}
-
-async function createProject(){
-  const name=(document.getElementById('newName')?.value||'').trim();
-  if(!name)return;
-  const r=await api('POST','/api/projects',{name});
-  if(r.project){
-    await loadProjects();
-    state.current=state.projects.find(p=>p.id===r.project.id)||r.project;
-    state.tab='dashboard';toast(`Project "${name}" created`);render();
-  }else{
-    const el=document.getElementById('createProjectError');
-    if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px;margin-top:6px">${escHtml(r.error||'Failed')}</p>`;
-    else toast(r.error||'Failed','err');
-  }
-}
-async function v2DeleteReview(reviewId){
-  if(!confirm('Delete this review? This cannot be undone.'))return;
-  const pid=state.current?.id;if(!pid)return;
-  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/delete`,{});
-  if(r.error){toast(r.error,'err');return;}
-  toast('Review deleted');render();
-}
-function v2OpenMarkComplete(reviewId,status){
-  document.querySelectorAll('[id^="v2mc_"]').forEach(el=>el.style.display='none');
-  const el=document.getElementById(`v2mc_${reviewId}`);
-  if(el)el.style.display='block';
-}
-async function v2SubmitMarkComplete(reviewId,qualityStatus){
-  const pid=state.current?.id;if(!pid)return;
-  const by=(document.getElementById(`v2cb_${reviewId}`)?.value||'').trim();
-  if(!by){toast('Enter your name','err');return;}
-  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/complete`,{completed_by:by,quality_status:qualityStatus});
-  if(r.error){toast(r.error,'err');return;}
-  toast(qualityStatus==='complete'?'Marked as Final':'Saved as Draft');render();
-}
-
-(async()=>{
-  await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);
-  render();
-</script>
 
 
 <script>
@@ -1081,6 +1091,670 @@ async function createProject(){
     if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px;margin-top:6px">${escHtml(r.error||'Failed')}</p>`;
     else toast(r.error||'Failed','err');
   }
+}
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const COVERAGE_BASELINE=['Security','Scalability','Maintainability','Reliability','Performance','Observability','Cost','Compliance'];
+const COVERAGE_PERSONA={};
+const _IMPACT_MAP={critical:'var(--red)',high:'var(--yellow)',medium:'var(--accent)',low:'var(--text-muted)',unknown:'var(--text-muted)'};
+const ARTIFACT_CATEGORIES=['Architecture','Requirements','Design','Test','Operations','Security','Data','API','Infrastructure','Other'];
+const CATEGORY_META_SCHEMA={description:'',version:'',owner:''};
+
+// ── v2 Proposal summary loader ─────────────────────────────────────────────
+async function v2LoadProposalSummary(){
+  const pid=state.current?.id;if(!pid)return;
+  const el=document.getElementById('v2ProposalSummaryResult');if(!el)return;
+  try{
+    const r=await api('GET',`/api/projects/${pid}/proposal`);
+    if(r.error){el.innerHTML='';return;}
+    el.innerHTML='<p class="fs12 c-dim">'+escHtml(r.summary||r.status||'No proposal data yet.')+'</p>';
+  }catch(e){el.innerHTML='';}
+}
+
+
+// ── SME / Deep Dive helpers ───────────────────────────────────────────────
+function v2DdSelectAll(checked){
+  document.querySelectorAll('#v2DdList input[type=checkbox]').forEach(cb=>cb.checked=checked!==false);
+}
+function v2DdExpandAll(open){
+  document.querySelectorAll('#v2DdList details').forEach(d=>d.open=open!==false);
+}
+async function v2RunDeepDive(){
+  const pid=state.current?.id;if(!pid)return;
+  const el=document.getElementById('v2DeepDiveResult');
+  if(el)el.innerHTML='<div class="fs12 c-dim">Loading questions&#x2026;</div>';
+  try{
+    const r=await api('GET',`/api/projects/${pid}/sme-questions`);
+    const qs=r.questions||[];
+    if(!qs.length){if(el)el.innerHTML='<p class="fs12 c-dim">No SME questions available.</p>';return;}
+    let html='<div style="margin-top:8px"><div class="flex gap-sm mb" style="flex-wrap:wrap">';
+    html+='<button class="btn btn-xs btn-ghost" onclick="v2DdSelectAll(true)">Select All</button>';
+    html+='<button class="btn btn-xs btn-ghost" onclick="v2DdSelectAll(false)">Unselect All</button>';
+    html+='<button class="btn btn-xs btn-ghost" onclick="v2DdExpandAll(true)">Expand All</button>';
+    html+='<button class="btn btn-xs btn-ghost" onclick="v2DdExpandAll(false)">Collapse All</button>';
+    html+='</div><div id="v2DdList">';
+    qs.forEach((q,i)=>{
+      html+='<details style="margin:3px 0"><summary style="list-style:none;display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">';
+      html+='<input type="checkbox" checked id="v2ddq_'+i+'"><label for="v2ddq_'+i+'" style="cursor:pointer">'+escHtml(q.question||q)+'</label></summary>';
+      if(q.context)html+='<p class="fs11 c-dim" style="padding:4px 0 4px 22px">'+escHtml(q.context)+'</p>';
+      html+='</details>';
+    });
+    html+='</div><button class="btn mt8" onclick="v2AddSelectedToPrompt()">Add Selected to Prompt</button></div>';
+    if(el)el.innerHTML=html;
+  }catch(e){if(el)el.innerHTML='<p style="color:var(--red);font-size:12px">'+escHtml(e.message)+'</p>';}
+}
+
+
+function v2AddSelectedToPrompt(){
+  const checks=document.querySelectorAll('#v2DdList input[type=checkbox]');
+  const selected=[];
+  checks.forEach((cb,i)=>{if(cb.checked){const lbl=cb.nextElementSibling;if(lbl)selected.push(lbl.textContent.trim());}});
+  if(!selected.length)return;
+  if(!state._injectedQuestions)state._injectedQuestions=[];
+  state._injectedQuestions.push(...selected);
+  v2RenderInjectedChips();
+}
+
+function v2OnRoleCheck(){
+  v2UpdateAllBaselinePreviews();
+}
+
+function v2UpdateAllBaselinePreviews(){
+  const checks=document.querySelectorAll('#v2RoleGrid input[type=checkbox]:checked');
+  const el=document.getElementById('v2BaselinePreview');if(!el)return;
+  const roles=Array.from(checks).map(cb=>cb.value);
+  if(!roles.length){el.innerHTML='<p class="fs11 c-dim">Select a persona role to see the base prompt.</p>';return;}
+  const previews=roles.map(r=>'<strong>'+escHtml(r)+'</strong>').join('<hr style="border:none;border-top:1px solid var(--border);margin:8px 0">');
+  el.innerHTML=previews;
+}
+
+
+// ── Full Detail V1 parity helpers ────────────────────────────────────────────
+function renderCoverageAssessment(r){
+  const dims=[...COVERAGE_BASELINE,...(COVERAGE_PERSONA[r.persona]||[])];
+  const coverage=r.coverage||{};
+  const score=r.completeness_score||0;
+  const scoreColor=score>=80?'var(--green)':score>=50?'var(--yellow)':'var(--red)';
+  let html='<div class="card"><div class="card-title mb">Coverage Assessment</div>';
+  html+='<div class="coverage-bar-outer"><div class="coverage-bar-inner" style="width:'+score+'%;background:'+scoreColor+'"></div></div>';
+  html+='<div style="font-size:11px;color:'+scoreColor+';margin-bottom:6px">'+score+'% covered</div>';
+  html+='<div class="coverage-pills">';
+  dims.forEach(d=>{
+    const present=coverage[d]||r.findings?.[d]?.length;
+    html+='<span class="coverage-pill" style="background:'+(present?'var(--accent)':'var(--surface2)')+';color:'+(present?'#fff':'var(--text-muted)')+'">'+escHtml(d)+'</span>';
+  });
+  html+='</div></div>';
+  return html;
+}
+
+function renderReviewStrength(r){
+  const missing=(r.missing_areas||[]);
+  const weak=(r.weaknesses||[]).filter(w=>w.status!=='addressed'&&w.status!=='validated');
+  const unresolved=(r.decision_points||[]).filter(d=>d.status==='open');
+  const impact=r.impact_assessment||'';
+  let html='<div class="card"><div class="card-title mb">Review Findings &amp; Quality Signals</div>';
+  html+='<div class="rs-grid">';
+  html+='<div class="rs-cell"><div class="fs11 fw6">Missing Areas</div><div class="rs-item">'+missing.length+' coverage gaps</div></div>';
+  html+='<div class="rs-cell"><div class="fs11 fw6">Weak Areas</div><div class="rs-item">'+weak.length+' weak findings</div></div>';
+  html+='<div class="rs-cell"><div class="fs11 fw6">Unresolved</div><div class="rs-item">'+unresolved.length+' open decisions</div></div>';
+  if(impact){
+    const col=_IMPACT_MAP[impact.toLowerCase()]||_IMPACT_MAP.unknown;
+    html+='<div class="rs-cell"><div class="fs11 fw6">Impact</div><div class="rs-item" style="color:'+col+'">'+escHtml(impact)+'</div></div>';
+  }
+  html+='</div></div>';
+  return html;
+}
+
+
+function _inferDecisionTitle(d){
+  return d.title||d.description||d.question||(d.options&&d.options[0])||'Decision';
+}
+function _inferOptions(d){
+  if(d.options&&d.options.length)return d.options;
+  return['Option A','Option B'];
+}
+
+function renderDecisionPointsEngine(r){
+  const dps=r.decision_points||[];if(!dps.length)return'';
+  let html='<div class="card"><div class="card-title mb">Decision Points Engine</div>';
+  dps.forEach(d=>{
+    const title=_inferDecisionTitle(d);
+    const opts=_inferOptions(d);
+    html+='<div class="dp-card"><strong class="fs12">'+escHtml(title)+'</strong>';
+    html+='<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">';
+    opts.forEach(o=>{html+='<span class="tag">'+escHtml(o)+'</span>';});
+    html+='</div>';
+    if(d.sme_link||d.rationale){html+='<p class="fs11 c-dim mt8">'+escHtml(d.rationale||d.sme_link||'')+'</p>';}
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function renderProposalReadiness(r){
+  const readiness=r.proposal_readiness||'';
+  const level=readiness.toLowerCase();
+  let label='Not Ready',col='var(--red)',pct=20;
+  if(level.includes('partially')){label='Partially Ready';col='var(--yellow)';pct=60;}
+  else if(level.includes('ready')&&!level.includes('not')){label='Ready';col='var(--green)';pct=100;}
+  const blockers=r.blockers||[];
+  const next=r.next_steps||[];
+  let html='<div class="card"><div class="card-title mb">Proposal Readiness</div>';
+  html+='<div class="pr-bar"><div style="height:100%;width:'+pct+'%;background:'+col+'"></div></div>';
+  html+='<p class="fs12 fw6" style="color:'+col+'">'+escHtml(label)+'</p>';
+  if(blockers.length){html+='<div class="fs11 c-dim mt8"><strong>Blockers:</strong><ul style="margin:4px 0 0 16px">';blockers.forEach(b=>{html+='<li>'+escHtml(b)+'</li>';});html+='</ul></div>';}
+  if(next.length){html+='<div class="fs11 c-dim mt8"><strong>Next Steps:</strong><ul style="margin:4px 0 0 16px">';next.forEach(n=>{html+='<li>'+escHtml(n)+'</li>';});html+='</ul></div>';}
+  html+='</div>';
+  return html;
+}
+
+function renderNextBestActions(r){
+  const actions=r.next_best_actions||r.action_items||[];if(!actions.length)return'';
+  let html='<div class="card"><div class="card-title mb">Next Best Actions</div>';
+  actions.slice(0,5).forEach((a,i)=>{
+    html+='<div class="nba-item"><strong>'+(i+1)+'.</strong> '+escHtml(typeof a==='string'?a:a.action||JSON.stringify(a))+'</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+async function renderReviewProgression(r,pid){
+  if(!r.previous_review_id)return'';
+  let diff={};
+  try{diff=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${r.review_id}/diff`);}catch(e){return'';}
+  const resolved=(diff.resolved||[]).length;
+  const newF=(diff.new_findings||[]).length;
+  const stillOpen=(diff.still_open||[]).length;
+  const unchanged=(diff.unchanged||[]).length;
+  return'<div class="card"><div class="card-title mb">Review Progression</div>'+
+    '<div class="prog-row">'+
+    '<div class="rs-cell"><div class="fs11 fw6" style="color:var(--green)">Resolved</div><div class="rs-item">'+resolved+'</div></div>'+
+    '<div class="rs-cell"><div class="fs11 fw6" style="color:var(--red)">New Findings</div><div class="rs-item">'+newF+'</div></div>'+
+    '<div class="rs-cell"><div class="fs11 fw6" style="color:var(--yellow)">Still Open</div><div class="rs-item">'+stillOpen+'</div></div>'+
+    '<div class="rs-cell"><div class="fs11 fw6">Unchanged</div><div class="rs-item">'+unchanged+'</div></div>'+
+    '</div></div>';
+}
+
+function updateWeaknessStatus(reviewId,weaknessId,status,userNote){
+  v2UpdateWeaknessStatus(reviewId,weaknessId,status,userNote);
+}
+function updateDecisionStatus(reviewId,decisionId,status){
+  v2UpdateDecisionStatus(reviewId,decisionId,status);
+}
+
+
+// ── Ingest Tab ────────────────────────────────────────────────────────────
+async function viewIngest(){
+  if(!state.current)return viewNoProject();
+  const pid=state.current.id;
+  let arts=[];
+  try{const r=await api('GET',`/api/projects/${pid}/artefacts`);arts=r.artefacts||r.artifacts||[];}catch(e){}
+  const catOpts=ARTIFACT_CATEGORIES.map(c=>'<option value="'+escHtml(c)+'">'+escHtml(c)+'</option>').join('');
+  const regRows=arts.length?arts.map(a=>{
+    const inc=a.included!==false;
+    return'<div class="flex gap-sm" style="align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">'+
+      '<input type="checkbox" '+(inc?'checked':'')+' onchange="toggleArtifact(\''+escHtml(a.id||a.name||'')+'\',this.checked)">'+
+      '<span style="flex:1">'+escHtml(a.name||a.path||'')+'</span>'+
+      '<span class="tag" style="font-size:10px">'+escHtml(a.category||'')+'</span>'+
+      '<button class="btn btn-xs btn-ghost" onclick="processArtifact(\''+escHtml(a.id||a.name||'')+'\')">Process</button>'+
+      '</div>';
+  }).join(''):'<p class="fs12 c-dim">No artefacts yet.</p>';
+  return'<div class="card"><div class="card-title mb"><span class="icon">&#x1F4E5;</span>Add Artefact</div>'+
+    '<div class="flex gap-sm mb" style="flex-wrap:wrap">'+
+    '<select id="ingestCat" style="font-size:12px">'+catOpts+'</select>'+
+    '<button class="btn btn-sm" onclick="doUploadArtifact()">&#x2B06; Upload File</button>'+
+    '<button class="btn btn-sm btn-ghost" onclick="doPasteArtifact()">&#x1F4CB; Paste Text</button>'+
+    '</div>'+
+    '<div id="ingestPasteArea" style="display:none"><textarea id="ingestPasteText" rows="5" placeholder="Paste artefact content here..." style="width:100%;font-size:12px;resize:vertical"></textarea>'+
+    '<div class="flex gap-sm mt8"><input id="ingestPasteName" placeholder="Artefact name" style="flex:1;font-size:12px">'+
+    '<button class="btn btn-sm" onclick="doSubmitPaste()">Save</button></div></div>'+
+    '<div id="ingestResult" class="mt"></div></div>'+
+    '<div class="card"><div class="card-title mb"><span class="icon">&#x1F4DA;</span>Artefact Registry</div>'+regRows+
+    '</div>'+
+    '<div class="card"><div class="card-title mb"><span class="icon">&#x1F9E0;</span>Build Intelligence</div>'+
+    '<p class="fs12 c-dim">Run Build Intelligence to extract risks, constraints and decisions from ingested artefacts.</p>'+
+    '<button class="btn mt8" onclick="buildContext()">&#x25B6; Build Intelligence</button>'+
+    '<div id="buildContextResult" class="mt"></div></div>';
+}
+
+
+async function doUploadArtifact(){toast('Upload: use the file picker in a full implementation.','ok');}
+async function doPasteArtifact(){const a=document.getElementById('ingestPasteArea');if(a)a.style.display=a.style.display==='none'?'block':'none';}
+async function doSubmitPaste(){
+  const pid=state.current?.id;if(!pid)return;
+  const text=(document.getElementById('ingestPasteText')?.value||'').trim();
+  const name=(document.getElementById('ingestPasteName')?.value||'').trim()||'Pasted artefact';
+  const cat=document.getElementById('ingestCat')?.value||'Other';
+  if(!text){toast('Enter artefact content','err');return;}
+  const r=await api('POST',`/api/projects/${pid}/artefacts`,{name,category:cat,content:text});
+  if(r.error){toast(r.error,'err');}else{toast('Artefact saved');render();}
+}
+async function toggleArtifact(id,included){
+  const pid=state.current?.id;if(!pid)return;
+  await api('POST',`/api/projects/${pid}/artefacts/${id}/toggle`,{included});
+}
+async function processArtifact(id){
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/artefacts/${id}/process`,{});
+  if(r.error){toast(r.error,'err');}else toast('Processed');
+}
+async function buildContext(){
+  const pid=state.current?.id;if(!pid)return;
+  const el=document.getElementById('buildContextResult');
+  if(el)el.innerHTML='<div class="fs12 c-dim">Building&#x2026;</div>';
+  const r=await api('POST',`/api/projects/${pid}/build-context`,{});
+  if(r.error){if(el)el.innerHTML='<p style="color:var(--red);font-size:12px">'+escHtml(r.error)+'</p>';}
+  else{if(el)el.innerHTML='<p class="fs12" style="color:var(--green)">&#x2713; Intelligence built successfully.</p>';render();}
+}
+
+
+// ── Settings Tab ──────────────────────────────────────────────────────────
+async function viewSettings(){
+  const backendCards=(state.backends||[]).map(b=>
+    '<div class="flex-between" style="padding:4px 0;font-size:12px"><span>'+escHtml(b.display_name||b.name)+'</span>'+
+    '<span class="tag '+(b.available?'tag-green':'')+'">'+( b.available?'available':'not configured')+'</span></div>'
+  ).join('');
+  const allProjects=(state.projects||[]).map(p=>
+    '<div class="flex-between" style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">'+
+    '<a href="#" onclick="selectProject(\''+escHtml(p.id)+'\')" style="color:var(--accent)">'+escHtml(p.name)+'</a>'+
+    '<div class="flex gap-sm">'+
+    '<button class="btn btn-xs btn-ghost" onclick="archiveProject(\''+escHtml(p.id)+'\')">Archive</button>'+
+    '<button class="btn btn-xs" style="background:var(--red);color:#fff" onclick="deleteProject(\''+escHtml(p.id)+'\')">Delete</button>'+
+    '</div></div>'
+  ).join('');
+  return'<div class="card"><div class="card-title mb"><span class="icon">&#x2699;</span>Create New Project</div>'+
+    '<div style="margin-bottom:8px"><input id="newName" placeholder="Project name" style="width:100%;font-size:13px;margin-bottom:6px">'+
+    '<input id="newDesc" placeholder="Description (optional)" style="width:100%;font-size:12px"></div>'+
+    '<button class="btn" onclick="createProject()">Create Project</button><div id="createProjectError" class="mt"></div></div>'+
+    '<div class="card"><div class="card-title mb"><span class="icon">&#x1F4C2;</span>All Projects</div>'+
+    (allProjects||'<p class="fs12 c-dim">No projects yet.</p>')+
+    '</div>'+
+    '<div class="card"><div class="card-title mb"><span class="icon">&#x1F916;</span>AI Backends</div>'+
+    (backendCards||'<p class="fs12 c-dim">No backends configured.</p>')+
+    '</div>';
+}
+async function archiveProject(id){
+  if(!confirm('Archive this project?'))return;
+  const r=await api('POST',`/api/projects/${id}/archive`,{});
+  if(r.error){toast(r.error,'err');}else{toast('Project archived');await loadProjects();render();}
+}
+async function deleteProject(id){
+  if(!confirm('Delete this project permanently?'))return;
+  const r=await api('POST',`/api/projects/${id}/delete`,{});
+  if(r.error){toast(r.error,'err');}else{
+    toast('Project deleted');
+    if(state.current?.id===id){state.current=null;}
+    await loadProjects();render();
+  }
+}
+
+
+// ── Admin Tab ────────────────────────────────────────────────────────────
+async function viewAdmin(){
+  let health={},cfg={},personas={roles:[]};
+  try{[health,cfg,personas]=await Promise.all([
+    api('GET','/api/admin/health'),
+    api('GET','/api/admin/config'),
+    api('GET','/api/personas'),
+  ]);}catch(e){}
+  const allRoles=personas.roles||[];
+  const statusColor=health.status==='ok'?'var(--green)':'var(--red)';
+  const healthCard='<div class="card"><div class="card-title mb"><span class="icon">&#x2665;</span>System Health</div>'+
+    '<div class="flex gap-sm" style="flex-wrap:wrap">'+
+    '<span class="tag '+(health.status==='ok'?'tag-green':'')+'" style="font-size:12px">'+escHtml(health.status||'unknown')+'</span>'+
+    (health.version?'<span class="tag fs10">v'+escHtml(health.version)+'</span>':'')+
+    (health.uptime?'<span class="fs11 c-dim">Uptime: '+escHtml(health.uptime)+'</span>':'')+
+    '</div>'+
+    (health.storage_mode?'<p class="fs12 c-dim mt8">Storage: '+escHtml(health.storage_mode)+'</p>':'')+
+    '</div>';
+  const cfgCard='<div class="card"><div class="card-title mb"><span class="icon">&#x1F527;</span>Configuration</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'+
+    '<div><label class="fs11 c-dim">Max Projects</label><input id="cfgMaxP" value="'+escHtml(String(cfg.max_projects||''))+ '" style="width:100%;font-size:12px;margin-top:2px"></div>'+
+    '<div><label class="fs11 c-dim">Max Reviews/Project</label><input id="cfgMaxR" value="'+escHtml(String(cfg.max_reviews_per_project||''))+'" style="width:100%;font-size:12px;margin-top:2px"></div>'+
+    '</div>'+
+    '<button class="btn btn-sm" onclick="saveAdminConfig()">Save Configuration</button>'+
+    '<div id="adminCfgResult" class="mt"></div></div>';
+  let personaPromptsCard='';
+  try{
+    if(!allRoles.length)throw new Error('No roles returned from /api/personas');
+    const seenGroups={};
+    let groupRows='';
+    allRoles.forEach(function(role){
+      const gid=role.group_id||role.group||'default';
+      if(!seenGroups[gid]){
+        seenGroups[gid]=true;
+        const g=role;const gname=g.group_name||gid;
+        const def=role.prompt_template||'';
+        const safeDefault=escHtml(def).replace(/\n/g,'&#10;');
+        groupRows+='<div class="mb8">';
+        groupRows+='<div class="fs11 fw6 mb8">'+escHtml(g.group_name)+'</div>';
+        groupRows+='<textarea rows="4" data-group-id="'+escHtml(gid)+'" data-yaml-default="'+safeDefault+'"';
+        groupRows+=' style="width:100%;font-size:11px;resize:vertical;font-family:monospace" placeholder="Custom prompt override for '+escHtml(gname)+'...">';
+        groupRows+='</textarea>';
+        groupRows+='<div class="flex gap-sm mt8">';
+        groupRows+='<button class="btn btn-xs btn-ghost" onclick="resetPersonaPrompt(\''+escHtml(gid)+'\')">Reset to Default</button>';
+        groupRows+='</div></div>';
+      }
+    });
+    personaPromptsCard='<div class="card"><div class="card-title mb"><span class="icon">&#x1F464;</span>Persona Base Prompts</div>'+
+      '<p class="fs12 c-dim mb8">Override base prompts per group. Leave blank to use YAML defaults.</p>'+
+      '<div id="personaPromptsContainer">'+groupRows+'</div>'+
+      '<button class="btn btn-sm mt8" onclick="savePersonaPrompts()">Save Prompts</button>'+
+      '<div id="personaPromptsResult" class="mt"></div></div>';
+  }catch(e){
+    console.error('viewAdmin personas error:',e);
+    personaPromptsCard='<div class="card"><p style="color:var(--red);font-size:12px">&#x26A0; Could not load Persona Prompts: '+escHtml(e.message)+'</p></div>';
+  }
+  const lifecycleCard='<div class="card"><div class="card-title mb"><span class="icon">&#x1F503;</span>Lifecycle Logs</div>'+
+    '<p class="fs12 c-dim">Lifecycle event logging and auto-archive suggestions appear here.</p>'+
+    '</div>';
+  return healthCard+cfgCard+personaPromptsCard+lifecycleCard;
+}
+
+
+async function saveAdminConfig(){
+  const maxP=parseInt(document.getElementById('cfgMaxP')?.value||'0');
+  const maxR=parseInt(document.getElementById('cfgMaxR')?.value||'0');
+  const el=document.getElementById('adminCfgResult');
+  const r=await api('POST','/api/admin/config',{max_projects:maxP||undefined,max_reviews_per_project:maxR||undefined});
+  if(r.error){if(el)el.innerHTML='<p style="color:var(--red);font-size:12px">'+escHtml(r.error)+'</p>';}
+  else{if(el)el.innerHTML='<p style="color:var(--green);font-size:12px">&#x2713; Saved</p>';}
+}
+
+async function savePersonaPrompts(){
+  const areas=document.querySelectorAll('#personaPromptsContainer textarea');
+  const updates={};
+  areas.forEach(function(ta){
+    const gid=ta.getAttribute('data-group-id');
+    const def=(ta.getAttribute('data-yaml-default')||'').replace(/&#10;/g,'\n');
+    const val=ta.value.trim();
+    if(val&&val!==def)updates[gid]=val;
+  });
+  const el=document.getElementById('personaPromptsResult');
+  if(!Object.keys(updates).length){if(el)el.innerHTML='<p class="fs12 c-dim">No changes to save.</p>';return;}
+  const r=await api('POST','/api/admin/persona-prompts',{updates});
+  if(r.error){if(el)el.innerHTML='<p style="color:var(--red);font-size:12px">'+escHtml(r.error)+'</p>';}
+  else{if(el)el.innerHTML='<p style="color:var(--green);font-size:12px">&#x2713; Prompts saved</p>';}
+}
+
+function resetPersonaPrompt(groupId){
+  const ta=document.querySelector('#personaPromptsContainer textarea[data-group-id="'+groupId+'"]');
+  if(!ta)return;
+  const def=(ta.getAttribute('data-yaml-default')||'').replace(/&#10;/g,'\n');
+  ta.value=def;
+}
+
+
+
+// ── Review actions ────────────────────────────────────────────────────────────
+async function v2RunReview(){
+  const pid=state.current?.id;
+  if(!pid){toast('Select a project first','err');return;}
+  const btn=document.getElementById('v2RunReviewBtn');
+  if(btn)btn.disabled=true;
+  const userNotes=(document.getElementById('v2UserNotes')?.value||'').trim();
+  const backend=(document.getElementById('v2BackendSelect')?.value||'');
+  const prevId=(document.getElementById('v2PreviousReviewId')?.value||'')||null;
+  const resultEl=document.getElementById('v2ReviewResult');
+  if(resultEl)resultEl.innerHTML='<div style="padding:8px;font-size:12px;color:var(--text-dim)">Running review…</div>';
+  try{
+    const body={ai_backend:backend||undefined,user_notes:userNotes||undefined};
+    if(prevId)body.previous_review_id=prevId;
+    const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/run`,body);
+    if(r.error){
+      if(resultEl)resultEl.innerHTML='<div style="padding:8px;font-size:12px;color:var(--red)">⚠ '+escHtml(r.error)+'</div>';
+    }else{
+      await loadProjects();
+      render();
+    }
+  }catch(e){
+    if(resultEl)resultEl.innerHTML='<div style="padding:8px;font-size:12px;color:var(--red)">⚠ '+escHtml(e.message)+'</div>';
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
+
+async function v2SetActiveReview(versionId,reviewId){
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/versions/${versionId}/active-review`,{review_id:reviewId});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Active review updated');render();
+}
+
+async function v2ViewReviewDetail(rid){
+  state._v2ReviewDetail=rid;
+  state.tab='reviews';
+  render();
+}
+
+async function v2RenderReviewDetailPage(rid){
+  const pid=state.current?.id;if(!pid)return viewNoProject();
+  let rev={};
+  try{rev=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${rid}`);}catch(e){}
+  if(rev.error||!rev.review_id){
+    return'<div class="card">'+
+      '<button class="btn btn-xs btn-ghost mb" onclick="state._v2ReviewDetail=null;render()">← Back</button>'+
+      '<p style="color:var(--red);font-size:12px">&#x26A0; Could not load review: '+escHtml(rev.error||'not found')+'</p></div>';
+  }
+  const qStatus=rev.quality_status||'pending';
+  const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'Draft':'New';
+  const qCls=qStatus==='complete'?'tag-green':qStatus==='interim'?'tag-yellow':'';
+  const isCustomised=!!(rev.custom_prompt);
+  const badge=isCustomised?'<span class="tag tag-purple">Customised</span>':'<span class="tag">Baseline</span>';
+  const findings=rev.findings||{};
+  const findingKeys=Object.keys(findings);
+  const weaknesses=rev.weaknesses||[];
+  const decisions=rev.decision_points||[];
+  const openDec=decisions.filter(d=>d.status==='open').length;
+  const files=rev.included_files||[];
+  const aiMeta=rev.ai_metadata||{};
+  const r=rev;
+  const pbs=rev.prompt_builder_state||{};
+
+  let html='<div class="card">'+
+    '<button class="btn btn-xs btn-ghost mb" onclick="state._v2ReviewDetail=null;render()">← Back to Reviews</button>'+
+    '<div class="flex-between mb"><div>'+
+    '<div class="card-title"><span class="icon">&#x1F50D;</span>'+escHtml(rid)+'</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'+
+    badge+
+    '<span class="tag tag-purple">'+escHtml(rev.persona||'&#x2013;')+'</span>'+
+    '<span class="tag">'+escHtml(rev.version_id||'&#x2013;')+'</span>'+
+    '<span class="tag">'+escHtml(rev.phase||'&#x2013;')+'</span>'+
+    '<span class="tag">'+escHtml(rev.ai_backend||'&#x2013;')+'</span>'+
+    '<span class="tag '+qCls+'">'+qLabel+'</span>'+
+    (rev.completeness_score!=null?'<span class="tag">'+rev.completeness_score+'% complete</span>':'')+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">'+fmtDate(rev.created_at)+'</div>'+
+    '</div>'+
+    '<div id="v2detailReadinessBadge" style="min-width:80px"></div>'+
+    '</div></div>';
+
+  setTimeout(async()=>{
+    const el=document.getElementById('v2detailReadinessBadge');if(!el)return;
+    try{const r=await api('GET',`/api/projects/${pid}/hierarchy/reviews/${rid}/readiness`);
+      if(r.readiness_level){el.innerHTML='<span class="tag '+(r.readiness_level==='Ready'?'tag-green':r.readiness_level.includes('Partial')?'tag-yellow':'')+'">'+escHtml(r.readiness_level)+'</span>';}}
+    catch(e){}
+  },200);
+
+  html+='<div class="card">'+
+    '<div class="card-section">Context</div>'+
+    '<div class="flex gap-sm" style="flex-wrap:wrap;font-size:12px">'+
+    '<span><strong>Version:</strong> '+escHtml(rev.version_id||'&#x2013;')+'</span>'+
+    '<span><strong>Phase:</strong> '+escHtml(rev.phase||'&#x2013;')+'</span>'+
+    '<span><strong>Artefacts:</strong> '+files.length+'</span>'+
+    '</div>'+
+    '<div class="card-section mt8">Files Included</div>'+
+    (files.length
+      ?'<div class="coverage-pills">'+files.map(f=>'<span class="coverage-pill">'+escHtml(typeof f==='string'?f:f.name||f.path||JSON.stringify(f))+'</span>').join('')+'</div>'
+      :'<p class="fs11 c-dim">No artefacts recorded for this review.</p>')+
+    '</div>';
+
+  if(rev.summary){html+='<div class="card"><div class="card-section">Summary</div><p class="fs12">'+escHtml(rev.summary)+'</p></div>';}
+
+  html+=renderCoverageAssessment(r);
+
+  if(findingKeys.length){
+    html+='<div class="card"><div class="card-title mb">Findings</div>';
+    findingKeys.forEach(cat=>{
+      const items=findings[cat]||[];if(!items.length)return;
+      html+='<div style="margin-bottom:10px"><div class="card-section">'+escHtml(cat)+'</div>';
+      items.forEach(item=>{html+='<div class="finding-item" style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">'+escHtml(typeof item==='string'?item:JSON.stringify(item))+'</div>';});
+      html+='</div>';
+    });
+    html+='</div>';
+  }
+
+  if((rev.open_questions||[]).length){
+    html+='<div class="card"><div class="card-section">Open Questions</div>';
+    (rev.open_questions||[]).forEach(q=>{html+='<div class="fs12 c-dim" style="padding:4px 0;border-bottom:1px solid var(--border)">'+escHtml(typeof q==='string'?q:q.question||JSON.stringify(q))+'</div>';});
+    html+='</div>';
+  }
+
+  html+='<div class="card">'+
+    (rev.prompt_used?'<details><summary class="fs12 fw6" style="cursor:pointer;list-style:none">&#x25B6; Prompt Used</summary><div class="prompt-box mt8">'+escHtml(rev.prompt_used)+'</div></details>':'')+
+    (rev.custom_prompt?'<details style="margin-top:8px"><summary class="fs12 fw6" style="cursor:pointer;list-style:none">&#x25B6; Custom Prompt</summary><div class="prompt-box mt8">'+escHtml(rev.custom_prompt)+'</div></details>':'')+
+    ((pbs.injected_questions||[]).length?
+      '<details style="margin-top:8px"><summary class="fs12 fw6" style="cursor:pointer;list-style:none">&#x25B6; Prompt Composition</summary>'+
+      '<div class="mt8"><strong class="fs11">SME Questions:</strong><ul style="font-size:11px;margin:4px 0 0 16px">'+
+      (pbs.injected_questions||[]).map(q=>'<li>'+escHtml(q)+'</li>').join('')+'</ul></div>'+
+      (pbs.user_notes?'<div class="mt8"><strong class="fs11">User Notes:</strong><p class="fs11 c-dim prompt-box mt8">'+escHtml(pbs.user_notes)+'</p></div>':'')+
+      '</details>':'')+
+    '</div>';
+
+  if(aiMeta.tokens_used||aiMeta.model||aiMeta.latency_ms){
+    html+='<div class="card"><div class="card-section">AI Metadata</div>'+
+      '<div class="flex gap-sm" style="flex-wrap:wrap;font-size:12px">'+
+      (aiMeta.model?'<span><strong>Model:</strong> '+escHtml(aiMeta.model)+'</span>':'')+
+      (aiMeta.tokens_used?'<span><strong>Tokens:</strong> '+aiMeta.tokens_used+'</span>':'')+
+      (aiMeta.latency_ms?'<span><strong>Latency:</strong> '+aiMeta.latency_ms+'ms</span>':'')+
+      '</div></div>';
+  }
+
+  if(weaknesses.length){
+    html+='<div class="card"><div class="card-title mb">Weaknesses ('+weaknesses.length+')</div>';
+    weaknesses.forEach(w=>{
+      html+='<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">'+
+        '<strong>'+escHtml(w.description||w.weakness||'&#x2013;')+'</strong>'+
+        '<span class="tag" style="font-size:10px;margin-left:6px">'+escHtml(w.category||'')+'</span>'+
+        '<select style="font-size:11px;margin-left:8px" onchange="updateWeaknessStatus(''+rid+'',''+escHtml(w.id||'')+'',this.value,null)">'+
+        ['open','addressed','validated','rejected'].map(s=>'<option value="'+s+'" '+((w.status||'open')===s?'selected':'')+'>'+s+'</option>').join('')+
+        '</select>'+
+        '<div><textarea rows="2" style="width:100%;font-size:11px;margin-top:4px;resize:vertical" placeholder="Add justification of the status" onblur="updateWeaknessStatus(''+rid+'',''+escHtml(w.id||'')+'',this.previousElementSibling.value,this.value)">'+escHtml(w.user_note||'')+'</textarea></div>'+
+        '</div>';
+    });
+    html+='</div>';
+  }
+
+  const missing=rev.missing_categories||rev.missing_areas||[];
+  if(missing.length){
+    html+='<div class="card"><div class="card-section">Missing Areas</div>'+
+      '<div class="coverage-pills">'+missing.map(m=>'<span class="coverage-pill" style="background:var(--red);color:#fff">'+escHtml(m)+'</span>').join('')+'</div></div>';
+  }
+
+  if(decisions.length){
+    html+='<div class="card"><div class="card-title mb">Decision Points '+(openDec?'<span class="tag tag-yellow">'+openDec+' open</span>':'')+'</div>';
+    decisions.forEach(d=>{
+      html+='<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">'+
+        '<strong>'+escHtml(d.description||d.title||'&#x2013;')+'</strong>'+
+        '<select style="font-size:11px;margin-left:8px" onchange="updateDecisionStatus(''+rid+'',''+escHtml(d.id||'')+'',this.value)">'+
+        ['open','decided','deferred','invalid'].map(s=>'<option value="'+s+'" '+((d.status||'open')===s?'selected':'')+'>'+s+'</option>').join('')+
+        '</select></div>';
+    });
+    html+='</div>';
+  }
+
+  html+=renderDecisionPointsEngine(r);
+  html+=renderReviewStrength(r);
+  html+=renderProposalReadiness(r);
+  html+=renderNextBestActions(r);
+
+  html+='<div class="card" style="text-align:center">'+
+    '<button class="btn" onclick="v2RunDeepDive()">&#x1F501; Tighten with SME Questions</button>'+
+    '<div id="v2DeepDiveResult" class="mt"></div></div>';
+
+  if(r.previous_review_id){
+    // Fetch /diff for review progression between current and previous_review_id
+    html+='<div id="v2ProgressionPanel"><p class="fs12 c-dim">Loading progression&#x2026;</p></div>';
+    setTimeout(async()=>{
+      const el=document.getElementById('v2ProgressionPanel');if(!el)return;
+      const prog=await renderReviewProgression(r,pid);
+      if(prog)el.outerHTML=prog;else el.remove();
+    },300);
+  }
+
+  html+='<div class="card" style="margin-top:8px">'+
+    '<button class="btn btn-xs btn-ghost" onclick="state._v2ReviewDetail=null;render()">← Back to Reviews</button>'+
+    '</div>';
+  return html;
+}
+
+function v2RenderInjectedChips(){
+  const c=document.getElementById('v2InjectedChips');
+  const q=state._injectedQuestions||[];
+  if(!c)return;
+  c.innerHTML=q.length?q.map((t,i)=>
+    `<span class="tag tag-blue" style="cursor:pointer" onclick="state._injectedQuestions.splice(${i},1);v2RenderInjectedChips()">${escHtml(t)} ×</span>`
+  ).join(''):'';
+}
+
+async function v2ResetReviewStatus(reviewId){
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/reset-status`,{});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Status cleared');render();
+}
+
+async function v2DeleteReview(reviewId){
+  if(!confirm('Delete this review? This cannot be undone.'))return;
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/delete`,{});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Review deleted');render();
+}
+
+function v2OpenMarkComplete(reviewId,status){
+  document.querySelectorAll('[id^="v2mc_"]').forEach(el=>el.style.display='none');
+  const el=document.getElementById('v2mc_'+reviewId);
+  if(el)el.style.display='block';
+}
+
+async function v2SubmitMarkComplete(reviewId,qualityStatus){
+  const pid=state.current?.id;if(!pid)return;
+  const by=(document.getElementById('v2cb_'+reviewId)?.value||'').trim();
+  if(!by){toast('Enter your name','err');return;}
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/complete`,{completed_by:by,quality_status:qualityStatus});
+  if(r.error){toast(r.error,'err');return;}
+  toast(qualityStatus==='complete'?'Marked as Final':'Saved as Draft');render();
+}
+
+async function v2UpdateWeaknessStatus(reviewId,weaknessId,status,userNote){
+  const pid=state.current?.id;if(!pid)return;
+  const body={status};
+  if(userNote!==null)body.user_note=userNote;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/weakness/${weaknessId}/status`,body);
+  if(r.error)toast(r.error,'err');
+}
+
+async function v2UpdateDecisionStatus(reviewId,decisionId,status){
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/decision/${decisionId}/status`,{status});
+  if(r.error)toast(r.error,'err');
+}
+
+
+function v2RemoveInjectedQuestion(idx){
+  if(!state._injectedQuestions)return;
+  state._injectedQuestions.splice(idx,1);
+  v2RenderInjectedChips();
+}
+
+function v2AssemblePrompt(){
+  const userNotes=(document.getElementById('v2UserNotes')?.value||'').trim();
+  const qs=state._injectedQuestions||[];
+  let parts=[];
+  if(qs.length)parts.push('SME Questions:\n'+qs.map((q,i)=>(i+1)+'. '+q).join('\n'));
+  if(userNotes)parts.push('Context & Constraints:\n'+userNotes);
+  return parts.join('\n\n');
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
@@ -1112,5 +1786,6 @@ async function loadAppInfo(){
   render();
 })();
 </script>
+<script src="/static/v2/js/reconciliation_panel.js"></script>
 </body>
 </html>
