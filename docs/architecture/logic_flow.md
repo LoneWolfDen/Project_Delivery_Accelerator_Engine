@@ -18,12 +18,6 @@
 | Drawer load | `static/v2/js/dashboard.js` | `_loadDrawerDetail()` |
 | Accordion expand | `static/v2/js/accordion.js` | `onVersionHeaderClick()` |
 | Metrics scope | `services/hierarchy.py` | `get_metrics()` |
-| Weakness persistence | `services/review.py` | `update_weakness_note()`, `update_weakness_status()` *(Sprint 1)* |
-| Reconciliation selection | `services/reconciliation.py` | `save_reconciliation_selection()` *(Sprint 3)* |
-| Reconciliation engine | `services/reconciliation.py` | `run_reconciliation()` *(Sprint 3)* |
-| Drawer load | `static/v2/js/dashboard.js` | `_loadDrawerDetail()` |
-| Accordion expand | `static/v2/js/accordion.js` | `onVersionHeaderClick()` |
-| Metrics scope | `services/hierarchy.py` | `get_metrics()` |
 
 ---
 
@@ -131,7 +125,7 @@ flowchart TD
     A["AppState.openDrawer(type, data)"] --> B["_syncDrawer() fires<br/>(subscriber)"]
     B --> C["CSS: drawer.open, main.drawer-open"]
     C --> D{"entity.type?"}
-    D -->|'review'| E["ReviewDetail.renderReview(summary data)<br/>(Sprint 1 — fast, shows immediately)"]
+    D -->|'review'| E["DetailPanel.renderReview(summary data)<br/>(fast — shows immediately)"]
     D -->|'version'| F["DetailPanel.renderVersion(summary data)<br/>(fast — shows immediately)"]
     E --> G["_loadDrawerDetail(entity) async"]
     F --> G
@@ -140,7 +134,7 @@ flowchart TD
     H -->|'version'| J["API.fetchVersionDetail(pid, vid)"]
     I --> K{"full data returned?"}
     J --> K
-    K -->|yes| L["ReviewDetail.renderReview(full)<br/>replaces drawer — shows provenance,<br/>weakness notes, all findings"]
+    K -->|yes| L["DetailPanel.renderReview/Version(full)<br/>replaces drawer content"]
     K -->|error/404| M["Drawer keeps summary view<br/>(non-blocking — no error shown)"]
 ```
 
@@ -167,84 +161,3 @@ flowchart TD
 ```
 
 **Location:** `services/hierarchy.py → get_metrics()` and `models/hierarchy.py → HierarchyStore.get_metrics()`
-
----
-
-## 8. Weakness Note + Status Persistence Logic (Sprint 1)
-
-```mermaid
-flowchart TD
-    A["User changes weakness status dropdown<br/>ReviewDetail.onWeaknessStatus(el)"] --> B["Optimistic UI: update CSS class<br/>(immediate — no wait)"]
-    B --> C["API.updateWeaknessStatus(pid, rid, wid, status)"]
-    C --> D["POST /hierarchy/reviews/{rid}/weakness/{wid}/status"]
-    D --> E["handlers/review.handle_weakness_status()"]
-    E --> F["services/review.update_weakness_status()"]
-    F --> G{"status in DECISION_STATUSES?"}
-    G -->|no| H["Return {error: 'Invalid status'}"]
-    G -->|yes| I["store.get_review(rid)"]
-    I --> J["Find weakness by id"]
-    J --> K["weakness['status'] = status<br/>(preserves user_note)"]
-    K --> L["store.update_review_weaknesses(rid, weaknesses)"]
-    L --> M["SQLite UPDATE + file dual-write"]
-
-    N["User blurs weakness note textarea<br/>ReviewDetail.onWeaknessNote(el)"] --> O["API.updateWeaknessNote(pid, rid, wid, note)"]
-    O --> P["POST /hierarchy/reviews/{rid}/weakness/{wid}/note"]
-    P --> Q["handlers/review.handle_weakness_note()"]
-    Q --> R["services/review.update_weakness_note()"]
-    R --> S["store.get_review(rid)"]
-    S --> T["Find weakness by id"]
-    T --> U["weakness['user_note'] = note<br/>(preserves status)"]
-    U --> V["store.update_review_weaknesses(rid, weaknesses)"]
-    V --> W["SQLite UPDATE + file dual-write"]
-    W --> X["Return {updated: true, user_note: note}"]
-    X --> Y["Show '✓ Saved' next to textarea<br/>(2 s then clear)"]
-```
-
-**Rules:**
-- Status and note updates are independent — each preserves the other field.
-- Note is optional — empty string clears it; field is never required.
-- Persisted within the weakness dict alongside `status`.
-- No separate table required — stored as JSON within the `weaknesses` column.
-
-
-
----
-
-## 9. Reconciliation Selection + Engine Logic (Sprint 3)
-
-```mermaid
-flowchart TD
-    A["POST /reconciliation/select\nbody: anchor_review_id, selected_review_ids"] --> B{"anchor_review_id empty?"}
-    B -->|yes| C["Return {error: 'anchor_review_id is required'}"]
-    B -->|no| D{"selected_review_ids empty?"}
-    D -->|yes| E["Return {error: 'must contain anchor'}"]
-    D -->|no| F["Deduplicate IDs\nPrepend anchor if missing"]
-    F --> G["Validate all review IDs exist in store"]
-    G -->|any missing| H["Return {error: 'Review not found: {rid}'}"]
-    G -->|all present| I["store.save_reconciliation_selection()\nSQLite UPSERT"]
-    I --> J["Return ReconciliationSelection dict"]
-
-    K["POST /reconciliation/run\nbody: anchor_review_id (opt), selected_review_ids (opt)"] --> L{"body has anchor + selected?"}
-    L -->|no| M["Load stored selection\nfor this version"]
-    M --> N{"stored selection found?"}
-    N -->|no| O["Return {error: 'No selection found. POST /select first.'}"]
-    N -->|yes| P["Use stored anchor + selected_review_ids"]
-    L -->|yes| P
-    P --> Q["Load + normalise each review\nNormalisedReviewInput per review"]
-    Q --> R["_reconcile_findings_consensus()\nJaccard overlap ≥ 0.70 across ALL selected"]
-    Q --> S["_reconcile_findings_divergent()\nItems missing from any review"]
-    Q --> T["_merge_all_findings()\nDe-duplicated flat list"]
-    Q --> U["_reconcile_decisions()\nSplit open vs confirmed by status"]
-    Q --> V["_reconcile_weaknesses()\nOpen weaknesses only"]
-    Q --> W["_build_provenance_summary()\nPer-review metadata + artifact_refs"]
-    R & S & T & U & V & W --> X["Assemble ReconciliationOutput\nreconciliation_id = rec_{uuid12}\ncreated_at = now"]
-    X --> Y["store.save_reconciliation_output()\nSQLite UPSERT reconciliation_outputs"]
-    Y --> Z["Return ReconciliationOutput dict"]
-```
-
-**Key invariants:**
-- `anchor_only = True` when `len(selected_review_ids) == 1` — all anchor findings become consensus; divergent is empty.
-- Similarity threshold: Jaccard token overlap ≥ 0.70 (`_SIMILARITY_THRESHOLD`).
-- Original reviews are **never modified** by reconciliation.
-- Every output item has `source_reviews: [ProvenanceRef, ...]` — never empty.
-- Re-running overwrites the stored output for the version (latest wins).

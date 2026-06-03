@@ -140,10 +140,11 @@ def extract_weaknesses(findings: Dict[str, Any]) -> List[Dict[str, Any]]:
             if is_weak and norm not in seen:
                 seen.add(norm)
                 weaknesses.append({
-                    "id":       f"w{len(weaknesses) + 1}",
-                    "text":     text,
-                    "category": category,
-                    "status":   "open",
+                    "id":        f"w{len(weaknesses) + 1}",
+                    "text":      text,
+                    "category":  category,
+                    "status":    "open",
+                    "user_note": "",
                 })
 
     return weaknesses

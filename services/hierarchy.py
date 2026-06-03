@@ -115,21 +115,21 @@ def compare_project_versions(
 
 
 def compare_project_reviews(
-    project_id: str, review_file_a: str, review_file_b: str
+    project_id: str, review_id_a: str, review_id_b: str
 ) -> Dict[str, Any]:
-    import json
-    reviews_dir = PROJECTS_DIR / project_id / "reviews"
-    path_a = reviews_dir / review_file_a
-    path_b = reviews_dir / review_file_b
-    if not path_a.exists():
-        raise ValueError(f"Review not found: {review_file_a}")
-    if not path_b.exists():
-        raise ValueError(f"Review not found: {review_file_b}")
-    with open(path_a) as f:
-        review_a = json.load(f)
-    with open(path_b) as f:
-        review_b = json.load(f)
-    return compare_reviews(review_a, review_b)
+    """Compare two reviews by their hierarchy review IDs (e.g. 'r1', 'r2').
+
+    Loads both reviews from the hierarchy store (SQLite-backed).
+    Raises ValueError if either review is not found.
+    """
+    store = _make_hierarchy_store(project_id)
+    review_a = store.get_review(review_id_a)
+    if review_a is None:
+        raise ValueError(f"Review not found: {review_id_a}")
+    review_b = store.get_review(review_id_b)
+    if review_b is None:
+        raise ValueError(f"Review not found: {review_id_b}")
+    return compare_reviews(review_a.to_dict(), review_b.to_dict())
 
 
 def get_project_evolution(project_id: str, category: str = "risks") -> List[Dict[str, Any]]:
@@ -148,3 +148,55 @@ def get_run_history_for_project(project_id: str) -> List[Dict[str, Any]]:
 
 def get_file_snapshot(project_id: str, version_id: str) -> Optional[Dict[str, Any]]:
     return get_file_snapshot_for_version(PROJECTS_DIR / project_id, version_id)
+
+
+# ── Phase 4: Reconciliation ───────────────────────────────────────────────────
+
+def reconcile_reviews(
+    project_id: str,
+    anchor_review_id: str,
+    supplemental_review_ids: list,
+    ai_backend: str = "files_only",
+) -> Dict[str, Any]:
+    """Reconcile an anchor review with zero or more supplementals.
+
+    Loads all named reviews from the hierarchy store, validates they share
+    the same version_id, then delegates to
+    ``processors.review_synthesizer.synthesize_reviews()``.
+
+    Returns a plain dict (ReconciliationResult.to_dict()).
+
+    Raises:
+        ValueError – if any review is not found or version_ids disagree.
+    """
+    from processors.review_synthesizer import synthesize_reviews
+
+    store = _make_hierarchy_store(project_id)
+
+    anchor = store.get_review(anchor_review_id)
+    if anchor is None:
+        raise ValueError(f"Anchor review not found: {anchor_review_id}")
+
+    supplementals = []
+    for rid in (supplemental_review_ids or []):
+        rev = store.get_review(rid)
+        if rev is None:
+            raise ValueError(f"Supplemental review not found: {rid}")
+        supplementals.append(rev)
+
+    # Resolve version scope text for the LLM prompt (best-effort)
+    version_scope = ""
+    try:
+        version = store.get_version(anchor.version_id)
+        if version:
+            version_scope = version.scope or ""
+    except Exception:
+        pass
+
+    result = synthesize_reviews(
+        anchor_review=anchor,
+        supplemental_reviews=supplementals,
+        version_scope=version_scope,
+        ai_backend=ai_backend,
+    )
+    return result.to_dict()

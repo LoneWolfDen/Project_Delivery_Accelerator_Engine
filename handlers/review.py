@@ -90,6 +90,17 @@ def handle_complete_review(
         respond({"error": str(e)}, status=400)
 
 
+def handle_reset_review_status(
+    project_id: str, review_id: str, respond: Callable
+) -> None:
+    """Reset quality_status back to 'pending' (clear draft or final status)."""
+    result = svc.reset_review_status(project_id, review_id)
+    if result.get("error"):
+        respond(result, status=400)
+    else:
+        respond(result)
+
+
 def handle_delete_review(project_id: str, review_id: str, respond: Callable) -> None:
     from services.hierarchy import delete_hierarchy_review
     result = delete_hierarchy_review(project_id, review_id)
@@ -133,24 +144,11 @@ def handle_weakness_status(
     project_id: str, review_id: str, weakness_id: str,
     body: Dict[str, Any], respond: Callable
 ) -> None:
-    result = svc.update_weakness_status(project_id, review_id, weakness_id, body.get("status", ""))
-    if result.get("error"):
-        respond(result, status=400)
-    else:
-        respond(result)
-
-
-def handle_weakness_note(
-    project_id: str, review_id: str, weakness_id: str,
-    body: Dict[str, Any], respond: Callable
-) -> None:
-    """POST /api/projects/{pid}/hierarchy/reviews/{rid}/weakness/{wid}/note
-
-    Body: { "note": "Free-text user annotation (optional)" }
-    An empty string clears the note.
-    """
-    note = body.get("note", "")
-    result = svc.update_weakness_note(project_id, review_id, weakness_id, note)
+    status = body.get("status", "")
+    user_note = body.get("user_note")          # None when key absent — preserved
+    result = svc.update_weakness_status(
+        project_id, review_id, weakness_id, status, user_note=user_note
+    )
     if result.get("error"):
         respond(result, status=400)
     else:
@@ -168,35 +166,49 @@ def handle_decision_status(
         respond(result)
 
 
-def handle_create_review_iteration(
-    project_id: str, base_review_id: str, body: Dict[str, Any], respond: Callable
+def handle_iterate_review(
+    project_id: str, previous_review_id: str,
+    body: Dict[str, Any], respond: Callable,
 ) -> None:
     """POST /api/projects/{pid}/hierarchy/reviews/{rid}/iterate
 
-    Create a new review from an existing review (Sprint 2 — Review Iteration).
+    Creates a new review that is explicitly linked to ``previous_review_id``
+    (the review identified by ``{rid}`` in the URL).
 
-    Body (all optional):
-        new_persona   : str  — persona for the new review; defaults to base review persona
-        custom_prompt : str  — optional prompt suffix
+    Required body fields:
+      roles / persona  – persona name or list of persona names to run
+    Optional body fields:
+      ai_backend       – default "files_only"
+      custom_prompt    – additional prompt text injected into the review run
 
-    Returns the new review summary with lineage metadata:
-        review_id, version_id, persona_used, previous_review_id,
-        base_review_persona, persona_changed, iteration_number, created_at
+    Returns the same shape as POST /api/review on success.
     """
-    if not project_id:
-        respond({"error": "project_id required"}, status=400)
+    roles = body.get("roles") or body.get("persona")
+    if not roles:
+        respond({"error": "roles (or persona) required"}, status=400)
         return
-    if not base_review_id:
-        respond({"error": "base_review_id required"}, status=400)
+    if not previous_review_id:
+        respond({"error": "previous_review_id required (derived from URL {rid})"}, status=400)
         return
 
-    result = svc.create_review_iteration(
+    # Delegate to the same review service that /api/review uses, but with
+    # previous_review_id set so the new review is chained to its predecessor.
+    from contracts.types import ReviewRequest
+    from contracts.protocols import ServiceReviewAgent
+
+    request = ReviewRequest(
         project_id=project_id,
-        base_review_id=base_review_id,
-        new_persona=body.get("new_persona") or body.get("persona") or "",
-        custom_prompt=body.get("custom_prompt") or "",
+        roles=roles if isinstance(roles, list) else [roles],
+        ai_backend=body.get("ai_backend", "files_only"),
+        custom_prompt=body.get("custom_prompt"),
+        previous_review_id=previous_review_id,
+        prompt_builder_state=body.get("prompt_builder_state"),
     )
-    if result.get("error"):
-        respond(result, status=400)
-    else:
-        respond(result)
+
+    try:
+        result = ServiceReviewAgent().run(request)
+        respond(result.raw)
+    except ValueError as e:
+        respond({"error": str(e)}, status=400)
+    except Exception as e:
+        respond({"error": str(e)}, status=500)

@@ -61,20 +61,10 @@ from services.review import (  # noqa: F401
     complete_review_gate,
     set_active_review_gated,
     update_weakness_status,
-    update_weakness_note,
     update_decision_status,
     get_review_diff,
     get_version_readiness,
     get_prompt_history,
-    create_review_iteration,
-)
-
-# ── reconciliation (Sprint 3) ──────────────────────────────────────────────────
-from services.reconciliation import (  # noqa: F401
-    save_reconciliation_selection,
-    get_reconciliation_selection,
-    run_reconciliation,
-    get_reconciliation,
 )
 
 # ── hierarchy ──────────────────────────────────────────────────────────────────

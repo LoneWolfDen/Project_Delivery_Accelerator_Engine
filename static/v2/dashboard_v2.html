@@ -6,7 +6,7 @@
 <title>Contexta v2 – Project Delivery Accelerator</title>
 
 <style>
-/* ─── Design tokens (identical to index.html) ─────────────────────── */
+/* ─── Design tokens ────────────────────────────────────────────────── */
 :root{
   --bg:#0d1117;--surface:#161b22;--surface2:#21262d;--surface3:#30363d;
   --border:#30363d;--border2:#484f58;--text:#e6edf3;--text-dim:#8b949e;
@@ -15,13 +15,9 @@
   --purple:#bc8cff;--radius:6px;--radius-lg:10px;
   --shadow:0 4px 16px rgba(0,0,0,.4);--transition:.15s ease;
 }
-
-/* ─── Reset ───────────────────────────────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   background:var(--bg);color:var(--text);line-height:1.6;font-size:13px;}
-
-/* ─── Header ──────────────────────────────────────────────────────── */
 header{background:var(--surface);border-bottom:1px solid var(--border);
   padding:0 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   min-height:48px;position:sticky;top:0;z-index:100;
@@ -31,11 +27,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);
 .v2-badge{font-size:9px;font-weight:700;background:var(--accent-dim);
   color:var(--accent);padding:1px 6px;border-radius:20px;letter-spacing:.4px;}
 .phase-badge{background:var(--accent-dim);color:var(--accent);padding:2px 10px;
-  border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;
-  text-transform:uppercase;}
+  border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
 .proj-select{background:var(--surface2);border:1px solid var(--border);
-  color:var(--text);padding:5px 10px;border-radius:var(--radius);
-  font-size:12px;cursor:pointer;}
+  color:var(--text);padding:5px 10px;border-radius:var(--radius);font-size:12px;cursor:pointer;}
 .proj-select:focus{outline:none;border-color:var(--accent);}
 nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap;}
 nav button{background:transparent;color:var(--text-dim);border:none;
@@ -43,8 +37,6 @@ nav button{background:transparent;color:var(--text-dim);border:none;
   font-size:12px;font-weight:500;transition:background var(--transition),color var(--transition);}
 nav button:hover{background:var(--surface2);color:var(--text);}
 nav button.active{background:var(--surface2);color:var(--accent);}
-
-/* ─── Compare button in header ────────────────────────────────────── */
 .btn-compare{display:inline-flex;align-items:center;gap:5px;
   background:transparent;color:var(--accent);border:1px solid var(--accent-dim);
   padding:5px 12px;border-radius:var(--radius);cursor:pointer;
@@ -56,8 +48,6 @@ nav button.active{background:var(--surface2);color:var(--accent);}
 <style>
 /* ─── Layout ──────────────────────────────────────────────────────── */
 main{max-width:1080px;margin:0 auto;padding:20px 16px;}
-
-/* ─── Cards ───────────────────────────────────────────────────────── */
 .card{background:var(--surface);border:1px solid var(--border);
   border-radius:var(--radius-lg);padding:16px 18px;margin-bottom:12px;}
 .card-title{font-size:13px;font-weight:600;color:var(--text);
@@ -66,22 +56,18 @@ main{max-width:1080px;margin:0 auto;padding:20px 16px;}
 .card-subtitle{font-size:11px;color:var(--text-dim);margin-bottom:10px;}
 .card-section{font-size:11px;font-weight:600;color:var(--text-muted);
   text-transform:uppercase;letter-spacing:.6px;margin:10px 0 5px;}
-
-/* ─── Stat grid ───────────────────────────────────────────────────── */
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;}
 .stat{background:var(--surface2);border:1px solid var(--border);
   border-radius:var(--radius-lg);padding:12px 14px;text-align:center;cursor:pointer;
   transition:border-color var(--transition),background var(--transition);}
 .stat:hover{border-color:var(--accent);background:var(--surface3);}
 .stat .num{font-size:26px;font-weight:700;color:var(--accent);line-height:1.2;}
-.stat .lbl{font-size:10px;color:var(--text-dim);text-transform:uppercase;
-  letter-spacing:.5px;margin-top:2px;}
+.stat .lbl{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
 .stat.green .num{color:var(--green);}
 .stat.yellow .num{color:var(--yellow);}
 .stat.red .num{color:var(--red);}
 .stat.purple .num{color:var(--purple);}
 </style>
-
 
 <style>
 /* ─── Buttons ─────────────────────────────────────────────────────── */
@@ -102,71 +88,60 @@ input,select,textarea{background:var(--surface2);border:1px solid var(--border);
   color:var(--text);padding:6px 10px;border-radius:var(--radius);
   font-size:12px;width:100%;transition:border-color var(--transition);}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);}
+input::placeholder,textarea::placeholder{color:var(--text-muted);}
 select{width:auto;min-width:130px;cursor:pointer;}
+textarea{resize:vertical;min-height:60px;font-family:inherit;line-height:1.5;}
+.form-row{margin-bottom:10px;}
+.form-row label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;font-weight:500;}
+.form-group{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+ul.items{list-style:none;}
+ul.items li{padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-dim);}
+ul.items li:last-child{border:none;}
+ul.items li::before{content:'›';color:var(--text-muted);margin-right:6px;}
+</style>
 
+
+<style>
 /* ─── Tags / badges ───────────────────────────────────────────────── */
 .tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:10px;
-  font-weight:500;border:1px solid var(--border2);color:var(--text-dim);
-  white-space:nowrap;}
+  font-weight:500;border:1px solid var(--border2);color:var(--text-dim);white-space:nowrap;}
 .tag-green{border-color:var(--green-dim);color:var(--green);background:rgba(63,185,80,.08);}
 .tag-blue{border-color:var(--accent-dim);color:var(--accent);background:rgba(88,166,255,.08);}
 .tag-yellow{border-color:var(--yellow);color:var(--yellow);background:rgba(210,153,34,.08);}
 .tag-red{border-color:var(--red);color:var(--red);background:rgba(248,81,73,.08);}
 .tag-purple{border-color:var(--purple);color:var(--purple);background:rgba(188,140,255,.08);}
-
 /* ─── Flex helpers ────────────────────────────────────────────────── */
 .flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.flex-between{display:flex;justify-content:space-between;align-items:center;
-  flex-wrap:wrap;gap:6px;}
-.mt{margin-top:10px;} .mt-sm{margin-top:6px;} .mb{margin-bottom:10px;}
+.flex-between{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;}
+.mt{margin-top:10px;} .mt-sm{margin-top:6px;} .mt8{margin-top:8px;} .mb{margin-bottom:10px;} .mb6{margin-bottom:6px;}
 .gap-sm{gap:5px;}
-
 /* ─── Empty state ─────────────────────────────────────────────────── */
 .empty{text-align:center;padding:40px 20px;color:var(--text-dim);}
 .empty .empty-icon{font-size:36px;margin-bottom:10px;opacity:.5;}
 .empty p{font-size:13px;margin-bottom:14px;}
-
 /* ─── Accordion / details ─────────────────────────────────────────── */
 details>summary{cursor:pointer;user-select:none;list-style:none;}
 details>summary::-webkit-details-marker{display:none;}
 .collapse-header{display:flex;align-items:center;gap:8px;padding:10px 12px;
-  border-radius:var(--radius);background:var(--surface2);cursor:pointer;
-  transition:background var(--transition);}
+  border-radius:var(--radius);background:var(--surface2);cursor:pointer;transition:background var(--transition);}
 .collapse-header:hover{background:var(--surface3);}
-.chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;
-  display:inline-block;}
+.chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;display:inline-block;}
 details[open] .chevron{transform:rotate(90deg);}
 .collapse-body{padding:10px 0 4px;}
-
 /* ─── Sort bar ────────────────────────────────────────────────────── */
 .sort-bar{display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap;}
 .sort-btn{background:var(--surface2);border:1px solid var(--border);
   color:var(--text-dim);padding:3px 10px;border-radius:20px;font-size:11px;
   cursor:pointer;transition:all var(--transition);}
-.sort-btn.active{border-color:var(--accent);color:var(--accent);
-  background:rgba(88,166,255,.08);}
-
-/* ─── Phase bar ───────────────────────────────────────────────────── */
-.phase-bar{display:flex;align-items:center;gap:0;margin:10px 0;overflow-x:auto;}
-.phase-step{padding:7px 18px;font-size:11px;font-weight:600;cursor:pointer;
-  transition:all var(--transition);white-space:nowrap;text-align:center;
-  border:1px solid var(--border);margin-right:-1px;}
-.phase-step:first-child{border-radius:var(--radius) 0 0 var(--radius);}
-.phase-step:last-child{border-radius:0 var(--radius) var(--radius) 0;margin-right:0;}
-.phase-step.done{background:var(--green-dim);color:#fff;border-color:var(--green-dim);}
-.phase-step.current{background:var(--accent-dim);color:#fff;border-color:var(--accent);}
-.phase-step.pending{background:var(--surface2);color:var(--text-dim);}
-
+.sort-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.08);}
 /* ─── Findings items ──────────────────────────────────────────────── */
 .findings-item{font-size:12px;padding:3px 0 3px 10px;color:var(--text-dim);
   border-left:2px solid var(--border);margin-bottom:2px;}
-
 /* ─── Loading / toast ─────────────────────────────────────────────── */
 .loading-bar{height:2px;background:var(--accent-dim);border-radius:2px;
   animation:loadbar 1.2s ease-in-out infinite;width:60%;}
 @keyframes loadbar{0%{width:0%;opacity:1}70%{width:80%;opacity:1}100%{width:100%;opacity:0}}
-.loading-inline{display:inline-flex;align-items:center;gap:6px;
-  color:var(--text-dim);font-size:12px;}
+.loading-inline{display:inline-flex;align-items:center;gap:6px;color:var(--text-dim);font-size:12px;}
 .spin{animation:spin .8s linear infinite;display:inline-block;}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 #toast{position:fixed;bottom:20px;right:20px;background:var(--surface3);
@@ -176,24 +151,20 @@ details[open] .chevron{transform:rotate(90deg);}
 #toast.show{opacity:1;}
 #toast.ok{border-color:var(--green-dim);color:var(--green);}
 #toast.err{border-color:var(--red);color:var(--red);}
-
 /* ─── Dash section headers ────────────────────────────────────────── */
 .dash-section{font-size:10px;font-weight:700;color:var(--text-muted);
   text-transform:uppercase;letter-spacing:.7px;padding:4px 0 6px;
   border-bottom:1px solid var(--border);margin-bottom:8px;
   display:flex;align-items:center;gap:6px;}
-
 /* ─── Review list items ───────────────────────────────────────────── */
 .review-item{background:var(--bg);border:1px solid var(--border);
-  border-radius:var(--radius);margin:5px 0;overflow:hidden;
-  transition:border-color var(--transition);}
+  border-radius:var(--radius);margin:5px 0;overflow:hidden;transition:border-color var(--transition);}
 .review-item:hover{border-color:var(--border2);}
 .review-item.active-review{border-color:var(--accent);}
 .review-item-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
   cursor:pointer;transition:background var(--transition);}
 .review-item-header:hover{background:var(--surface2);}
 .review-item-body{padding:8px 12px 10px;border-top:1px solid var(--border);}
-
 /* ─── Utility micro-classes ───────────────────────────────────────── */
 .fs10{font-size:10px}.fs11{font-size:11px}.fs12{font-size:12px}
 .c-dim{color:var(--text-dim)}.c-muted{color:var(--text-muted)}
@@ -203,24 +174,41 @@ details[open] .chevron{transform:rotate(90deg);}
 
 
 <style>
-/* ═══════════════════════════════════════════════════════════════════
-   COMPARE MODULE STYLES  (scoped with .cmp- prefix)
-   ═══════════════════════════════════════════════════════════════════ */
+/* ─── File Explorer ─────────────────────────────────────────────── */
+.file-explorer{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+.file-item{border-bottom:1px solid var(--border);}
+.file-item:last-child{border-bottom:none;}
+.file-header{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;
+  font-size:12px;transition:background var(--transition);}
+.file-header:hover{background:var(--surface2);}
+.file-chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;width:10px;flex-shrink:0;}
+.file-item.expanded .file-chevron{transform:rotate(90deg);}
+.file-name{font-weight:600;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.file-body{display:none;padding:0 12px 10px 32px;}
+.file-item.expanded .file-body{display:block;}
+/* ─── Toggle pill ───────────────────────────────────────────────── */
+.toggle-pill{font-size:10px;padding:2px 9px;border-radius:20px;cursor:pointer;
+  font-weight:600;user-select:none;white-space:nowrap;border:1px solid;transition:all var(--transition);}
+.toggle-on{background:rgba(63,185,80,.12);color:var(--green);border-color:var(--green-dim);}
+.toggle-off{background:rgba(248,81,73,.08);color:var(--red);border-color:var(--red);}
+/* ─── Backend chips ─────────────────────────────────────────────── */
+.backend-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-top:8px;}
+.backend-chip{padding:7px 10px;border-radius:var(--radius);font-size:11px;
+  background:var(--surface2);border:1px solid var(--border);text-align:center;line-height:1.4;}
+.backend-chip.ok{border-color:var(--green-dim);background:rgba(63,185,80,.06);}
+</style>
 
-/* ── Overlay / modal shell ────────────────────────────────────────── */
+<style>
+/* ═══ COMPARE MODULE STYLES (scoped with .cmp- prefix) ═══════════════ */
 .cmp-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);
   z-index:2000;display:flex;align-items:flex-start;justify-content:center;
-  padding:24px 16px;overflow-y:auto;opacity:0;transition:opacity .25s ease;
-  pointer-events:none;}
+  padding:24px 16px;overflow-y:auto;opacity:0;transition:opacity .25s ease;pointer-events:none;}
 .cmp-overlay.cmp-overlay-visible{opacity:1;pointer-events:all;}
-
 .cmp-modal{background:var(--surface);border:1px solid var(--border2);
   border-radius:var(--radius-lg);width:100%;max-width:820px;
   box-shadow:var(--shadow);display:flex;flex-direction:column;
   transform:translateY(-12px);transition:transform .25s ease;}
 .cmp-overlay.cmp-overlay-visible .cmp-modal{transform:translateY(0);}
-
-/* ── Modal header ─────────────────────────────────────────────────── */
 .cmp-modal-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   padding:12px 16px;border-bottom:1px solid var(--border);
   background:var(--surface2);border-radius:var(--radius-lg) var(--radius-lg) 0 0;}
@@ -229,170 +217,140 @@ details[open] .chevron{transform:rotate(90deg);}
   cursor:pointer;font-size:16px;padding:2px 6px;border-radius:var(--radius);
   transition:color var(--transition),background var(--transition);line-height:1;}
 .cmp-close-btn:hover{color:var(--text);background:var(--surface3);}
-
-/* ── Mode toggle ──────────────────────────────────────────────────── */
-.cmp-mode-toggle{display:inline-flex;border:1px solid var(--border2);
-  border-radius:20px;overflow:hidden;flex-shrink:0;}
+.cmp-mode-toggle{display:inline-flex;border:1px solid var(--border2);border-radius:20px;overflow:hidden;flex-shrink:0;}
 .cmp-mode-btn{background:transparent;border:none;color:var(--text-muted);
-  padding:4px 14px;font-size:11px;font-weight:600;cursor:pointer;
-  transition:background var(--transition),color var(--transition);}
+  padding:4px 14px;font-size:11px;font-weight:600;cursor:pointer;transition:background var(--transition),color var(--transition);}
 .cmp-mode-btn:hover:not(.cmp-mode-active){color:var(--text-dim);}
 .cmp-mode-btn.cmp-mode-active{background:var(--surface3);color:var(--text);}
-
-/* ── Modal body ───────────────────────────────────────────────────── */
 .cmp-modal-body{padding:16px;display:flex;flex-direction:column;gap:12px;}
-
-/* ── Selector row ─────────────────────────────────────────────────── */
 .cmp-selectors-area{display:flex;flex-direction:column;gap:8px;}
-.cmp-selector-row{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;
-  align-items:start;}
+.cmp-selector-row{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:start;}
 @media(max-width:520px){.cmp-selector-row{grid-template-columns:1fr;}}
 .cmp-selector-col{display:flex;flex-direction:column;gap:4px;}
-.cmp-selector-divider{font-size:20px;color:var(--text-muted);padding-top:22px;
-  text-align:center;font-weight:300;user-select:none;}
+.cmp-selector-divider{font-size:20px;color:var(--text-muted);padding-top:22px;text-align:center;font-weight:300;user-select:none;}
 .cmp-sel-label{font-size:11px;font-weight:600;}
-.cmp-label-a{color:var(--accent);}
-.cmp-label-b{color:var(--green);}
+.cmp-label-a{color:var(--accent);} .cmp-label-b{color:var(--green);}
 .cmp-select{width:100%;background:var(--surface2);border:1px solid var(--border);
-  color:var(--text);padding:6px 10px;border-radius:var(--radius);
-  font-size:12px;cursor:pointer;transition:border-color var(--transition);}
+  color:var(--text);padding:6px 10px;border-radius:var(--radius);font-size:12px;cursor:pointer;transition:border-color var(--transition);}
 .cmp-select:focus{outline:none;}
 .cmp-select-a:focus{border-color:var(--accent);}
 .cmp-select-b:focus{border-color:var(--green);}
-
-/* ── Per-selector metadata preview chips ─────────────────────────── */
 .cmp-sel-meta{display:flex;flex-wrap:wrap;gap:4px;min-height:20px;margin-top:2px;}
-.cmp-meta-chip{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;
-  font-weight:500;border:1px solid var(--border2);color:var(--text-dim);}
-.cmp-chip-red{border-color:var(--red);color:var(--red);}
-.cmp-chip-green{border-color:var(--green-dim);color:var(--green);}
-.cmp-chip-yellow{border-color:var(--yellow);color:var(--yellow);}
-.cmp-chip-purple{border-color:var(--purple);color:var(--purple);}
-
-/* ── Action row ───────────────────────────────────────────────────── */
+.cmp-meta-chip{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:500;border:1px solid var(--border2);color:var(--text-dim);}
+.cmp-chip-red{border-color:var(--red);color:var(--red);} .cmp-chip-green{border-color:var(--green-dim);color:var(--green);}
+.cmp-chip-yellow{border-color:var(--yellow);color:var(--yellow);} .cmp-chip-purple{border-color:var(--purple);color:var(--purple);}
 .cmp-actions{display:flex;align-items:center;gap:8px;}
-.cmp-run-btn{display:inline-flex;align-items:center;gap:6px;
-  background:var(--accent);color:#000;border:none;padding:7px 18px;
-  border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:700;
-  transition:opacity var(--transition);}
-.cmp-run-btn:hover{opacity:.85;}
-.cmp-run-btn:disabled{opacity:.45;cursor:not-allowed;}
-.cmp-clear-btn{background:transparent;border:1px solid var(--border);
-  color:var(--text-dim);padding:6px 12px;border-radius:var(--radius);
-  cursor:pointer;font-size:11px;transition:all var(--transition);}
+.cmp-run-btn{display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#000;border:none;
+  padding:7px 18px;border-radius:var(--radius);cursor:pointer;font-size:12px;font-weight:700;transition:opacity var(--transition);}
+.cmp-run-btn:hover{opacity:.85;} .cmp-run-btn:disabled{opacity:.45;cursor:not-allowed;}
+.cmp-clear-btn{background:transparent;border:1px solid var(--border);color:var(--text-dim);
+  padding:6px 12px;border-radius:var(--radius);cursor:pointer;font-size:11px;transition:all var(--transition);}
 .cmp-clear-btn:hover{border-color:var(--border2);color:var(--text);}
-</style>
-
-
-<style>
-/* ═══════════════════════════════════════════════════════════════════
-   COMPARE RESULT STYLES
-   ═══════════════════════════════════════════════════════════════════ */
-
-/* ── Result area ──────────────────────────────────────────────────── */
 .cmp-result-area{display:flex;flex-direction:column;gap:0;}
-
-/* ── Summary bar ──────────────────────────────────────────────────── */
 .cmp-summary-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px;
-  padding:10px 14px;background:var(--surface2);border:1px solid var(--border);
-  border-radius:var(--radius-lg);margin-bottom:10px;}
+  padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-lg);margin-bottom:10px;}
 .cmp-summary-pair{display:flex;align-items:center;gap:6px;}
 .cmp-ver-badge{font-size:12px;font-weight:700;padding:2px 10px;border-radius:20px;}
-.cmp-badge-a{background:rgba(88,166,255,.12);color:var(--accent);
-  border:1px solid var(--accent-dim);}
-.cmp-badge-b{background:rgba(63,185,80,.10);color:var(--green);
-  border:1px solid var(--green-dim);}
+.cmp-badge-a{background:rgba(88,166,255,.12);color:var(--accent);border:1px solid var(--accent-dim);}
+.cmp-badge-b{background:rgba(63,185,80,.10);color:var(--green);border:1px solid var(--green-dim);}
 .cmp-arrow{color:var(--text-muted);font-size:14px;font-weight:300;}
 .cmp-summary-stats{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .cmp-stat-added{font-size:12px;font-weight:700;color:var(--green);}
 .cmp-stat-removed{font-size:12px;font-weight:700;color:var(--red);}
-.cmp-ts-row{font-size:10px;color:var(--text-muted);display:flex;
-  align-items:center;gap:4px;margin-left:auto;}
+.cmp-ts-row{font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;margin-left:auto;}
 .cmp-ts-sep{color:var(--text-muted);}
-
-/* ── Trend pill ───────────────────────────────────────────────────── */
 .cmp-trend-pill{font-size:11px;padding:2px 10px;border-radius:20px;font-weight:600;}
-.cmp-trend-up  {background:rgba(248,81,73,.12); color:var(--red);}
-.cmp-trend-down{background:rgba(63,185,80,.12); color:var(--green);}
+.cmp-trend-up{background:rgba(248,81,73,.12);color:var(--red);}
+.cmp-trend-down{background:rgba(63,185,80,.12);color:var(--green);}
 .cmp-trend-same{background:rgba(139,148,158,.12);color:var(--text-dim);}
-
-/* ── Section title ────────────────────────────────────────────────── */
-.cmp-section-title{font-size:10px;font-weight:700;color:var(--text-muted);
-  text-transform:uppercase;letter-spacing:.6px;margin:10px 0 5px;
-  padding-bottom:4px;border-bottom:1px solid var(--border);}
-
-/* ── Metadata diff grid ───────────────────────────────────────────── */
+.cmp-section-title{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;
+  margin:10px 0 5px;padding-bottom:4px;border-bottom:1px solid var(--border);}
 .cmp-meta-grid{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;}
 .cmp-meta-row{display:flex;align-items:center;gap:6px;font-size:11px;flex-wrap:wrap;}
-.cmp-meta-field{font-weight:600;color:var(--text-muted);text-transform:capitalize;
-  min-width:90px;}
-.cmp-meta-before{color:var(--red);background:rgba(248,81,73,.06);
-  padding:1px 7px;border-radius:4px;text-decoration:line-through;}
-.cmp-meta-after{color:var(--green);background:rgba(63,185,80,.06);
-  padding:1px 7px;border-radius:4px;}
-
-/* ── Delta badge ──────────────────────────────────────────────────── */
+.cmp-meta-field{font-weight:600;color:var(--text-muted);text-transform:capitalize;min-width:90px;}
+.cmp-meta-before{color:var(--red);background:rgba(248,81,73,.06);padding:1px 7px;border-radius:4px;text-decoration:line-through;}
+.cmp-meta-after{color:var(--green);background:rgba(63,185,80,.06);padding:1px 7px;border-radius:4px;}
 .cmp-delta{font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;}
-.cmp-delta-up      {color:var(--red);  background:rgba(248,81,73,.10);}
-.cmp-delta-down    {color:var(--green);background:rgba(63,185,80,.10);}
-.cmp-delta-neutral {color:var(--text-muted);background:var(--surface3);}
-
-/* ── Category / section blocks ────────────────────────────────────── */
-.cmp-cat-block{border:1px solid var(--border);border-radius:var(--radius);
-  margin-bottom:6px;overflow:hidden;background:var(--bg);}
-.cmp-cat-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
-  cursor:pointer;background:var(--surface2);list-style:none;
-  transition:background var(--transition);}
+.cmp-delta-up{color:var(--red);background:rgba(248,81,73,.10);}
+.cmp-delta-down{color:var(--green);background:rgba(63,185,80,.10);}
+.cmp-delta-neutral{color:var(--text-muted);background:var(--surface3);}
+.cmp-cat-block{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px;overflow:hidden;background:var(--bg);}
+.cmp-cat-header{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;background:var(--surface2);list-style:none;transition:background var(--transition);}
 .cmp-cat-header:hover{background:var(--surface3);}
 .cmp-cat-block[open] .cmp-cat-header{border-bottom:1px solid var(--border);}
-.cmp-cat-chevron{font-size:9px;color:var(--text-muted);
-  transition:transform .2s;flex-shrink:0;}
+.cmp-cat-chevron{font-size:9px;color:var(--text-muted);transition:transform .2s;flex-shrink:0;}
 .cmp-cat-block[open] .cmp-cat-chevron{transform:rotate(90deg);}
-.cmp-cat-icon{font-size:13px;}
-.cmp-cat-name{font-size:12px;font-weight:600;text-transform:capitalize;flex:1;}
-.cmp-count-pill{font-size:11px;background:var(--surface3);
-  border-radius:20px;padding:1px 7px;font-weight:600;color:var(--text-dim);}
+.cmp-cat-icon{font-size:13px;} .cmp-cat-name{font-size:12px;font-weight:600;text-transform:capitalize;flex:1;}
+.cmp-count-pill{font-size:11px;background:var(--surface3);border-radius:20px;padding:1px 7px;font-weight:600;color:var(--text-dim);}
 .cmp-no-change{font-size:11px;color:var(--text-muted);margin-left:auto;}
 .cmp-cat-body{padding:8px 12px 10px;}
-
-/* ── Added / removed item rows ────────────────────────────────────── */
-.cmp-group-label{font-size:10px;font-weight:700;letter-spacing:.5px;
-  color:var(--text-muted);margin:6px 0 3px;}
-.cmp-label-added {color:var(--green);}
-.cmp-label-removed{color:var(--red);}
-.cmp-item{display:flex;align-items:flex-start;gap:8px;font-size:12px;
-  padding:3px 0;color:var(--text-dim);}
-.cmp-item-added   .cmp-item-marker{color:var(--green);font-weight:700;flex-shrink:0;}
-.cmp-item-removed .cmp-item-marker{color:var(--red);  font-weight:700;flex-shrink:0;}
-.cmp-item-added  {border-left:2px solid var(--green-dim);padding-left:6px;}
-.cmp-item-removed{border-left:2px solid var(--red);    padding-left:6px;}
-.cmp-unchanged-note{font-size:11px;color:var(--text-muted);
-  padding:4px 0;font-style:italic;}
+.cmp-group-label{font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--text-muted);margin:6px 0 3px;}
+.cmp-label-added{color:var(--green);} .cmp-label-removed{color:var(--red);}
+.cmp-item{display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:3px 0;color:var(--text-dim);}
+.cmp-item-added .cmp-item-marker{color:var(--green);font-weight:700;flex-shrink:0;}
+.cmp-item-removed .cmp-item-marker{color:var(--red);font-weight:700;flex-shrink:0;}
+.cmp-item-added{border-left:2px solid var(--green-dim);padding-left:6px;}
+.cmp-item-removed{border-left:2px solid var(--red);padding-left:6px;}
+.cmp-unchanged-note{font-size:11px;color:var(--text-muted);padding:4px 0;font-style:italic;}
 .cmp-overflow{font-size:11px;color:var(--text-muted);margin-top:3px;}
-
-/* ── Progression tiles (reviews) ─────────────────────────────────── */
-.cmp-prog-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
-  margin-bottom:10px;}
+.cmp-prog-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;}
 @media(max-width:480px){.cmp-prog-tiles{grid-template-columns:repeat(2,1fr);}}
-.cmp-prog-tile{text-align:center;padding:10px 6px;border-radius:var(--radius);
-  background:var(--surface2);}
+.cmp-prog-tile{text-align:center;padding:10px 6px;border-radius:var(--radius);background:var(--surface2);}
 .cmp-prog-num{font-size:22px;font-weight:700;line-height:1.2;}
 .cmp-prog-lbl{font-size:10px;color:var(--text-muted);margin-top:2px;}
-.cmp-tile-resolved   .cmp-prog-num{color:var(--green);}
-.cmp-tile-new        .cmp-prog-num{color:var(--accent);}
+.cmp-tile-resolved .cmp-prog-num{color:var(--green);}
+.cmp-tile-new .cmp-prog-num{color:var(--accent);}
 .cmp-tile-persistent .cmp-prog-num{color:var(--text-dim);}
-.cmp-tile-net        .cmp-prog-num{color:var(--text-dim);}
-
-/* ── Loading / error ─────────────────────────────────────────────── */
-.cmp-loading{display:flex;align-items:center;gap:8px;padding:16px;
-  color:var(--text-dim);font-size:12px;}
+.cmp-tile-net .cmp-prog-num{color:var(--text-dim);}
+.cmp-loading{display:flex;align-items:center;gap:8px;padding:16px;color:var(--text-dim);font-size:12px;}
 .cmp-spin{animation:spin .8s linear infinite;display:inline-block;font-size:16px;}
-.cmp-error{padding:12px 14px;background:rgba(248,81,73,.08);
-  border:1px solid var(--red);border-radius:var(--radius);
-  color:var(--red);font-size:12px;}
+.cmp-error{padding:12px 14px;background:rgba(248,81,73,.08);border:1px solid var(--red);border-radius:var(--radius);color:var(--red);font-size:12px;}
 .cmp-empty{color:var(--text-muted);font-size:12px;padding:12px 0;font-style:italic;}
-</style>
 
+/* ── Review Full Detail: Coverage, Strength, Decision, Readiness ── */
+.prompt-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px 12px;font-family:'Cascadia Code','Fira Code',monospace;font-size:11px;
+  white-space:pre-wrap;max-height:280px;overflow-y:auto;color:var(--text-dim);
+  margin-top:8px;line-height:1.6;}
+.coverage-bar-outer{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin:6px 0 8px;}
+.coverage-bar-inner{height:100%;border-radius:3px;transition:width .4s ease;}
+.coverage-pills{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;}
+.coverage-pill{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+  border-radius:20px;font-size:10px;font-weight:500;border:1px solid var(--border);white-space:nowrap;}
+.coverage-pill.covered{border-color:var(--green-dim);color:var(--green);background:rgba(63,185,80,.08);}
+.coverage-pill.missing{border-color:var(--border2);color:var(--text-muted);background:var(--surface2);}
+.rs-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+@media(max-width:600px){.rs-grid{grid-template-columns:1fr;}}
+.rs-cell{background:var(--surface2);border-radius:var(--radius);padding:8px 10px;}
+.rs-cell-header{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:6px;display:flex;align-items:center;gap:5px;}
+.rs-item{font-size:11px;color:var(--text-dim);padding:3px 0;display:flex;align-items:flex-start;gap:5px;line-height:1.4;}
+.rs-item::before{content:'•';color:var(--text-muted);flex-shrink:0;}
+.pr-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius);margin-bottom:8px;}
+.pr-bar.not-ready{background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.3);}
+.pr-bar.partial{background:rgba(227,179,65,.08);border:1px solid rgba(227,179,65,.3);}
+.pr-bar.ready{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);}
+.nba-item{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:var(--radius);
+  background:var(--surface2);margin-bottom:5px;font-size:12px;}
+.nba-num{font-size:10px;font-weight:700;background:var(--accent-dim);color:#fff;
+  border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.dp-card{border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;margin-bottom:6px;background:var(--surface);}
+.dp-title{font-size:12px;font-weight:600;color:var(--text);}
+.dp-desc{font-size:11px;color:var(--text-dim);margin-bottom:4px;line-height:1.4;}
+.dp-opts{font-size:10px;color:var(--text-muted);font-style:italic;}
+.prog-row{display:flex;align-items:flex-start;gap:6px;padding:4px 0;font-size:11px;color:var(--text-dim);}
+.prog-resolved{color:var(--green);}
+.prog-new{color:var(--accent);}
+.prog-still{color:var(--yellow);}
+.diff-cat-header{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  cursor:pointer;transition:background var(--transition);}
+.diff-cat-header:hover{background:var(--surface3);}
+.diff-cat-body{padding:6px 12px 10px;}
+.prop-strength-area{padding:6px 10px;border-radius:var(--radius);margin-bottom:4px;font-size:11px;}
+.prop-strength-strong{background:rgba(63,185,80,.08);border-left:3px solid var(--green);}
+.prop-strength-weak{background:rgba(248,81,73,.08);border-left:3px solid var(--red);}
+.mb8{margin-bottom:8px;} .mt8{margin-top:8px;}
+</style>
 
 </head>
 <body>
@@ -405,6 +363,10 @@ details[open] .chevron{transform:rotate(90deg);}
 <div id="toast"></div>
 
 <!-- Compare module — loaded before inline scripts so Compare is available globally -->
+
+<!-- Phase 1: disable mock mode — route all API calls to the live backend -->
+<script>window.V2_USE_MOCK = false;</script>
+
 <script src="/static/v2/js/compare.js"></script>
 
 <script>
@@ -427,7 +389,6 @@ function relativeTime(iso){
   if(h<24)return`${h}h ago`;
   return`${Math.floor(h/24)}d ago`;
 }
-
 let _toastTimer=null;
 function toast(msg,type='ok'){
   const el=document.getElementById('toast');
@@ -471,6 +432,7 @@ function formatVersionOption(v){
 
 <script>
 // ── Header ───────────────────────────────────────────────────────────────────
+// FIX #1: renderHeader shows all TABS including ingest, settings, admin
 function renderHeader(){
   const proj=state.current;
   const phase=proj?proj.phase:'';
@@ -499,7 +461,6 @@ function renderHeader(){
       :''}`;
 }
 
-// ── Tab switching ─────────────────────────────────────────────────────────────
 function switchTab(tab){
   if(tab===state.tab&&state.current&&state._lastRenderedProject===state.current.id){
     window.scrollTo({top:0,behavior:'smooth'});
@@ -526,7 +487,6 @@ async function render(){
   }
 }
 
-// ── Compare entry point ───────────────────────────────────────────────────────
 function openCompare(){
   if(!state.current){toast('Select a project first','err');return;}
   Compare.open(state.current.id);
@@ -630,13 +590,13 @@ async function viewDashboard(){
     </p>`:''}
   </div>`:'';
 
-  // Overview stats
+  // FIX #2: Add onclick to stat tiles for navigation
   const overviewCard=`<div class="card">
     <div class="dash-section">Project Overview</div>
     <div class="stat-grid mb">
-      <div class="stat green"><div class="num">${totalV}</div><div class="lbl">Versions</div></div>
-      <div class="stat green"><div class="num">${totalR}</div><div class="lbl">Reviews</div></div>
-      ${artifacts?`<div class="stat"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}
+      <div class="stat green" onclick="switchTab('versions')"><div class="num">${totalV}</div><div class="lbl">Versions</div></div>
+      <div class="stat green" onclick="switchTab('reviews')"><div class="num">${totalR}</div><div class="lbl">Reviews</div></div>
+      ${artifacts?`<div class="stat" onclick="switchTab('ingest')"><div class="num">${artifacts}</div><div class="lbl">Artefacts</div></div>`:''}
     </div>
     <div class="flex gap-sm" style="flex-wrap:wrap">
       <button class="btn" onclick="switchTab('versions')">📋 Versions</button>
@@ -645,17 +605,17 @@ async function viewDashboard(){
     </div>
   </div>`;
 
-  // Version insight stats
+  // FIX #2: insight card tiles navigate to reviews
   const insightCard=`<div class="card">
     <div class="dash-section">Version Insights (${ds.version?escHtml(ds.version_label||ds.version):'Latest'})</div>
     <div class="stat-grid mb">
-      <div class="stat red"><div class="num">${risks}</div><div class="lbl">Risks</div></div>
-      <div class="stat yellow"><div class="num">${constraints}</div><div class="lbl">Constraints</div></div>
-      <div class="stat purple"><div class="num">${deps}</div><div class="lbl">Dependencies</div></div>
-      <div class="stat"><div class="num">${assumptions}</div><div class="lbl">Assumptions</div></div>
-      <div class="stat"><div class="num">${actions}</div><div class="lbl">Actions</div></div>
-      ${gaps?`<div class="stat red"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
-      ${findings?`<div class="stat yellow"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
+      <div class="stat red" onclick="switchTab('reviews')"><div class="num">${risks}</div><div class="lbl">Risks</div></div>
+      <div class="stat yellow" onclick="switchTab('reviews')"><div class="num">${constraints}</div><div class="lbl">Constraints</div></div>
+      <div class="stat purple" onclick="switchTab('reviews')"><div class="num">${deps}</div><div class="lbl">Dependencies</div></div>
+      <div class="stat" onclick="switchTab('reviews')"><div class="num">${assumptions}</div><div class="lbl">Assumptions</div></div>
+      <div class="stat" onclick="switchTab('reviews')"><div class="num">${actions}</div><div class="lbl">Actions</div></div>
+      ${gaps?`<div class="stat red" onclick="switchTab('reviews')"><div class="num">${gaps}</div><div class="lbl">Gaps</div></div>`:''}
+      ${findings?`<div class="stat yellow" onclick="switchTab('reviews')"><div class="num">${findings}</div><div class="lbl">Findings</div></div>`:''}
     </div>
     ${trend.length>1?`
       <p style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Risk trend · last ${trend.length} versions</p>
@@ -683,7 +643,6 @@ async function viewDashboard(){
 async function viewVersions(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
-
   let hierarchy={};
   try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
   const tree=hierarchy.tree||[];
@@ -695,13 +654,8 @@ async function viewVersions(){
     <p>No versions yet. Ingest artefacts then run Build Intelligence.</p>
   </div></div>`;
 
-  // Collect all versions for the inline compare panel
   const allVersions=[];
-  for(const phase of tree){
-    for(const ver of(phase.versions||[])){
-      allVersions.push(ver);
-    }
-  }
+  for(const phase of tree)for(const ver of(phase.versions||[]))allVersions.push(ver);
   allVersions.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
 
   const sort=state._versionSort||'newest';
@@ -714,7 +668,6 @@ async function viewVersions(){
         }</button>`).join('')}
   </div>`;
 
-  // ── Inline compare panel (no backend, pure client)
   let inlineCompare='';
   if(allVersions.length>=2){
     const mkOpts=list=>list.map(v=>
@@ -726,7 +679,7 @@ async function viewVersions(){
         <div class="card-title"><span class="icon">⇄</span>Compare Versions</div>
         <button class="btn-compare" onclick="openCompare()">Open Full Compare</button>
       </div>
-      <p class="card-subtitle">Quick inline comparison — or use the Compare button for the full side-by-side diff panel.</p>
+      <p class="card-subtitle">Quick inline comparison — or use Compare for the full side-by-side diff panel.</p>
       <div class="flex mb" style="gap:8px;align-items:flex-end;flex-wrap:wrap">
         <div style="flex:1;min-width:160px">
           <label style="font-size:10px;color:var(--text-dim)">Version A (before)</label>
@@ -737,40 +690,33 @@ async function viewVersions(){
           <label style="font-size:10px;color:var(--text-dim)">Version B (after)</label>
           <select id="inlineCmpB" style="width:100%;margin-top:3px">${mkOpts(allVersions)}</select>
         </div>
-        <button class="btn" style="align-self:flex-end"
-          onclick="runInlineVersionCompare()">Compare</button>
+        <button class="btn" style="align-self:flex-end" onclick="runInlineVersionCompare()">Compare</button>
       </div>
       <div id="inlineCmpResult"></div>
     </div>`;
   }
 
-  // ── Phase tree
   let treeHtml='';
   for(const phase of tree){
     let phaseVersions=[...(phase.versions||[])];
     if(!phaseVersions.length&&!phase.is_current)continue;
-
     if(sort==='oldest')phaseVersions.sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
     else if(sort==='most-reviews')phaseVersions.sort((a,b)=>(b.reviews||[]).length-(a.reviews||[]).length);
     else phaseVersions.sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''));
-
     const isCurrent=phase.is_current;
     const phRevCnt=phaseVersions.reduce((s,v)=>s+(v.reviews||[]).length,0);
-
     treeHtml+=`<details ${isCurrent?'open':''} class="card"
       style="${isCurrent?'border-left:3px solid var(--accent)':''}">
       <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;
         gap:8px;margin:-16px -18px 0;padding:14px 18px;
         border-radius:var(--radius-lg) var(--radius-lg) 0 0;background:var(--surface)">
         <span class="chevron">▶</span>
-        <strong style="font-size:13px;color:${isCurrent?'var(--accent)':'var(--text)'}">
-          ${escHtml(phase.label)}</strong>
+        <strong style="font-size:13px;color:${isCurrent?'var(--accent)':'var(--text)'}">${escHtml(phase.label)}</strong>
         ${isCurrent?'<span class="tag tag-green">current</span>':''}
         <span class="tag">${phaseVersions.length} ver</span>
         <span class="tag">${phRevCnt} rev</span>
       </summary>
       <div style="padding-top:12px">`;
-
     if(!phaseVersions.length){
       treeHtml+=`<p class="fs11 c-muted">No versions in this phase yet.</p>`;
     }else{
@@ -780,8 +726,7 @@ async function viewVersions(){
         treeHtml+=`<details style="margin:4px 0;padding-left:8px;border-left:2px solid var(--border)">
           <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;
             gap:6px;padding:6px 8px;border-radius:var(--radius);transition:background .15s"
-            onmouseover="this.style.background='var(--surface2)'"
-            onmouseout="this.style.background=''">
+            onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
             <span class="chevron">▶</span>
             <strong class="fs12">${escHtml(ver.version_id)}</strong>
             ${ver.label?`<span class="c-dim fs11">– ${escHtml(ver.label)}</span>`:''}
@@ -799,10 +744,10 @@ async function viewVersions(){
                 onclick="openCompare()">⇄ Compare</button>
               <span class="fs10 c-dim">${ver.persona?escHtml(ver.persona)+' · ':''} ${escHtml(ver.ai_backend||'files_only')}</span>
             </div>`;
-
         for(const rev of verRevs){
           const rid=rev.review_id||'';if(!rid)continue;
           const isActive=rid===activeRid;
+          const qs=rev.quality_status||'pending';
           treeHtml+=`<div class="review-item ${isActive?'active-review':''}">
             <div class="review-item-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
               <span class="chevron">▶</span>
@@ -815,9 +760,25 @@ async function viewVersions(){
             </div>
             <div class="review-item-body" style="display:none">
               ${rev.summary?`<p class="fs12 c-dim mb">${escHtml(rev.summary.slice(0,160))}</p>`:''}
-              <div class="flex gap-sm">
-                <button class="btn-compare btn-xs" style="font-size:10px;padding:3px 9px"
-                  onclick="openCompare()">⇄ Compare Reviews</button>
+              <div class="flex gap-sm" style="flex-wrap:wrap">
+                <button class="btn btn-xs btn-outline" onclick="v2ViewReviewDetail('${rid}')">Full Details</button>
+                ${!isActive?`<button class="btn btn-xs btn-ghost" onclick="v2SetActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
+                ${qs==='pending'
+                  ?`<button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','interim')">Mark Draft</button>
+                    <button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark Final</button>`
+                  :(qs==='interim'
+                    ?`<button class="btn btn-xs btn-ghost" onclick="v2OpenMarkComplete('${rid}','complete')">Mark Final</button>`
+                    :`<span class="fs10" style="color:var(--green)">✓ Final</span>`)}
+                <button class="btn btn-xs" style="background:var(--red);color:#fff" onclick="v2DeleteReview('${rid}')">Delete</button>
+              </div>
+              <div id="v2mc_${rid}" style="display:none;margin-top:6px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
+                <label class="fs11 c-dim">Your name</label>
+                <div class="flex gap-sm" style="margin-top:4px">
+                  <input id="v2cb_${rid}" placeholder="Your name" style="flex:1;font-size:11px">
+                  <button class="btn btn-xs btn-ghost" onclick="v2SubmitMarkComplete('${rid}','interim')">Draft</button>
+                  <button class="btn btn-xs" style="background:var(--green-dim);color:#fff" onclick="v2SubmitMarkComplete('${rid}','complete')">Final</button>
+                  <button class="btn btn-xs btn-ghost" onclick="document.getElementById('v2mc_${rid}').style.display='none'">✕</button>
+                </div>
               </div>
             </div>
           </div>`;
@@ -842,7 +803,7 @@ async function viewVersions(){
 
 
 <script>
-// ── Inline version compare (uses Compare module internals via public API) ──────
+// ── Inline version compare ──────────────────────────────────────────────────
 async function runInlineVersionCompare(){
   const va=document.getElementById('inlineCmpA')?.value;
   const vb=document.getElementById('inlineCmpB')?.value;
@@ -853,20 +814,14 @@ async function runInlineVersionCompare(){
   const pid=state.current.id;
   const data=await api('POST',`/api/projects/${pid}/compare-versions`,{version_a:va,version_b:vb});
   if(data.error){el.innerHTML=`<p style="color:var(--red);font-size:12px">${escHtml(data.error)}</p>`;return;}
-
   const s=data.summary||{};
   const cats=data.categories||{};
   const CAT_ICONS={risks:'🔴',assumptions:'💭',dependencies:'🔗',constraints:'⛔',action_items:'✅'};
-  const TREND_MAP={
-    improving:'tag-green',risks_increasing:'tag-red',
-    complexity_increasing:'tag-yellow',stable:''
-  };
+  const TREND_MAP={improving:'tag-green',risks_increasing:'tag-red',complexity_increasing:'tag-yellow',stable:''};
   const trendTag=`<span class="tag ${TREND_MAP[s.trend]||''}">${s.trend||'–'}</span>`;
-
   let html=`<div style="background:var(--surface2);border:1px solid var(--border);
     border-radius:var(--radius-lg);overflow:hidden;margin-top:6px">
-    <div style="padding:8px 12px;border-bottom:1px solid var(--border);
-      display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span style="font-size:11px;font-weight:600;color:var(--accent)">${escHtml(va)}</span>
       <span class="c-muted">→</span>
       <span style="font-size:11px;font-weight:600;color:var(--green)">${escHtml(vb)}</span>
@@ -876,7 +831,6 @@ async function runInlineVersionCompare(){
         <span style="color:var(--red)">–${s.total_removed||0}</span>
       </span>
     </div>`;
-
   for(const[cat,d]of Object.entries(cats)){
     const net=d.net_change||0;
     const netCol=net>0?'var(--red)':net<0?'var(--green)':'var(--text-dim)';
@@ -889,28 +843,21 @@ async function runInlineVersionCompare(){
         <span>${CAT_ICONS[cat]||'📌'}</span>
         <strong style="font-size:12px;text-transform:capitalize">${cat.replace(/_/g,' ')}</strong>
         <span class="cmp-count-pill">${d.count_before} → ${d.count_after}</span>
-        <span style="font-size:12px;font-weight:700;color:${netCol}">
-          ${net>0?'+':''}${net}</span>
+        <span style="font-size:12px;font-weight:700;color:${netCol}">${net>0?'+':''}${net}</span>
         ${!hasChanges?'<span class="cmp-no-change">no changes</span>':''}
       </summary>
       <div style="padding:6px 12px 10px">
         ${added.slice(0,5).map(i=>`<div class="cmp-item cmp-item-added">
-          <span class="cmp-item-marker">+</span>
-          <span>${escHtml(String(i).slice(0,120))}</span>
-        </div>`).join('')}
+          <span class="cmp-item-marker">+</span><span>${escHtml(String(i).slice(0,120))}</span></div>`).join('')}
         ${added.length>5?`<p class="cmp-overflow">… and ${added.length-5} more</p>`:''}
         ${removed.slice(0,5).map(i=>`<div class="cmp-item cmp-item-removed">
-          <span class="cmp-item-marker">−</span>
-          <span>${escHtml(String(i).slice(0,120))}</span>
-        </div>`).join('')}
+          <span class="cmp-item-marker">−</span><span>${escHtml(String(i).slice(0,120))}</span></div>`).join('')}
         ${removed.length>5?`<p class="cmp-overflow">… and ${removed.length-5} more</p>`:''}
         ${!hasChanges?`<p class="cmp-unchanged-note">${d.unchanged_count||d.count_before} items — no changes</p>`:''}
       </div>
     </details>`;
   }
-  html+=`<div style="padding:6px 12px;font-size:11px;color:var(--text-dim)">
-    ${fmtDate(data.timestamp_a)} → ${fmtDate(data.timestamp_b)}
-  </div></div>`;
+  html+=`<div style="padding:6px 12px;font-size:11px;color:var(--text-dim)">${fmtDate(data.timestamp_a)} → ${fmtDate(data.timestamp_b)}</div></div>`;
   el.innerHTML=html;
 }
 </script>
@@ -921,20 +868,30 @@ async function runInlineVersionCompare(){
 async function viewReviews(){
   if(!state.current)return viewNoProject();
   const pid=state.current.id;
+  if(!state._injectedQuestions)state._injectedQuestions=[];
+
+  // FIX #7: Handle detail view mode at start of viewReviews
+  if(state._v2ReviewDetail){
+    const rid=state._v2ReviewDetail;
+    return await v2RenderReviewDetailPage(rid);
+  }
+
+  const personas=await api('GET','/api/personas');
+  const backendOpts=(state.backends||[]).map(b=>
+    `<option value="${escHtml(b.name)}">${escHtml(b.display_name||b.name)}${b.available?'':' (not configured)'}</option>`
+  ).join('');
 
   let hierarchy={};
   try{hierarchy=await api('GET',`/api/projects/${pid}/hierarchy`);}catch(e){}
   const tree=hierarchy.tree||[];
 
   let versionsWithReviews=[];
-  for(const phase of tree){
-    for(const ver of(phase.versions||[])){
+  for(const phase of tree)
+    for(const ver of(phase.versions||[]))
       if((ver.reviews||[]).length>0)versionsWithReviews.push({...ver,phase_label:phase.label});
-    }
-  }
-  if(state._dashVersion){
+
+  if(state._dashVersion)
     versionsWithReviews=versionsWithReviews.filter(v=>v.version_id===state._dashVersion);
-  }
 
   const sort=state._reviewSort||'newest';
   const sortBar=`<div class="sort-bar">
@@ -953,6 +910,24 @@ async function viewReviews(){
         <div class="card-title"><span class="icon">🔍</span>Review History</div>
         <button class="btn-compare" onclick="openCompare()">⇄ Compare</button>
       </div>
+      <div style="padding:8px 10px;background:var(--surface)">
+        <label class="fs11 fw6 c-dim" style="display:block;margin-bottom:4px">
+          ③ Your Context &amp; Constraints <span class="fs10 c-muted">(optional)</span>
+        </label>
+        <textarea id="v2UserNotes" rows="2" placeholder="e.g. Budget capped at £500K. AWS only."
+          style="width:100%;font-size:12px;resize:vertical"></textarea>
+      </div>
+    </div>
+    <input type="hidden" id="v2PreviousReviewId" value="">
+    <div class="flex gap-sm mt8">
+      <button id="v2RunReviewBtn" class="btn" onclick="v2RunReview()">▶ Run Review</button>
+    </div>
+    <div id="v2DeepDiveResult" class="mt"></div>
+    <div id="v2ReviewResult" class="mt"></div>
+  </div>`;
+
+  if(!versionsWithReviews.length){
+    return runCard+`<div class="card">
       ${sortBar}
       <div class="empty" style="padding:24px 0">
         <div class="empty-icon">🔍</div>
@@ -979,13 +954,12 @@ async function viewReviews(){
     listHtml+=`<details open style="border-left:2px solid var(--border);padding-left:10px;margin:8px 0">
       <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;
         padding:5px 6px;border-radius:var(--radius)"
-        onmouseover="this.style.background='var(--surface2)'"
-        onmouseout="this.style.background=''">
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
         <span class="chevron">▶</span>
         <strong class="fs12">${escHtml(ver.version_id)}</strong>
         ${ver.label?`<span class="c-dim fs12">– ${escHtml(ver.label)}</span>`:''}
         <span class="tag">${escHtml(ver.phase_label||'')}</span>
-        <span class="tag tag-blue">${revs.length} reviews</span>
+        <span class="tag tag-blue">${revs.length} review${revs.length===1?'':'s'}</span>
       </summary>`;
 
     for(const rev of revs){
@@ -996,22 +970,20 @@ async function viewReviews(){
       const qLabel=qStatus==='complete'?'Final':qStatus==='interim'?'In Progress':'Draft';
 
       listHtml+=`<details style="margin:4px 0;background:var(--bg);
-        border:1px solid ${isActive?'var(--accent)':'var(--border)'};
-        border-radius:var(--radius);overflow:hidden">
-        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;
-          gap:7px;padding:7px 10px"
-          onmouseover="this.style.background='var(--surface2)'"
-          onmouseout="this.style.background=''">
+        border:1px solid ${isActive?'var(--accent)':'var(--border)'};border-radius:var(--radius);overflow:hidden">
+        <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:7px 10px"
+          onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
           <span class="chevron">▶</span>
           <span class="tag" style="font-size:10px;padding:1px 6px;font-weight:700;
             background:var(--surface3)">R${rev.iteration_number||'?'}</span>
           <strong class="fs11">${rid}</strong>
           ${isActive?'<span class="tag tag-green">active</span>':''}
           <span class="tag tag-purple">${escHtml(rev.persona||'–')}</span>
+          ${promptBadge}
           <span class="tag ${qCls}" style="font-size:9px">${qLabel}</span>
+          <span style="font-size:10px;color:${scoreColor};background:var(--surface3);padding:1px 6px;border-radius:10px">${rev.completeness_score||0}%</span>
           ${rev.total_findings?`<span class="tag tag-yellow">${rev.total_findings} findings</span>`:''}
-          <span style="font-size:10px;color:var(--text-muted);margin-left:auto">
-            ${relativeTime(rev.created_at)}</span>
+          <span class="fs10 c-muted ml-auto">${relativeTime(rev.created_at)}</span>
         </summary>
         <div style="padding:8px 10px 10px;border-top:1px solid var(--border)">
           ${rev.summary?`<p class="fs12 c-dim" style="margin-bottom:8px">${escHtml(rev.summary.slice(0,200))}</p>`:''}
@@ -1025,8 +997,12 @@ async function viewReviews(){
     listHtml+=`</details>`;
   }
   listHtml+=`</div>`;
-  return listHtml;
+
+  setTimeout(()=>v2RenderInjectedChips(),50);
+  return runCard+listHtml;
 }
+
+function v2SetReviewSort(s){state._reviewSort=s;render();}
 </script>
 
 
@@ -1043,6 +1019,59 @@ async function createProject(){
   const name=(document.getElementById('newName')?.value||'').trim();
   if(!name)return;
   const r=await api('POST','/api/projects',{name});
+  if(r.project){
+    await loadProjects();
+    state.current=state.projects.find(p=>p.id===r.project.id)||r.project;
+    state.tab='dashboard';toast(`Project "${name}" created`);render();
+  }else{
+    const el=document.getElementById('createProjectError');
+    if(el)el.innerHTML=`<p style="color:var(--red);font-size:12px;margin-top:6px">${escHtml(r.error||'Failed')}</p>`;
+    else toast(r.error||'Failed','err');
+  }
+}
+async function v2DeleteReview(reviewId){
+  if(!confirm('Delete this review? This cannot be undone.'))return;
+  const pid=state.current?.id;if(!pid)return;
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/delete`,{});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Review deleted');render();
+}
+function v2OpenMarkComplete(reviewId,status){
+  document.querySelectorAll('[id^="v2mc_"]').forEach(el=>el.style.display='none');
+  const el=document.getElementById(`v2mc_${reviewId}`);
+  if(el)el.style.display='block';
+}
+async function v2SubmitMarkComplete(reviewId,qualityStatus){
+  const pid=state.current?.id;if(!pid)return;
+  const by=(document.getElementById(`v2cb_${reviewId}`)?.value||'').trim();
+  if(!by){toast('Enter your name','err');return;}
+  const r=await api('POST',`/api/projects/${pid}/hierarchy/reviews/${reviewId}/complete`,{completed_by:by,quality_status:qualityStatus});
+  if(r.error){toast(r.error,'err');return;}
+  toast(qualityStatus==='complete'?'Marked as Final':'Saved as Draft');render();
+}
+
+(async()=>{
+  await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);
+  render();
+</script>
+
+
+<script>
+// ── Project actions ───────────────────────────────────────────────────────────
+// FIX #8: selectProject resets tab to dashboard (called from header dropdown)
+async function selectProject(id){
+  state.current=state.projects.find(x=>x.id===id)||state.current;
+  try{localStorage.setItem('pdae_current_project_id',state.current.id);}catch(e){}
+  state._dashVersion='';state._dashReview='';
+  state.tab='dashboard';render();
+}
+
+// FIX #8: createProject uses newDesc if present
+async function createProject(){
+  const name=(document.getElementById('newName')?.value||'').trim();
+  const desc=(document.getElementById('newDesc')?.value||'').trim();
+  if(!name)return;
+  const r=await api('POST','/api/projects',{name,description:desc||undefined});
   if(r.project){
     await loadProjects();
     state.current=state.projects.find(p=>p.id===r.project.id)||r.project;
@@ -1081,6 +1110,7 @@ async function loadAppInfo(){
 (async()=>{
   await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);
   render();
+})();
 </script>
 </body>
 </html>

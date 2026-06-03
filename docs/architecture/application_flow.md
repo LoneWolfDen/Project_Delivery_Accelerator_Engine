@@ -21,16 +21,7 @@
 | Full render | `static/v2/js/dashboard.js` | `Dashboard.renderAll()` |
 | Accordion render | `static/v2/js/accordion.js` | `VersionAccordion.render()` |
 | Card render | `ui/v2/components/Cards.js` | `Cards.render()` |
-| Review drawer render | `static/v2/js/review_detail.js` | `ReviewDetail.renderReview()` *(Sprint 1)* |
-| Weakness note persist | `static/v2/js/api.js` | `API.updateWeaknessNote()` *(Sprint 1)* |
-| Weakness status persist | `static/v2/js/api.js` | `API.updateWeaknessStatus()` *(Sprint 1)* |
-| Review iteration toggle | `static/v2/js/review_detail.js` | `ReviewDetail.onToggleIterationForm()` *(Sprint 2)* |
-| Review iteration submit | `static/v2/js/review_detail.js` | `ReviewDetail.onCreateIteration()` *(Sprint 2)* |
-| Review iteration API call | `static/v2/js/api.js` | `API.createReviewIteration()` *(Sprint 2)* |
-| Reconciliation panel toggle | `static/v2/js/review_detail.js` | `ReviewDetail.onToggleReconciliationPanel()` *(Sprint 3)* |
-| Reconciliation selection save | `static/v2/js/api.js` | `API.saveReconciliationSelection()` *(Sprint 3)* |
-| Reconciliation run | `static/v2/js/api.js` | `API.runReconciliation()` *(Sprint 3)* |
-| Reconciliation fetch | `static/v2/js/api.js` | `API.fetchReconciliation()` *(Sprint 3)* |
+| Drawer render | `ui/v2/components/DetailPanel.js` | `DetailPanel.renderReview()` |
 
 ---
 
@@ -100,38 +91,11 @@ flowchart LR
     R4 --> R5["State subscriber fires:<br/>'drawerOpen' changed"]
     R5 --> R6["Dashboard._syncDrawer()"]
     R6 --> R7["CSS: #v2-drawer.open<br/>#v2-main.drawer-open"]
-    R6 --> R8["ReviewDetail.renderReview(summary)<br/>(Sprint 1 — full details panel)"]
+    R6 --> R8["DetailPanel.renderReview(summary)"]
     R8 --> R9["_loadDrawerDetail() async"]
     R9 --> R10["API.fetchReviewDetail(pid, rid)"]
-    R10 --> R11["ReviewDetail.renderReview(full)<br/>updates drawer with:<br/>• Version ID + Persona + Prompt<br/>• Top 3 Risks (always visible)<br/>• Artifact provenance chips<br/>• Weaknesses + status + note<br/>• Decision Points<br/>• Lineage banner (Sprint 2)<br/>• Create New Review form (Sprint 2)"]
+    R10 --> R11["DetailPanel.renderReview(full)<br/>updates drawer content"]
 ```
-
-> **Sprint 1:** `ReviewDetail` (`static/v2/js/review_detail.js`) is the primary drawer renderer for reviews. It is aliased as `window.DetailPanel` for backward compatibility. Compare remains a secondary explicit button action — it does **not** open on review click.
-
-### Review Iteration Flow (Sprint 2)
-
-```mermaid
-flowchart LR
-    I1["User opens Review<br/>Full Details drawer"] --> I2["ReviewDetail.renderReview(r)<br/>renders lineage banner if<br/>previous_review_id present"]
-    I2 --> I3["User clicks<br/>'New Iteration' button"]
-    I3 --> I4["onToggleIterationForm(rid)<br/>reveals iteration form<br/>(explicit user action only)"]
-    I4 --> I5["User selects persona<br/>(same or different)<br/>+ optional custom prompt"]
-    I5 --> I6["User clicks<br/>'Create New Review'"]
-    I6 --> I7["onCreateIteration(btn)<br/>collects persona + prompt"]
-    I7 --> I8["API.createReviewIteration(pid, rid,<br/>newPersona, customPrompt)"]
-    I8 --> I9["POST /hierarchy/reviews/{rid}/iterate"]
-    I9 --> I10["handle_create_review_iteration()<br/>handlers/review.py"]
-    I10 --> I11["create_review_iteration()<br/>services/review.py"]
-    I11 --> I12["store.create_review()<br/>previous_review_id = rid<br/>persona = new or base<br/>artifact_refs = base refs"]
-    I12 --> I13["Returns new review summary<br/>review_id, persona_used,<br/>previous_review_id, persona_changed"]
-    I13 --> I14["_renderIterationResult(result)<br/>confirmation card in drawer<br/>shows new ID + lineage"]
-```
-
-> **Sprint 2 rules:**
-> - The original review is **never modified**. A new review is always created.
-> - Persona selection is **optional** — defaults to base review persona when omitted.
-> - Base review becomes **context input** for the new review execution.
-> - Open decision points from the base review are **carried forward** into the new review.
 
 ### Refresh Loop (no page reload)
 
@@ -172,48 +136,4 @@ stateDiagram-v2
 
     DrawerOpen --> ReviewSelected: closeDrawer()
     DrawerOpen --> DrawerOpen: fetchReviewDetail() resolves → update content
-    DrawerOpen --> IterationFormOpen: user clicks 'New Iteration' button *(Sprint 2)*
-    IterationFormOpen --> DrawerOpen: user cancels form
-    IterationFormOpen --> IterationCreated: onCreateIteration() → POST /iterate
-    IterationCreated --> DrawerOpen: result card shown; user refreshes list
-    DrawerOpen --> ReconciliationOpen: user clicks 'Select & Reconcile' *(Sprint 3)*
-    ReconciliationOpen --> DrawerOpen: user cancels reconciliation panel
-    ReconciliationOpen --> ReconciliationDone: onRunReconciliation() → POST /reconciliation/run
-    ReconciliationDone --> DrawerOpen: result card shown; intelligence pack ready
 ```
-
-
----
-
-### Reconciliation Flow (Sprint 3)
-
-```mermaid
-flowchart LR
-    RC1["User opens Review\nFull Details drawer"] --> RC2["ReviewDetail.renderReview(r)\nrenders _renderReconciliationPanel(r)"]
-    RC2 --> RC3["User clicks\n'Select & Reconcile'"]
-    RC3 --> RC4["onToggleReconciliationPanel(rid)\nreveals panel body\n(explicit user action only)"]
-    RC4 --> RC5["_populateReconciliationReviewList()\nloads checkboxes from AppState.selectedVersion.reviews\nNO auto-selection"]
-    RC5 --> RC6["Anchor pre-populated\nwith currently open review\nUser checks supplemental reviews"]
-    RC6 --> RC7["User clicks\n'Run Reconciliation'"]
-    RC7 --> RC8["onRunReconciliation(btn)\ncollects anchor + checked supplemental IDs"]
-    RC8 --> RC9["API.saveReconciliationSelection(pid, vid,\nanchorRid, selectedIds)"]
-    RC9 --> RC10["POST /hierarchy/versions/{vid}/reconciliation/select"]
-    RC10 --> RC11["handle_save_selection()\nhandlers/reconciliation.py"]
-    RC11 --> RC12["save_reconciliation_selection()\nservices/reconciliation.py\nvalidates all IDs exist"]
-    RC12 --> RC13["API.runReconciliation(pid, vid,\nanchorRid, selectedIds)"]
-    RC13 --> RC14["POST /hierarchy/versions/{vid}/reconciliation/run"]
-    RC14 --> RC15["handle_run_reconciliation()\nhandlers/reconciliation.py"]
-    RC15 --> RC16["run_reconciliation()\nservices/reconciliation.py"]
-    RC16 --> RC17["Normalise reviews\ncompute consensus / divergent\ndecisions / weaknesses\nprovenance"]
-    RC17 --> RC18["store.save_reconciliation_output(output)\nSQLite reconciliation_outputs table"]
-    RC18 --> RC19["Returns ReconciliationOutput\nreconciliation_id, anchor_review_id,\nconsensus_points, divergent_points,\nopen_decisions, unresolved_weaknesses,\nmerged_findings, provenance_summary"]
-    RC19 --> RC20["_renderReconciliationResult(result)\nConfirmation card in drawer\nshows all sections + provenance"]
-```
-
-> **Sprint 3 rules:**
-> - Reconciliation is NOT the same as proposal generation.
-> - The anchor review is pre-populated but user must confirm the selection.
-> - No reviews are auto-selected — all selection is explicit.
-> - Original reviews are never modified by reconciliation.
-> - Output is deterministic (Jaccard token overlap, no LLM).
-> - Every output item carries `source_reviews` provenance.

@@ -37,7 +37,6 @@ const Dashboard = (() => {
       contextReview:    document.getElementById('v2-ctx-review'),
       contextBanner:    document.getElementById('v2-context-banner'),
       snapshotGrid:     document.getElementById('v2-snapshot-grid'),
-      activityStrip:    document.getElementById('v2-activity-strip'),
       accordionWrap:    document.getElementById('v2-accordion-wrap'),
       expandAllBtn:     document.getElementById('v2-expand-all-btn'),
       sidebarList:      document.getElementById('v2-sidebar-version-list'),
@@ -73,97 +72,6 @@ const Dashboard = (() => {
     return iso.slice(0, 10);
   }
 
-  // ── Recent Activity Strip ─────────────────────────────────
-  /**
-   * Event type metadata: icon, label, colour class.
-   * TRACE: UI → ActivityStrip → AppState (recentActivity)
-   */
-  const _ACTIVITY_META = {
-    version_created:  { icon: '📋', label: 'created',   cls: 'activity-type--version'  },
-    review_created:   { icon: '🔍', label: 'reviewed',  cls: 'activity-type--review'   },
-    review_completed: { icon: '✅', label: 'completed', cls: 'activity-type--complete'  },
-  };
-
-  /**
-   * Render the recent activity horizontal strip.
-   * Called by renderAll(); targets #v2-activity-strip.
-   *
-   * @param {HTMLElement} el
-   * @param {Array} events  - ActivityEvent[] sorted newest-first
-   */
-  function _renderActivityStrip(el, events) {
-    if (!el) return;
-    if (!events || events.length === 0) {
-      el.innerHTML = '';
-      el.style.display = 'none';
-      return;
-    }
-    el.style.display = '';
-
-    const items = events.map(ev => {
-      const meta = _ACTIVITY_META[ev.type] || { icon: '•', label: ev.type, cls: '' };
-      const relT = _relTime(ev.timestamp);
-      return `
-        <span class="activity-item ${_esc(meta.cls)}" title="${_esc(ev.label)} · ${_esc(relT)}">
-          <span class="activity-item-icon" aria-hidden="true">${meta.icon}</span>
-          <span class="activity-item-id">${_esc(ev.id)}</span>
-          <span class="activity-item-label">${meta.label}</span>
-          ${relT ? `<span class="activity-item-time">${_esc(relT)}</span>` : ''}
-        </span>`;
-    }).join('<span class="activity-sep" aria-hidden="true">·</span>');
-
-    el.innerHTML = `
-      <span class="activity-strip-label">Recent:</span>
-      <div class="activity-items" role="list" aria-label="Recent activity">${items}</div>`;
-  }
-
-  /**
-   * Utility: relative time (mirrors Helpers.relTime without the dependency).
-   */
-  function _relTime(iso) {
-    if (!iso) return '';
-    const norm = (iso.endsWith('Z') || iso.includes('+')) ? iso : iso + 'Z';
-    const diff = Date.now() - new Date(norm).getTime();
-    if (isNaN(diff)) return '';
-    const m = Math.floor(diff / 60000);
-    if (m < 1)  return 'just now';
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
-  }
-
-  // ── Smart Defaulting ─────────────────────────────────────
-  /**
-   * Resolve default version + review selection from a sorted version list.
-   *
-   * Rules:
-   *   1. Latest version by created_at (index 0, already sorted newest-first).
-   *   2. Active review for that version (active_review_id match), else newest.
-   *
-   * Only applies when selectedVersion is null (project just loaded or switched).
-   * Does NOT override an explicit user selection.
-   *
-   * TRACE: SmartDefault → AppState.selectVersion() + AppState.selectReview()
-   *
-   * @param {Array} versions - sorted newest-first
-   */
-  function _resolveDefaults(versions) {
-    const state = window.AppState;
-    if (state.get('selectedVersion')) return;  // user already chose
-    if (!versions || versions.length === 0) return;
-
-    const latest = versions[0];
-    state.selectVersion(latest);
-
-    const reviews = latest.reviews || [];
-    const activeReview =
-      reviews.find(r => r.review_id === latest.active_review_id) ||
-      reviews[0] ||
-      null;
-    state.selectReview(activeReview);
-  }
-
   // ── Load all data for selected project ───────────────────
   /**
    * TRACE: Refresh loop → API calls → AppState.setData() → re-render
@@ -195,15 +103,17 @@ const Dashboard = (() => {
       });
       versions.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
 
-      // Derive recent activity events from hierarchy (no extra fetch)
-      const recentActivity = api._deriveActivityEvents
-        ? api._deriveActivityEvents(hierarchy)
-        : [];
+      state.setData({ hierarchy, metrics, versions });
 
-      state.setData({ hierarchy, metrics, versions, recentActivity });
-
-      // Smart defaulting: always resolve on load (only applies when nothing selected)
-      _resolveDefaults(versions);
+      // Default: select latest version + its active review if nothing selected
+      if (!state.get('selectedVersion') && versions.length > 0) {
+        const latest = versions[0];
+        state.selectVersion(latest);
+        const activeReview = (latest.reviews || []).find(
+          r => r.review_id === latest.active_review_id
+        ) || (latest.reviews || [])[0] || null;
+        state.selectReview(activeReview);
+      }
 
     } catch (err) {
       _toast('Failed to load data', 'err');
@@ -380,9 +290,8 @@ const Dashboard = (() => {
     const state    = window.AppState;
     const metrics  = state.get('metrics');
     const versions = state.get('versions') || [];
-    const activity = state.get('recentActivity') || [];
+    const selV     = state.get('selectedVersion');
 
-    _renderActivityStrip(_dom.activityStrip, activity);
     _renderSnapshotCards(metrics);
     _renderContextBanner();
     _renderSidebar(versions);
@@ -422,15 +331,45 @@ const Dashboard = (() => {
       _dom.drawerContent.innerHTML = window.DetailPanel
         ? DetailPanel.renderVersion(entity.data)
         : _fallbackVersionDetail(entity.data);
+      _loadDrawerDetail(entity);
     } else if (entity.type === 'review') {
-      // Prefer ReviewDetail (Sprint 1), fall back to DetailPanel alias, then inline fallback
-      const renderer = window.ReviewDetail || window.DetailPanel;
-      _dom.drawerContent.innerHTML = renderer
-        ? renderer.renderReview(entity.data)
+      _dom.drawerContent.innerHTML = window.DetailPanel
+        ? DetailPanel.renderReview(entity.data)
         : _fallbackReviewDetail(entity.data);
+      _loadDrawerDetail(entity);
+    } else if (entity.type === 'reconcile') {
+      // Phase 4: Reconciliation panel — render inline, no async load needed
+      const { version, projectId } = entity.data;
+      const reviews = (version && version.reviews) || [];
+      _dom.drawerContent.innerHTML = `
+        <div class="drawer-section">
+          <div class="flex flex-between align-center">
+            <span class="fw-700 fs-13">Reconcile Reviews</span>
+            <span class="badge badge-primary">⇄ ${_esc(version && version.version_id || '')}</span>
+          </div>
+          <p class="text-secondary fs-12 mt-2">
+            Merge findings from selected reviews into a single reconciled set.
+          </p>
+        </div>
+        <div id="v2-reconcile-panel-container" class="drawer-section"></div>
+        <div class="drawer-section">
+          <button class="btn btn-outline btn-sm" onclick="AppState.closeDrawer()" style="width:100%">
+            Close Panel
+          </button>
+        </div>`;
+
+      // Mount the ReconciliationPanel component into its container
+      const container = document.getElementById('v2-reconcile-panel-container');
+      if (container && window.ReconciliationPanel) {
+        ReconciliationPanel.render(
+          container,
+          projectId,
+          version && version.version_id,
+          reviews,
+          null, // onComplete — future use (Phase 6 will chain to proposal pack)
+        );
+      }
     }
-    // Async: load full detail and update
-    _loadDrawerDetail(entity);
   }
 
   async function _loadDrawerDetail(entity) {
@@ -442,9 +381,8 @@ const Dashboard = (() => {
       if (entity.type === 'review' && entity.data.review_id) {
         full = await API.fetchReviewDetail(proj.id, entity.data.review_id);
         if (full && !full.error && _dom.drawerContent) {
-          const renderer = window.ReviewDetail || window.DetailPanel;
-          _dom.drawerContent.innerHTML = renderer
-            ? renderer.renderReview(full)
+          _dom.drawerContent.innerHTML = window.DetailPanel
+            ? DetailPanel.renderReview(full)
             : _fallbackReviewDetail(full);
         }
       } else if (entity.type === 'version' && entity.data.version_id) {
@@ -540,6 +478,28 @@ const Dashboard = (() => {
     window.AppState.closeDrawer();
   }
 
+  // ── Phase 4: Open reconciliation panel for a version ──────
+  /**
+   * Opens the detail drawer with the ReconciliationPanel for the given version.
+   * Called from inline onclick in the accordion (via window.Dashboard.openReconcileDrawer).
+   * @param {string} versionId
+   */
+  function openReconcileDrawer(versionId) {
+    const state    = window.AppState;
+    if (!state) return;
+
+    const versions = state.get('versions') || [];
+    const version  = versions.find(v => v.version_id === versionId);
+    if (!version) return;
+
+    const proj = state.get('selectedProject');
+    if (!proj) return;
+
+    state.selectVersion(version);
+    // Use 'reconcile' entity type — handled in _renderDrawerContent
+    state.openDrawer('reconcile', { version, projectId: proj.id });
+  }
+
   function onSidebarVersionClick(headerEl, vid) {
     const item = headerEl.closest('.sidebar-version-item');
     if (item) item.classList.toggle('expanded');
@@ -590,7 +550,7 @@ const Dashboard = (() => {
 
     // 3. Wire up AppState subscribers (no-reload updates)
     //    Selection loop: project/version/review changes → re-render
-    state.subscribe(['versions', 'metrics', 'hierarchy', 'recentActivity'], () => renderAll());
+    state.subscribe(['versions', 'metrics', 'hierarchy'], () => renderAll());
 
     state.subscribe(['drawerOpen', 'drawerEntity'], () => {
       _syncDrawer(state.get('drawerOpen'), state.get('drawerEntity'));
@@ -616,11 +576,16 @@ const Dashboard = (() => {
     onCloseDrawer,
     onSidebarVersionClick,
     onSidebarReviewClick,
+    openReconcileDrawer,
   };
 
 })();
 
 window.Dashboard = Dashboard;
+
+// Export loadAll at module level so DetailPanel iteration handler can trigger
+// a hierarchy refresh without coupling to Dashboard internals.
+window.DashboardRefresh = () => Dashboard.loadAll(true);
 
 // Auto-boot when DOM is ready
 if (document.readyState === 'loading') {

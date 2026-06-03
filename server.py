@@ -455,6 +455,10 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             parts = self.path.split("/")
             h_review.handle_complete_review(parts[3], parts[6], body, R)
 
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/reset-status"):
+            parts = self.path.split("/")
+            h_review.handle_reset_review_status(parts[3], parts[6], R)
+
         elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/weakness/" in self.path and self.path.endswith("/status"):
             parts = self.path.split("/")
             h_review.handle_weakness_status(parts[3], parts[6], parts[8], body, R)
@@ -462,6 +466,19 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
         elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and "/decision/" in self.path and self.path.endswith("/status"):
             parts = self.path.split("/")
             h_review.handle_decision_status(parts[3], parts[6], parts[8], body, R)
+
+        # ── Phase 3: Review Iteration ─────────────────────────────────────────
+        # POST /api/projects/{pid}/hierarchy/reviews/{rid}/iterate
+        # Creates a new review chained to {rid} as its predecessor.
+        elif self.path.startswith("/api/projects/") and "/hierarchy/reviews/" in self.path and self.path.endswith("/iterate"):
+            parts = self.path.split("/")
+            # parts: ['', 'api', 'projects', pid, 'hierarchy', 'reviews', rid, 'iterate']
+            h_review.handle_iterate_review(parts[3], parts[6], body, R)
+
+        # ── Phase 4: Reconciliation ───────────────────────────────────────────
+        # POST /api/projects/{pid}/hierarchy/reconcile
+        elif self.path.startswith("/api/projects/") and self.path.endswith("/hierarchy/reconcile"):
+            h_hierarchy.handle_reconcile_reviews(self.path.split("/")[3], body, R)
 
         elif self.path.startswith("/api/projects/") and "/hierarchy/versions/" in self.path and self.path.endswith("/set-active-review-gated"):
             parts = self.path.split("/")
