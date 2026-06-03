@@ -955,10 +955,7 @@ async function viewReviews(){
     '<select id="v2BackendSelect" style="font-size:11px">'+backendOpts+'</select>'+
     '<button id="v2RunReviewBtn" class="btn" onclick="v2RunReview()">&#x25B6; Run Review</button>'+
     '</div>'+
-    '<div style="margin-top:8px">Sort: '+
-    '<button class="sort-btn '+(sortNow===\'newest\'?\'active\':'')+\'" onclick="v2SetReviewSort(\'newest\')">\'+'Newest First</button>'+
-    '<button class="sort-btn '+(sortNow===\'oldest\'?\'active\':'')+\'" onclick="v2SetReviewSort(\'oldest\')">\'+'Oldest First</button>'+
-    '<button class="sort-btn '+(sortNow===\'most-findings\'?\'active\':'')+\'" onclick="v2SetReviewSort(\'most-findings\')">\'+'Most Findings</button>'+
+    `<div style="margin-top:8px">Sort: <button class="sort-btn ${sortNow==='newest'?'active':''}" onclick="v2SetReviewSort('newest')">Newest First</button><button class="sort-btn ${sortNow==='oldest'?'active':''}" onclick="v2SetReviewSort('oldest')">Oldest First</button><button class="sort-btn ${sortNow==='most-findings'?'active':''}" onclick="v2SetReviewSort('most-findings')">Most Findings</button></div>`+
     '</div>'+
     '<div id="v2ReviewResult" class="mt"></div>'+
     '</div>';
@@ -1292,12 +1289,13 @@ async function viewIngest(){
   const catOpts=ARTIFACT_CATEGORIES.map(c=>'<option value="'+escHtml(c)+'">'+escHtml(c)+'</option>').join('');
   const regRows=arts.length?arts.map(a=>{
     const inc=a.included!==false;
-    return'<div class="flex gap-sm" style="align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">'+
-      '<input type="checkbox" '+(inc?'checked':'')+' onchange="toggleArtifact(\''+escHtml(a.id||a.name||'')+'\',this.checked)">'+
-      '<span style="flex:1">'+escHtml(a.name||a.path||'')+'</span>'+
-      '<span class="tag" style="font-size:10px">'+escHtml(a.category||'')+'</span>'+
-      '<button class="btn btn-xs btn-ghost" onclick="processArtifact(\''+escHtml(a.id||a.name||'')+'\')">Process</button>'+
-      '</div>';
+    const aid=escHtml(a.id||a.name||'');
+    return `<div class="flex gap-sm" style="align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <input type="checkbox" ${inc?'checked':''} onchange="toggleArtifact('${aid}',this.checked)">
+      <span style="flex:1">${escHtml(a.name||a.path||'')}</span>
+      <span class="tag" style="font-size:10px">${escHtml(a.category||'')}</span>
+      <button class="btn btn-xs btn-ghost" onclick="processArtifact('${aid}')">Process</button>
+    </div>`;
   }).join(''):'<p class="fs12 c-dim">No artefacts yet.</p>';
   return'<div class="card"><div class="card-title mb"><span class="icon">&#x1F4E5;</span>Add Artefact</div>'+
     '<div class="flex gap-sm mb" style="flex-wrap:wrap">'+
@@ -1354,14 +1352,16 @@ async function viewSettings(){
     '<div class="flex-between" style="padding:4px 0;font-size:12px"><span>'+escHtml(b.display_name||b.name)+'</span>'+
     '<span class="tag '+(b.available?'tag-green':'')+'">'+( b.available?'available':'not configured')+'</span></div>'
   ).join('');
-  const allProjects=(state.projects||[]).map(p=>
-    '<div class="flex-between" style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">'+
-    '<a href="#" onclick="selectProject(\''+escHtml(p.id)+'\')" style="color:var(--accent)">'+escHtml(p.name)+'</a>'+
-    '<div class="flex gap-sm">'+
-    '<button class="btn btn-xs btn-ghost" onclick="archiveProject(\''+escHtml(p.id)+'\')">Archive</button>'+
-    '<button class="btn btn-xs" style="background:var(--red);color:#fff" onclick="deleteProject(\''+escHtml(p.id)+'\')">Delete</button>'+
-    '</div></div>'
-  ).join('');
+  const allProjects=(state.projects||[]).map(p=>{
+    const pid2=escHtml(p.id);
+    return `<div class="flex-between" style="padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <a href="#" onclick="selectProject('${pid2}')" style="color:var(--accent)">${escHtml(p.name)}</a>
+      <div class="flex gap-sm">
+        <button class="btn btn-xs btn-ghost" onclick="archiveProject('${pid2}')">Archive</button>
+        <button class="btn btn-xs" style="background:var(--red);color:#fff" onclick="deleteProject('${pid2}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
   return'<div class="card"><div class="card-title mb"><span class="icon">&#x2699;</span>Create New Project</div>'+
     '<div style="margin-bottom:8px"><input id="newName" placeholder="Project name" style="width:100%;font-size:13px;margin-bottom:6px">'+
     '<input id="newDesc" placeholder="Description (optional)" style="width:100%;font-size:12px"></div>'+
@@ -1432,7 +1432,7 @@ async function viewAdmin(){
         groupRows+=' style="width:100%;font-size:11px;resize:vertical;font-family:monospace" placeholder="Custom prompt override for '+escHtml(gname)+'...">';
         groupRows+='</textarea>';
         groupRows+='<div class="flex gap-sm mt8">';
-        groupRows+='<button class="btn btn-xs btn-ghost" onclick="resetPersonaPrompt(\''+escHtml(gid)+'\')">Reset to Default</button>';
+        groupRows+=`<button class="btn btn-xs btn-ghost" onclick="resetPersonaPrompt('${escHtml(gid)}')">Reset to Default</button>`;
         groupRows+='</div></div>';
       }
     });
@@ -1633,14 +1633,22 @@ async function v2RenderReviewDetailPage(rid){
   if(weaknesses.length){
     html+='<div class="card"><div class="card-title mb">Weaknesses ('+weaknesses.length+')</div>';
     weaknesses.forEach(w=>{
-      html+='<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">'+
-        '<strong>'+escHtml(w.description||w.weakness||'&#x2013;')+'</strong>'+
-        '<span class="tag" style="font-size:10px;margin-left:6px">'+escHtml(w.category||'')+'</span>'+
-        '<select style="font-size:11px;margin-left:8px" onchange="updateWeaknessStatus(''+rid+'',''+escHtml(w.id||'')+'',this.value,null)">'+
-        ['open','addressed','validated','rejected'].map(s=>'<option value="'+s+'" '+((w.status||'open')===s?'selected':'')+'>'+s+'</option>').join('')+
-        '</select>'+
-        '<div><textarea rows="2" style="width:100%;font-size:11px;margin-top:4px;resize:vertical" placeholder="Add justification of the status" onblur="updateWeaknessStatus(''+rid+'',''+escHtml(w.id||'')+'',this.previousElementSibling.value,this.value)">'+escHtml(w.user_note||'')+'</textarea></div>'+
-        '</div>';
+      const wid=escHtml(w.id||'');
+      const wSel=['open','addressed','validated','rejected'].map(s=>
+        `<option value="${s}" ${(w.status||'open')===s?'selected':''}>${s}</option>`
+      ).join('');
+      html+=`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <strong>${escHtml(w.description||w.weakness||'\u2013')}</strong>
+        <span class="tag" style="font-size:10px;margin-left:6px">${escHtml(w.category||'')}</span>
+        <select style="font-size:11px;margin-left:8px"
+          onchange="updateWeaknessStatus('${rid}','${wid}',this.value,null)">
+          ${wSel}
+        </select>
+        <div><textarea rows="2" style="width:100%;font-size:11px;margin-top:4px;resize:vertical"
+          placeholder="Add justification of the status"
+          onblur="updateWeaknessStatus('${rid}','${wid}',this.previousElementSibling.value,this.value)"
+          >${escHtml(w.user_note||'')}</textarea></div>
+      </div>`;
     });
     html+='</div>';
   }
@@ -1654,11 +1662,17 @@ async function v2RenderReviewDetailPage(rid){
   if(decisions.length){
     html+='<div class="card"><div class="card-title mb">Decision Points '+(openDec?'<span class="tag tag-yellow">'+openDec+' open</span>':'')+'</div>';
     decisions.forEach(d=>{
-      html+='<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">'+
-        '<strong>'+escHtml(d.description||d.title||'&#x2013;')+'</strong>'+
-        '<select style="font-size:11px;margin-left:8px" onchange="updateDecisionStatus(''+rid+'',''+escHtml(d.id||'')+'',this.value)">'+
-        ['open','decided','deferred','invalid'].map(s=>'<option value="'+s+'" '+((d.status||'open')===s?'selected':'')+'>'+s+'</option>').join('')+
-        '</select></div>';
+      const did=escHtml(d.id||'');
+      const dSel=['open','decided','deferred','invalid'].map(s=>
+        `<option value="${s}" ${(d.status||'open')===s?'selected':''}>${s}</option>`
+      ).join('');
+      html+=`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <strong>${escHtml(d.description||d.title||'\u2013')}</strong>
+        <select style="font-size:11px;margin-left:8px"
+          onchange="updateDecisionStatus('${rid}','${did}',this.value)">
+          ${dSel}
+        </select>
+      </div>`;
     });
     html+='</div>';
   }
