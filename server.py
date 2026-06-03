@@ -606,10 +606,21 @@ class AcceleratorHandler(SimpleHTTPRequestHandler):
             ".html": "text/html", ".css": "text/css", ".js": "application/javascript",
             ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",
         }
+        data = file_path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_types.get(ext, "application/octet-stream"))
+        # Prevent browsers from serving stale cached HTML/JS after a git pull.
+        # HTML files: always revalidate. JS/CSS: immutable in practice but
+        # short max-age guards against stale copies in development.
+        if ext == ".html":
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+        else:
+            self.send_header("Cache-Control", "max-age=3600")
+        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(file_path.read_bytes())
+        self.wfile.write(data)
 
     def log_message(self, fmt: str, *args: Any) -> None:  # silence default stderr log
         logger.debug("%s - %s", self.address_string(), fmt % args)
