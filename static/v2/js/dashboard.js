@@ -331,13 +331,45 @@ const Dashboard = (() => {
       _dom.drawerContent.innerHTML = window.DetailPanel
         ? DetailPanel.renderVersion(entity.data)
         : _fallbackVersionDetail(entity.data);
+      _loadDrawerDetail(entity);
     } else if (entity.type === 'review') {
       _dom.drawerContent.innerHTML = window.DetailPanel
         ? DetailPanel.renderReview(entity.data)
         : _fallbackReviewDetail(entity.data);
+      _loadDrawerDetail(entity);
+    } else if (entity.type === 'reconcile') {
+      // Phase 4: Reconciliation panel — render inline, no async load needed
+      const { version, projectId } = entity.data;
+      const reviews = (version && version.reviews) || [];
+      _dom.drawerContent.innerHTML = `
+        <div class="drawer-section">
+          <div class="flex flex-between align-center">
+            <span class="fw-700 fs-13">Reconcile Reviews</span>
+            <span class="badge badge-primary">⇄ ${_esc(version && version.version_id || '')}</span>
+          </div>
+          <p class="text-secondary fs-12 mt-2">
+            Merge findings from selected reviews into a single reconciled set.
+          </p>
+        </div>
+        <div id="v2-reconcile-panel-container" class="drawer-section"></div>
+        <div class="drawer-section">
+          <button class="btn btn-outline btn-sm" onclick="AppState.closeDrawer()" style="width:100%">
+            Close Panel
+          </button>
+        </div>`;
+
+      // Mount the ReconciliationPanel component into its container
+      const container = document.getElementById('v2-reconcile-panel-container');
+      if (container && window.ReconciliationPanel) {
+        ReconciliationPanel.render(
+          container,
+          projectId,
+          version && version.version_id,
+          reviews,
+          null, // onComplete — future use (Phase 6 will chain to proposal pack)
+        );
+      }
     }
-    // Async: load full detail and update
-    _loadDrawerDetail(entity);
   }
 
   async function _loadDrawerDetail(entity) {
@@ -446,6 +478,28 @@ const Dashboard = (() => {
     window.AppState.closeDrawer();
   }
 
+  // ── Phase 4: Open reconciliation panel for a version ──────
+  /**
+   * Opens the detail drawer with the ReconciliationPanel for the given version.
+   * Called from inline onclick in the accordion (via window.Dashboard.openReconcileDrawer).
+   * @param {string} versionId
+   */
+  function openReconcileDrawer(versionId) {
+    const state    = window.AppState;
+    if (!state) return;
+
+    const versions = state.get('versions') || [];
+    const version  = versions.find(v => v.version_id === versionId);
+    if (!version) return;
+
+    const proj = state.get('selectedProject');
+    if (!proj) return;
+
+    state.selectVersion(version);
+    // Use 'reconcile' entity type — handled in _renderDrawerContent
+    state.openDrawer('reconcile', { version, projectId: proj.id });
+  }
+
   function onSidebarVersionClick(headerEl, vid) {
     const item = headerEl.closest('.sidebar-version-item');
     if (item) item.classList.toggle('expanded');
@@ -522,11 +576,16 @@ const Dashboard = (() => {
     onCloseDrawer,
     onSidebarVersionClick,
     onSidebarReviewClick,
+    openReconcileDrawer,
   };
 
 })();
 
 window.Dashboard = Dashboard;
+
+// Export loadAll at module level so DetailPanel iteration handler can trigger
+// a hierarchy refresh without coupling to Dashboard internals.
+window.DashboardRefresh = () => Dashboard.loadAll(true);
 
 // Auto-boot when DOM is ready
 if (document.readyState === 'loading') {

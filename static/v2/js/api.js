@@ -331,6 +331,81 @@ async function fetchVersionDetail(projectId, versionId) {
 }
 
 /**
+ * Create a new review that iterates from an existing one.
+ * TRACE: API → /hierarchy/reviews/{rid}/iterate
+ * The new review is chained to the source review via previous_review_id.
+ * @param {string} projectId
+ * @param {string} previousReviewId  - review_id of the source review (URL {rid})
+ * @param {string|string[]} roles    - persona name(s) for the new review
+ * @param {string} [aiBackend]       - default 'files_only'
+ * @param {string} [customPrompt]    - optional extra prompt text
+ * @returns {Promise<object>}
+ */
+async function iterateReview(projectId, previousReviewId, roles, aiBackend, customPrompt) {
+  if (_useMock()) {
+    return {
+      review_id: 'r_iter_mock',
+      version_id: 'v3',
+      persona: Array.isArray(roles) ? roles.join(' / ') : roles,
+      previous_review_id: previousReviewId,
+      iteration_number: 99,
+      quality_status: 'pending',
+      summary: 'Mock iteration review',
+    };
+  }
+  const body = {
+    roles: Array.isArray(roles) ? roles : [roles],
+    ai_backend: aiBackend || 'files_only',
+  };
+  if (customPrompt) body.custom_prompt = customPrompt;
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/reviews/${previousReviewId}/iterate`,
+    body,
+  );
+}
+
+/**
+ * Reconcile an anchor review with zero or more supplemental reviews.
+ * TRACE: API → /hierarchy/reconcile
+ * @param {string} projectId
+ * @param {string} anchorReviewId
+ * @param {string[]} supplementalReviewIds
+ * @param {string} [aiBackend]            - default 'files_only'
+ * @returns {Promise<object>}  ReconciliationResult shape:
+ *   { reconciled_findings, contradictions, reconciliation_notes,
+ *     source_review_ids, anchor_review_id, generated_by, generated_at }
+ */
+async function reconcileReviews(projectId, anchorReviewId, supplementalReviewIds, aiBackend) {
+  if (_useMock()) {
+    return {
+      reconciled_findings: {
+        risks:        ['Mock reconciled risk A', 'Mock reconciled risk B'],
+        constraints:  ['Mock constraint'],
+        dependencies: [],
+        assumptions:  [],
+        action_items: [],
+      },
+      contradictions: [],
+      reconciliation_notes: 'Mock reconciliation — no conflicts detected.',
+      source_review_ids: [anchorReviewId, ...(supplementalReviewIds || [])],
+      anchor_review_id: anchorReviewId,
+      generated_by: 'deterministic',
+      generated_at: new Date().toISOString(),
+    };
+  }
+  return _request(
+    'POST',
+    `/api/projects/${projectId}/hierarchy/reconcile`,
+    {
+      anchor_review_id:         anchorReviewId,
+      supplemental_review_ids:  supplementalReviewIds || [],
+      ai_backend:               aiBackend || 'files_only',
+    },
+  );
+}
+
+/**
  * Update the status (and optionally the user_note) on a single weakness.
  * TRACE: API → /hierarchy/reviews/{rid}/weakness/{wid}/status
  * Rules:
@@ -379,6 +454,8 @@ window.API = {
   fetchReviews,
   fetchReviewDetail,
   fetchVersionDetail,
+  iterateReview,
+  reconcileReviews,
   updateWeaknessStatus,
   updateDecisionStatus,
 };
