@@ -432,6 +432,21 @@ def get_version_readiness(project_id: str, version_id: str) -> Dict[str, Any]:
     return {"version_id": version_id, "review_id": version.active_review_id, **readiness}
 
 
+def get_review_readiness(project_id: str, review_id: str) -> Dict[str, Any]:
+    """Return decision readiness for a specific review (review-level concept)."""
+    from dataclasses import asdict as _asdict
+    store = _make_hierarchy_store(project_id)
+    review = store.get_review(review_id)
+    if review is None:
+        return {"error": f"Review not found: {review_id}"}
+    try:
+        review_dict = _asdict(review)
+    except TypeError:
+        review_dict = review.__dict__ if hasattr(review, "__dict__") else {}
+    readiness = compute_decision_readiness(review_dict)
+    return {"review_id": review_id, **readiness}
+
+
 # ── Prompt history ────────────────────────────────────────────────────────────
 
 def get_prompt_history(
