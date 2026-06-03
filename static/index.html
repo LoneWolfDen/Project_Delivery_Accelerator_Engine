@@ -2388,22 +2388,25 @@ async function viewReviews(){
     <input type="hidden" id="previousReviewId" value="">
 
     <!-- Review Loop: explicitly chain a new review to an existing one -->
-    <div class="mt8" style="border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;background:var(--surface2)">
-      <label style="font-size:11px;font-weight:600;color:var(--text-dim);display:flex;align-items:center;gap:6px;margin-bottom:6px">
-        🔁 Chain to Prior Review <span class="tag" style="font-size:9px;font-weight:400">optional — Review Loop</span>
-      </label>
-      <p style="font-size:10px;color:var(--text-muted);margin-bottom:6px">
-        Select an existing review to inherit its open decisions and build on its findings.
-      </p>
-      <select id="chainReviewSelect" style="width:100%;background:var(--surface);border:1px solid var(--border);
-        border-radius:var(--radius);padding:5px 8px;color:var(--text);font-size:11px"
-        onchange="document.getElementById('previousReviewId').value=this.value">
-        <option value="">— None (standalone review) —</option>
-        ${versionsWithReviews.flatMap(ver=>(ver.reviews||[]).map(rv=>
-          `<option value="${escHtml(rv.review_id)}">${escHtml(rv.review_id)} · ${escHtml(rv.persona||'—')} · ${rv.quality_status==='complete'?'Final':rv.quality_status==='interim'?'Draft':'New'} (${escHtml(ver.version_id)})</option>`
-        )).join('')}
-      </select>
-    </div>
+    ${(()=>{
+      // Build chain options without nested template literals
+      let chainOpts='<option value="">— None (standalone review) —</option>';
+      for(const ver of versionsWithReviews){
+        for(const rv of (ver.reviews||[])){
+          const qs=rv.quality_status||'pending';
+          const label=qs==='complete'?'Final':qs==='interim'?'Draft':'New';
+          chainOpts+='<option value="'+escHtml(rv.review_id)+'">'+escHtml(rv.review_id)+' \u00b7 '+escHtml(rv.persona||'\u2014')+' \u00b7 '+label+' ('+escHtml(ver.version_id)+')</option>';
+        }
+      }
+      return '<div class="mt8" style="border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;background:var(--surface2)">'
+        +'<label style="font-size:11px;font-weight:600;color:var(--text-dim);display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+        +'\uD83D\uDD01 Chain to Prior Review <span class="tag" style="font-size:9px;font-weight:400">optional \u2014 Review Loop</span></label>'
+        +'<p style="font-size:10px;color:var(--text-muted);margin-bottom:6px">Select an existing review to inherit its open decisions and build on its findings.</p>'
+        +'<select id="chainReviewSelect" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:5px 8px;color:var(--text);font-size:11px"'
+        +' onchange="document.getElementById(\'previousReviewId\').value=this.value">'
+        +chainOpts
+        +'</select></div>';
+    })()}
 
     <div class="flex gap-sm mt8">
       <button class="btn" onclick="runReview()">▶ Run Review</button>
