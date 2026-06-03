@@ -543,6 +543,8 @@ function switchTab(tab){
     return;
   }
   state.tab=tab;
+  // Persist active tab so page refresh restores it
+  try{localStorage.setItem('pdae_active_tab',tab);}catch(e){}
   render();
 }
 
@@ -1729,6 +1731,13 @@ async function submitMarkComplete(rid,qualityStatus){
   const label=qualityStatus==='complete'?'Final':qualityStatus==='interim'?'Draft':qualityStatus;
   toast(`Review marked as ${label}`);render();
 }
+
+// Clear draft status: resets quality_status back to 'pending' so user can re-evaluate
+async function clearDraftStatus(rid){
+  const r=await api('POST',`/api/projects/${state.current.id}/hierarchy/reviews/${rid}/reset-status`,{});
+  if(r.error){toast(r.error,'err');return;}
+  toast('Draft status cleared');render();
+}
 async function deleteReview(rid){
   if(!rid||rid==='undefined'){toast('Invalid review ID','err');return;}
   if(!confirm('Delete this review? Cannot be undone.'))return;
@@ -2091,11 +2100,11 @@ async function viewReviewDetail(rid){
           <div style="display:flex;align-items:flex-start;gap:8px">
             <span title="${escHtml(w.status||'open')}" style="font-size:14px;line-height:1.4;flex-shrink:0">${_wStatusIcon[w.status||'open']||'🔴'}</span>
             <span style="flex:1;line-height:1.5">${escHtml(w.text||'')}</span>
-            <select title="Update status" style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);flex-shrink:0" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value,null)">
+            <select title="Update status of each weakness" style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);flex-shrink:0" onchange="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',this.value,null)">
               ${['open','addressed','validated','rejected'].map(s=>`<option value="${s}"${w.status===s?' selected':''}>${s}</option>`).join('')}
             </select>
           </div>
-          <textarea rows="2" placeholder="Add note…" style="width:100%;margin-top:4px;font-size:11px;resize:vertical;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;box-sizing:border-box"
+          <textarea rows="2" placeholder="Add justification of the status" style="width:100%;margin-top:4px;font-size:11px;resize:vertical;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;box-sizing:border-box"
             onblur="updateWeaknessStatus('${escHtml(r.review_id)}','${escHtml(w.id||'')}',null,this.value)"
           >${escHtml(w.user_note||'')}</textarea>
         </div>`).join('');
@@ -2109,12 +2118,17 @@ async function viewReviewDetail(rid){
         <div style="padding:0 4px">${rows}</div>
       </details>`;
     }).join('');
+    // Count open (not-yet-actioned) weaknesses for the X/Y progress counter
+    const openCount = weaknesses.filter(w=>!w.status||w.status==='open').length;
+    const actionedCount = weaknesses.length - openCount;
     html += `<div class="card" style="margin-top:8px;border-top:2px solid var(--yellow)">
       <div class="flex-between mb">
-        <div class="card-title" style="font-size:12px"><span class="icon">⚠️</span>Weaknesses <span class="tag" style="background:var(--yellow);color:#000;font-size:10px">${weaknesses.length}</span></div>
+        <div class="card-title" style="font-size:12px"><span class="icon">⚠️</span>Weaknesses
+          <span class="tag" style="background:var(--yellow);color:#000;font-size:10px;margin-left:4px">${actionedCount}/${weaknesses.length} actioned</span>
+        </div>
       </div>
       <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
-        Areas where the solution lacks clarity, completeness, or confidence. Use these insights to improve the next review iteration.
+        Areas where the solution lacks clarity, completeness, or confidence. Update status of each weakness to track progress.
       </p>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;padding:6px 8px;background:var(--surface2);border-radius:var(--radius);font-size:10px;color:var(--text-dim)">
         <strong style="font-size:10px">Status:</strong>
@@ -2122,7 +2136,7 @@ async function viewReviewDetail(rid){
         <span>✅ Addressed</span>
         <span>🟢 Validated</span>
         <span>🚫 Rejected</span>
-        <span style="margin-left:auto;font-size:10px;color:var(--text-muted)">Use the dropdown to track progress</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--text-muted)">Update status of each weakness</span>
       </div>
       ${_wGroupsHtml}
     </div>`;
@@ -2180,14 +2194,8 @@ async function viewReviewDetail(rid){
     html += renderReviewProgression(diff, r.previous_review_id);
   }
 
-  // S3-03: Tighten button — pre-populates previousReviewId and switches to Reviews tab
-  html+=`<div style="margin-top:8px">
-    <button class="btn btn-sm btn-outline" onclick="
-      const el=document.getElementById('previousReviewId');
-      if(el)el.value='${escHtml(r.review_id)}';
-      state.tab='reviews';render();
-    ">🔁 Tighten with SME Questions</button>
-  </div>`;
+  // S3-03: Tighten button removed — review loop is handled via explicit chain selection
+  // in the Run Review form (previousReviewId selector). See Issue 8 fix.
   html+=`</div>`;
   document.getElementById('main').innerHTML=html;
   // S7-01: populate Decision Readiness badge in review detail
@@ -2340,8 +2348,8 @@ async function viewReviews(){
         <summary style="list-style:none;cursor:pointer;padding:7px 10px;background:var(--surface2);
           display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-dim)">
           <span class="chevron">▶</span>
-          <span>① Role Persona Prompt</span>
-          <span style="font-size:10px;color:var(--text-muted);margin-left:4px;font-weight:400">— the reviewer's lens and focus areas</span>
+          <span>① Role Response Prompt</span>
+          <span style="font-size:10px;color:var(--text-muted);margin-left:4px;font-weight:400">— the persona base prompt (editable in Admin → Persona Base Prompts)</span>
           <span class="tag" style="font-size:9px;margin-left:auto">auto / read-only</span>
         </summary>
         <div id="baselinePromptPreview" style="padding:8px 10px;font-size:11px;color:var(--text-muted);
@@ -2378,6 +2386,25 @@ async function viewReviews(){
     </div>
 
     <input type="hidden" id="previousReviewId" value="">
+
+    <!-- Review Loop: explicitly chain a new review to an existing one -->
+    <div class="mt8" style="border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;background:var(--surface2)">
+      <label style="font-size:11px;font-weight:600;color:var(--text-dim);display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        🔁 Chain to Prior Review <span class="tag" style="font-size:9px;font-weight:400">optional — Review Loop</span>
+      </label>
+      <p style="font-size:10px;color:var(--text-muted);margin-bottom:6px">
+        Select an existing review to inherit its open decisions and build on its findings.
+      </p>
+      <select id="chainReviewSelect" style="width:100%;background:var(--surface);border:1px solid var(--border);
+        border-radius:var(--radius);padding:5px 8px;color:var(--text);font-size:11px"
+        onchange="document.getElementById('previousReviewId').value=this.value">
+        <option value="">— None (standalone review) —</option>
+        ${versionsWithReviews.flatMap(ver=>(ver.reviews||[]).map(rv=>
+          `<option value="${escHtml(rv.review_id)}">${escHtml(rv.review_id)} · ${escHtml(rv.persona||'—')} · ${rv.quality_status==='complete'?'Final':rv.quality_status==='interim'?'Draft':'New'} (${escHtml(ver.version_id)})</option>`
+        )).join('')}
+      </select>
+    </div>
+
     <div class="flex gap-sm mt8">
       <button class="btn" onclick="runReview()">▶ Run Review</button>
     </div>
@@ -2443,10 +2470,9 @@ async function viewReviews(){
             ${(()=>{
               const score=rev.completeness_score||0;
               const qs=rev.quality_status||'pending';
-              // Human-readable status labels
-              const qLabel=qs==='complete'?'Final':qs==='interim'?'In Progress':'Draft';
+              // pending=New, interim=Draft, complete=Final
+              const qLabel=qs==='complete'?'Final':qs==='interim'?'Draft':'New';
               const qBadge=qs==='complete'?'tag-green':qs==='interim'?'tag-yellow':'';
-              // S1-05: score demoted — small inline badge only, no dominant progress bar
               const scoreColor=score>=70?'var(--green)':score>=40?'var(--yellow)':'var(--red)';
               return`<div class="flex gap-sm mb8" style="align-items:center;flex-wrap:wrap">
                 <span class="tag ${qBadge}" style="font-size:10px">${qLabel}</span>
@@ -2454,19 +2480,24 @@ async function viewReviews(){
                 ${rev.completed_by?`<span class="fs10 c-muted">by ${escHtml(rev.completed_by)}</span>`:''}
               </div>`;
             })()}
-            <div class="flex gap-sm">
+            <div class="flex gap-sm" style="flex-wrap:wrap">
               <button class="btn btn-sm btn-outline" onclick="viewReviewDetail('${rid}')">Full Details</button>
               ${!isActive?`<button class="btn btn-sm btn-ghost" onclick="setActiveReview('${ver.version_id}','${rid}')">Set Active</button>`:''}
-              ${(rev.quality_status||'pending')==='pending'?`
-                <button class="btn btn-sm btn-ghost" title="Work in progress — ready for further edits" onclick="openMarkComplete('${rid}','interim')">Mark as Draft</button>
-                <button class="btn btn-sm btn-ghost" title="Ready for proposal generation" onclick="openMarkComplete('${rid}','complete')">Mark as Final</button>`
-              :(rev.quality_status==='interim'?`<button class="btn btn-sm btn-ghost" title="Ready for proposal generation" onclick="openMarkComplete('${rid}','complete')">Mark as Final</button>`:
-                `<span style="font-size:10px;color:var(--green)">✓ Final</span>`)
-              }
+              ${(()=>{
+                const qs=rev.quality_status||'pending';
+                if(qs==='complete')return`<span style="font-size:10px;color:var(--green)">✓ Final</span>`;
+                if(qs==='interim')return`
+                  <button class="btn btn-sm btn-ghost" title="Clear draft status back to New" onclick="clearDraftStatus('${rid}')">Clear Draft</button>
+                  <button class="btn btn-sm btn-ghost" title="Ready for proposal generation" onclick="openMarkComplete('${rid}','complete')">Mark as Final</button>`;
+                // pending
+                return`
+                  <button class="btn btn-sm btn-ghost" title="Save as work-in-progress draft" onclick="openMarkComplete('${rid}','interim')">Mark as Draft</button>
+                  <button class="btn btn-sm btn-ghost" title="Ready for proposal generation" onclick="openMarkComplete('${rid}','complete')">Mark as Final</button>`;
+              })()}
               <button class="btn btn-sm btn-red" onclick="deleteReview('${rid}')">Delete</button>
             </div>
             <div id="markComplete_${rid}" style="display:none;margin-top:8px;padding:8px 10px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)">
-              <label class="fs11 c-dim">Your name</label>
+              <label class="fs11 c-dim">Your name (required)</label>
               <div class="flex gap-sm mt-sm">
                 <input id="completedBy_${rid}" placeholder="Your name" style="flex:1">
                 <button class="btn btn-sm btn-ghost" onclick="submitMarkComplete('${rid}','interim')">Save as Draft</button>
@@ -4291,10 +4322,13 @@ async function viewAdmin(){
         <input id="cfgPin" type="password" placeholder="Set via ADMIN_PIN env var" style="width:120px"></div>
     </div>
     <p class="card-section">API Keys</p>
+    <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px">
+      Keys are stored server-side. A masked value is shown when a key is saved. Enter a new value to replace it — leave blank to keep the existing key.
+    </p>
     <div class="form-group">
-      <div class="form-row" style="flex:1"><label>Groq</label><input id="cfgGroq" type="password" placeholder="${config.api_keys?.groq?'Configured':'Not set'}"></div>
-      <div class="form-row" style="flex:1"><label>OpenRouter</label><input id="cfgOR" type="password" placeholder="${config.api_keys?.openrouter?'Configured':'Not set'}"></div>
-      <div class="form-row" style="flex:1"><label>Gemini</label><input id="cfgGemini" type="password" placeholder="${config.api_keys?.gemini?'Configured':'Not set'}"></div>
+      <div class="form-row" style="flex:1"><label>Groq</label><input id="cfgGroq" type="password" value="${config.api_keys?.groq?'********':''}" placeholder="${config.api_keys?.groq?'Configured (click to replace)':'Not set'}"></div>
+      <div class="form-row" style="flex:1"><label>OpenRouter</label><input id="cfgOR" type="password" value="${config.api_keys?.openrouter?'********':''}" placeholder="${config.api_keys?.openrouter?'Configured (click to replace)':'Not set'}"></div>
+      <div class="form-row" style="flex:1"><label>Gemini</label><input id="cfgGemini" type="password" value="${config.api_keys?.gemini?'********':''}" placeholder="${config.api_keys?.gemini?'Configured (click to replace)':'Not set'}"></div>
     </div>
     <button class="btn mt" onclick="saveAdminConfig()">Save Configuration</button>
     <div id="configResult" class="mt"></div>
@@ -4396,9 +4430,10 @@ async function saveAdminConfig(){
   const g=document.getElementById('cfgGroq').value;
   const o=document.getElementById('cfgOR').value;
   const gm=document.getElementById('cfgGemini').value;
-  if(g)up.api_keys.groq=g;
-  if(o)up.api_keys.openrouter=o;
-  if(gm)up.api_keys.gemini=gm;
+  // Only update a key if user typed something other than the masked sentinel
+  if(g&&g!=='********')up.api_keys.groq=g;
+  if(o&&o!=='********')up.api_keys.openrouter=o;
+  if(gm&&gm!=='********')up.api_keys.gemini=gm;
   const r=await api('POST','/api/admin/config',up);
   if(r.config){toast('Configuration saved');document.getElementById('configResult').innerHTML=`<p style="color:var(--green)">✓ Saved</p>`;}
   else{toast(r.error||'Save failed','err');}
@@ -4631,7 +4666,15 @@ async function loadAppInfo(){
     if(h.app){state.appName=h.app;document.title=h.app;}
   }catch(e){}
 }
-(async()=>{await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);render();})();
+(async()=>{
+  await Promise.all([loadProjects(),loadBackends(),loadAppInfo()]);
+  // Restore last active tab from localStorage (avoids Dashboard flicker on refresh)
+  try{
+    const savedTab=localStorage.getItem('pdae_active_tab');
+    if(savedTab&&TABS.includes(savedTab))state.tab=savedTab;
+  }catch(e){}
+  render();
+})();
 </script>
 
 <script>
@@ -4650,7 +4693,7 @@ const _IMPACT_MAP = {
 
 
 // ── F1: renderReviewStrength ──────────────────────────────────────────
-// Builds the Review Strength panel: Missing / Weak / Unresolved / Impact
+// Builds the Review Findings & Quality Signals panel: Coverage Gaps / Weak Areas / Unresolved / Impact
 function renderReviewStrength(r) {
   const weaknesses   = r.weaknesses || [];
   const missingCats  = r.missing_categories || [];
@@ -4698,12 +4741,12 @@ function renderReviewStrength(r) {
 
   return `<div class="card" style="margin-top:8px;border-top:2px solid var(--yellow)" id="reviewStrengthPanel">
     <div class="card-title" style="font-size:12px;margin-bottom:6px">
-      <span class="icon">🔎</span>Review Strength
-      <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:6px">— what is missing, weak, and unresolved</span>
+      <span class="icon">📊</span>Review Findings &amp; Quality Signals
+      <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:6px">— gaps, weak areas, and unresolved decisions</span>
     </div>
     <div class="rs-grid">
-      ${cell('🕳️','Missing','var(--text-muted)',missingItems)}
-      ${cell('⚠️','Weak','var(--yellow)',weakItems)}
+      ${cell('🕳️','Coverage Gaps','var(--text-muted)',missingItems)}
+      ${cell('⚠️','Weak Areas','var(--yellow)',weakItems)}
       ${cell('❓','Unresolved','var(--red)',unresolvedItems)}
       ${impactHtml}
     </div>

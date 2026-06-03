@@ -287,6 +287,23 @@ def complete_review_gate(
     return complete_review(project_id, review_id, completed_by, quality_status)
 
 
+def reset_review_status(project_id: str, review_id: str) -> Dict[str, Any]:
+    """Reset a review's quality_status back to 'pending' (clears draft/final)."""
+    from db.hierarchy_store_sql import HierarchyStoreSQLite
+    from db.database import Database
+    store = _make_hierarchy_store(project_id)
+    review = store.get_review(review_id)
+    if review is None:
+        return {"error": f"Review not found: {review_id}"}
+    db: Database = store._db  # type: ignore[attr-defined]
+    db.execute(
+        "UPDATE reviews SET quality_status=?, completed_by=?, completed_at=? WHERE project_id=? AND review_id=?",
+        ("pending", "", "", project_id, review_id),
+    )
+    db.commit()
+    return {"review_id": review_id, "quality_status": "pending"}
+
+
 def set_active_review_gated(
     project_id: str, version_id: str, review_id: str, decided_by: str, force: bool = False
 ) -> Dict[str, Any]:
