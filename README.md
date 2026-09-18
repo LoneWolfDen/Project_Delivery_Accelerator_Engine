@@ -32,7 +32,111 @@ Everything runs in a single Docker container. No database. No external services 
 
 ## Quick Start
 
-### Option A — Docker (recommended)
+### First-run checklist
+
+Use these steps in order for a clean local setup.
+
+#### 1. Install dependencies
+
+```bash
+cd /path/to/Project_Delivery_Accelerator_Engine
+pip install -e .
+```
+
+#### 2. Set a local admin PIN
+
+For a local/dev machine, any non-empty value is fine. This is only required for archive/delete actions.
+
+```bash
+export ADMIN_PIN=dev-pin-1234
+```
+
+> You do not need a production-grade PIN for local testing, and there is no critical data in the repo by default.
+
+#### 3. Seed the demo/test projects
+
+The UI does not show the sample projects until the database has been created.
+
+```bash
+python scripts/seed_sqlite.py
+```
+
+This creates demo projects such as:
+
+- `proj-test-001` — Cloud Platform Migration (Test)
+- `proj-test-002` — Digital Transformation Programme (Test)
+
+#### 4. Start the app with the same data directory
+
+```bash
+export PROJECTS_DATA_DIR="$PWD/projects_data"
+python server.py
+```
+
+Then open:
+
+- http://localhost:8080
+- or http://localhost:8080/?ui=v2
+
+#### 5. Verify the projects are visible
+
+```bash
+curl http://localhost:8080/api/projects
+```
+
+You should see JSON including the seeded project IDs.
+
+If you do not see any projects, the usual cause is that the app started in a different data folder than the one used to seed the database.
+
+### Reset demo data
+
+```bash
+rm -rf projects_data
+mkdir -p projects_data
+export ADMIN_PIN=dev-pin-1234
+python scripts/seed_sqlite.py
+```
+
+### Troubleshooting: no test projects in the UI
+
+If the project list is empty, check these in order:
+
+```bash
+# 1. Confirm the database was seeded
+ls -la projects_data
+
+# 2. Confirm the data file exists
+ls -la projects_data/accelerator.db
+
+# 3. Confirm current env points to the same folder
+echo "$PROJECTS_DATA_DIR"
+
+# 4. Confirm the app is returning project data
+curl http://localhost:8080/api/projects
+```
+
+Common fixes:
+
+- If the API returns an empty list, start the app with the same `PROJECTS_DATA_DIR` used during seeding.
+- If you started the app before seeding, stop it and re-run:
+
+```bash
+export ADMIN_PIN=dev-pin-1234
+export PROJECTS_DATA_DIR="$PWD/projects_data"
+python scripts/seed_sqlite.py
+python server.py
+```
+
+- If you are using Docker or a different machine, make sure the mounted volume points to the same `/data` or `projects_data` location.
+- If you are prompted for a PIN during archive/delete, set it again in the terminal before starting the app:
+
+```bash
+export ADMIN_PIN=dev-pin-1234
+```
+
+---
+
+### Docker option
 
 ```bash
 docker run -d \
@@ -43,21 +147,7 @@ docker run -d \
   delivery-accelerator
 ```
 
-Then open **http://localhost:8080** in your browser.
-
-### Option B — Python directly
-
-```bash
-# 1. Install
-pip install -e .
-
-# 2. Set your admin PIN (required for archive/delete)
-export ADMIN_PIN=your-secure-pin
-
-# 3. Start
-python server.py
-# → http://localhost:8080
-```
+Then open http://localhost:8080.
 
 ---
 
@@ -156,7 +246,7 @@ The platform is fully operational without any AI key — `Files Only` mode gives
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ADMIN_PIN` | **Yes** (for archive/delete) | _(none)_ | PIN for destructive operations. No default — must be set explicitly |
+| `ADMIN_PIN` | **Yes** (for archive/delete) | _(none)_ | PIN for destructive operations. For local development you can safely set a temporary value such as `dev-pin-1234`. |
 | `PROJECTS_DATA_DIR` | No | `projects_data/` | Override data directory (e.g. Docker volume mount) |
 | `HOST` | No | `localhost` | Server bind address |
 | `PORT` | No | `8080` | Server port |
@@ -166,6 +256,14 @@ The platform is fully operational without any AI key — `Files Only` mode gives
 | `GEMINI_API_KEY` | No | _(none)_ | Enables Gemini AI backend |
 | `AWS_ACCESS_KEY_ID` | No | _(none)_ | Enables AWS Bedrock backend |
 | `AWS_SECRET_ACCESS_KEY` | No | _(none)_ | Required with `AWS_ACCESS_KEY_ID` |
+
+A simple example for local testing:
+
+```bash
+export ADMIN_PIN=dev-pin-1234
+export PROJECTS_DATA_DIR="$PWD/projects_data"
+python server.py
+```
 
 ---
 
