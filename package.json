@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node tools/check-syntax.mjs",
+    "check": "node tools/check-syntax.mjs && node tools/check-forbidden-apis.mjs",
     "test:unit": "node --test \"tests/unit/**/*.test.mjs\"",
     "test:e2e": "playwright test --pass-with-no-tests",
     "test": "npm run check && npm run test:unit && npm run test:e2e",
