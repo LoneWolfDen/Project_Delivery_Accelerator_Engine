@@ -58,7 +58,7 @@ Nothing blocks Phase 0.
 
 ## Next task
 
-**DAT-01** (see `NEXT_ACTIONS.md`, executed in order).
+**DAT-02** (see `NEXT_ACTIONS.md`, executed in order).
 
 ## Backlog item status
 
@@ -81,7 +81,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 1 | UI-01 | Safe DOM builder | P0 | Done | 2026-10-04 | `npx playwright test tests/e2e/dom.spec.mjs` 12/12 (chromium + webkit): '<img src=x onerror=…>' string renders as literal text (0 img, no script ran); on* attrs throw; javascript:/data:/external/protocol-relative URLs throw, './', '#', 'blob:' allowed; style/srcdoc/script/iframe/unknown props throw; listeners fire (click + keyboard); full e2e 28/28; check 0 violations; mutation (drop URL check) → 2 tests fail |
 | 1 | UI-02 | App frame: store, hash router, header, live region, skip link | P1 | Done | 2026-10-04 | unit 103/103 (7 store); e2e 43 passed + 1 skipped (chromium + webkit): opens on #/projects with aria-current; Tab→skip link (Option+Tab in WebKit)→Enter focuses view h1; Chromium Tab order skip→Projects→Trash→Settings→Help then Enter navigates; nav buttons change hash, focus h1, live region announces '<Title> page'; placeholders contain only title + 'This part isn't built yet.'; unknown/malformed hashes → #/projects via replace; Back works; every focusable element is A or BUTTON; screenshots at 1000px light/dark and 320px (no horizontal scroll) reviewed. UNVERIFIED: keyboard-only pass in Edge |
 | 1 | DGN-01 | Diagnostics log, error codes and visible error banner | P0 | Done | 2026-10-04 | unit 112/112 (9 log/errors: refs key 'text' rejected, value 'free text' rejected, buffer capped at 500, no message parameter — extra 5th arg not stored, onEvent mirror isolation); e2e 51 passed + 1 skipped: uncaught error and unhandled rejection show APP-UNEXPECTED banner (role=alert, code shown, error message not shown or logged), same code replaces not stacks, detail renders as text, Copy writes code to clipboard (verified via clipboard.readText in Chromium), Dismiss removes; screenshots light/dark reviewed. UNVERIFIED: devtools trigger in Edge |
-| 1 | DAT-01 | IndexedDB open, schema v1, migration runner and downgrade guard | P0 | Not started | — | — |
+| 1 | DAT-01 | IndexedDB open, schema v1, migration runner and downgrade guard | P0 | Done | 2026-10-04 | e2e storage-open 12/12 (chromium + webkit): fresh profile → pdae v1 with all 14 stores/indexes equal to an independent copy of the §3 table (keyPaths, autoIncrement, unique) + meta 'install' record; throwing migration → MIG-FAIL, version stays 1, record and stores unchanged, MIG-FAIL logged; missing migration step → MIG-FAIL banner; pre-created pdae v99 → readOnly true, STO-NEWER-VERSION banner ('Data was saved by a newer version… read-only'), DB untouched; held old connection → STO-BLOCKED banner; hook absent without ?test=1. Full e2e 63 + 1 skipped; unit 112; mutation (drop tx.abort) → atomic test fails. UNVERIFIED: Edge devtools Application → IndexedDB view |
 | 1 | DAT-02 | Record validators and generic repositories with optimistic concurrency | P0 | Not started | — | — |
 | 1 | DAT-03 | Quarantine for unreadable records and diagnostics persistence | P0 | Not started | — | — |
 | 1 | DAT-04 | Cross-tab write lock, change broadcast and version-change handling | P1 | Not started | — | — |
