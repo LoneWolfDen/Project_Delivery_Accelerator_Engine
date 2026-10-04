@@ -66,7 +66,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 
 | Phase | ID | Title | Priority | Status | Date | Evidence |
 |---|---|---|---|---|---|---|
-| 0 | BAS-01 | Record the legacy baseline tag and execution log | P0 | Not started | — | — |
+| 0 | BAS-01 | Record the legacy baseline tag and execution log | P0 | In progress – awaiting owner tag | 2026-10-04 | `docs/backlog/EXECUTION_LOG.md` created; tag target `fffe2e70d6e25b7db4d1baf0762140024f80d957`; acceptance 2 pending owner `git tag` |
 | 0 | BAS-02 | Copy synthetic sample documents into test fixtures | P0 | Not started | — | — |
 | 0 | BAS-03 | Capture legacy extraction and persona outputs as golden files | P0 | Not started | — | — |
 | 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Not started | — | — |
