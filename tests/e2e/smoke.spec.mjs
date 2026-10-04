@@ -6,7 +6,8 @@ import { APP_VERSION } from '../../app/version.js';
 
 test('app starts: title and version visible, boot message hidden, no problems', async ({ page, problems }) => {
   await openApp(page);
-  await expect(page.getByRole('heading', { level: 1, name: 'Project Delivery Accelerator' })).toBeVisible();
+  await expect(page.locator('.app-name')).toHaveText('Project Delivery Accelerator');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
   await expect(page.locator('#app-version')).toHaveText(`Version ${APP_VERSION}`);
   await expect(page.locator('#boot-msg')).toBeHidden();
   expect(problems).toEqual([]);
