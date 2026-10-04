@@ -6,7 +6,7 @@
 | Repository | `LoneWolfDen/Project_Delivery_Accelerator_Engine` (private; local path on owner's Mac: `~/Developer/Project_Delivery_Accelerator_Engine`) |
 | Branch | `assessment/pwa-readiness-2026-10` (created from `main` at `1ca4319`) |
 | Commit | Planning work sits on top of `491fc7e` (charter and prompts). After the owner commits the planning documents, run `git log -1 --oneline` for the current hash. **Application code is unchanged since `1ca4319`.** |
-| Tags | `pwa-assessment-baseline-2026-10-01` → `1ca4319`. Planned: `legacy-baseline` (BAS-01), `legacy-final` (CLN-02) |
+| Tags | `pwa-assessment-baseline-2026-10-01` → `1ca4319`; `legacy-baseline` (annotated) → `fffe2e7` (BAS-01, pushed). Planned: `legacy-final` (CLN-02) |
 | Phase | Planning complete. Implementation Phase 0 not started |
 
 ## Current implementation state
@@ -58,7 +58,7 @@ Nothing blocks Phase 0 except BD-01 for DOC-01.
 
 ## Next task
 
-**BAS-01**: record the legacy baseline tag and start `docs/backlog/EXECUTION_LOG.md`. Run it with `.claude/prompts/IMPLEMENT_ONE_ITEM_TEMPLATE.md`.
+**TST-01** (dev-only test tooling) or **BAS-02** (synthetic fixtures): both have no prerequisites. Run one at a time with `.claude/prompts/IMPLEMENT_ONE_ITEM_TEMPLATE.md`. See `NEXT_ACTIONS.md`.
 
 ## Backlog item status
 
@@ -66,7 +66,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 
 | Phase | ID | Title | Priority | Status | Date | Evidence |
 |---|---|---|---|---|---|---|
-| 0 | BAS-01 | Record the legacy baseline tag and execution log | P0 | In progress – awaiting owner tag | 2026-10-04 | `docs/backlog/EXECUTION_LOG.md` created; tag target `fffe2e70d6e25b7db4d1baf0762140024f80d957`; acceptance 2 pending owner `git tag` |
+| 0 | BAS-01 | Record the legacy baseline tag and execution log | P0 | Done | 2026-10-04 | `git tag --list legacy-baseline` → `legacy-baseline`; tag object → commit `fffe2e70d6e25b7db4d1baf0762140024f80d957`; on origin; log commit `b61df6f` |
 | 0 | BAS-02 | Copy synthetic sample documents into test fixtures | P0 | Not started | — | — |
 | 0 | BAS-03 | Capture legacy extraction and persona outputs as golden files | P0 | Not started | — | — |
 | 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Not started | — | — |
