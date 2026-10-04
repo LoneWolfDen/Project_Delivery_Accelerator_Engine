@@ -24,6 +24,9 @@
   --color-focus: #0b5cad;
   --color-warn-bg: #fff4ce;
   --color-warn-text: #5c4300;
+  --color-error-bg: #fdecea;
+  --color-error-text: #6b1a12;
+  --color-error-border: #b3261e;
 
   --transition: 150ms ease;
 }
@@ -40,6 +43,9 @@
     --color-focus: #6cb4ff;
     --color-warn-bg: #3d3214;
     --color-warn-text: #f5dc8a;
+    --color-error-bg: #3b1714;
+    --color-error-text: #ffd7d2;
+    --color-error-border: #f28b82;
   }
 }
 

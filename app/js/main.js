@@ -7,6 +7,8 @@ import { update } from './ui/store.js';
 import { startRouter, navigate } from './ui/router.js';
 import { liveRegion, announce, focusHeading } from './ui/a11y.js';
 import * as notBuilt from './ui/views/not-built.js';
+import { log } from './diagnostics/log.js';
+import { showError } from './ui/components/banner.js';
 
 const APP_NAME = 'Project Delivery Accelerator';
 const NAV = [['projects', 'Projects', '#/projects'], ['trash', 'Trash', '#/trash'], ['settings', 'Settings', '#/settings'], ['help', 'Help', '#/help']];
@@ -23,6 +25,13 @@ function start() {
   // file:// guard: module scripts and storage don't work reliably from a file path,
   // so leave the boot message visible and render nothing (ADR-024).
   if (location.protocol === 'file:') return;
+  // Uncaught errors: log the code only (never the message, which may contain content) and show a banner.
+  const unexpected = () => {
+    log('error', 'APP-UNEXPECTED', 'main');
+    showError('APP-UNEXPECTED');
+  };
+  window.addEventListener('error', unexpected);
+  window.addEventListener('unhandledrejection', unexpected);
   const main = document.getElementById('app');
   main.before(...header(main));
   document.body.append(liveRegion());
