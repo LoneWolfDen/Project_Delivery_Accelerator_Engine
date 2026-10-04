@@ -58,7 +58,7 @@ Nothing blocks Phase 0 except BD-01 for DOC-01.
 
 ## Next task
 
-**BAS-02** (synthetic fixtures). After it, TST-02, SEC-01 and CHT-01 are unblocked by TST-01. See `NEXT_ACTIONS.md`.
+**DOC-01** (LICENSE + README status banner; copyright holder decided: BD-01a). TST-02, SEC-01, CHT-01, BAS-03 and BAS-04 are also unblocked. See `NEXT_ACTIONS.md`.
 
 ## Backlog item status
 
@@ -67,7 +67,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | Phase | ID | Title | Priority | Status | Date | Evidence |
 |---|---|---|---|---|---|---|
 | 0 | BAS-01 | Record the legacy baseline tag and execution log | P0 | Done | 2026-10-04 | `git tag --list legacy-baseline` → `legacy-baseline`; tag object → commit `fffe2e70d6e25b7db4d1baf0762140024f80d957`; on origin; log commit `b61df6f` |
-| 0 | BAS-02 | Copy synthetic sample documents into test fixtures | P0 | Not started | — | — |
+| 0 | BAS-02 | Copy synthetic sample documents into test fixtures | P0 | Done | 2026-10-04 | 10/10 `shasum -a 256` pairs match `sample_data/`; README lists all 10 hashes, first line SYNTHETIC; only additions under `tests/fixtures/synthetic/`; `npm run check` + `npm run test:unit` 11/11 still pass |
 | 0 | BAS-03 | Capture legacy extraction and persona outputs as golden files | P0 | Not started | — | — |
 | 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Not started | — | — |
 | 0 | TST-01 | Add dev-only Node test tooling and static dev server | P0 | Done | 2026-10-04 | `npm run check` (2 files, 0 failed); `npm run test:unit` 11/11 pass; `npm run test:e2e` exit 0 (no specs yet); clean-copy `npm ci && npm run check && npm run test:unit` pass; traversal mutation makes tests fail; uncommitted until owner commits |
