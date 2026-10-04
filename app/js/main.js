@@ -3,12 +3,13 @@
 import './core/trusted-types.js';
 import { APP_VERSION } from '../version.js';
 import { h, replace } from './ui/dom.js';
-import { update } from './ui/store.js';
+import { getState, update } from './ui/store.js';
 import { startRouter, navigate } from './ui/router.js';
 import { liveRegion, announce, focusHeading } from './ui/a11y.js';
 import * as notBuilt from './ui/views/not-built.js';
 import { log } from './diagnostics/log.js';
 import { showError } from './ui/components/banner.js';
+import { openDb } from './storage/db.js';
 
 const APP_NAME = 'Project Delivery Accelerator';
 const NAV = [['projects', 'Projects', '#/projects'], ['trash', 'Trash', '#/trash'], ['settings', 'Settings', '#/settings'], ['help', 'Help', '#/help']];
@@ -48,6 +49,12 @@ function start() {
     if (!first) { focusHeading(view); announce(`${notBuilt.TITLES[route.name]} page`); }
     first = false;
   });
+  // Test-only hook for e2e (DAT-01): exposed only with ?test=1.
+  if (new URLSearchParams(location.search).get('test') === '1') window.__pdaeTest = { openDb, getState };
+  openDb().then(
+    ({ db, readOnly }) => update({ db, readOnly }),
+    (err) => showError(err.code ?? 'STO-OPEN-FAIL'),
+  );
   document.getElementById('boot-msg').hidden = true;
   document.documentElement.dataset.ready = 'true';
 }
