@@ -1,15 +1,25 @@
 # Project Delivery Accelerator Engine
 
+## Status
+
+**Being rebuilt as a browser-only app.** The Python app in this repository is legacy, unsupported and not safe to expose on a network. See [docs/architecture/TARGET_ARCHITECTURE.md](docs/architecture/TARGET_ARCHITECTURE.md).
+
+- Do not use the legacy app with real client or project documents.
+- The rebuild plan is in [docs/backlog/MASTER_BACKLOG.md](docs/backlog/MASTER_BACKLOG.md); current progress is in [docs/continuity/PROJECT_STATE.md](docs/continuity/PROJECT_STATE.md).
+
 > **Context-aware delivery intelligence for non-technical teams.**  
 > Convert SoWs, proposals, and meeting notes into structured intelligence — then apply persona-driven review to catch every PM blind spot before it becomes a problem.
 
-[![CI](https://github.com/LoneWolfDen/Project_Delivery_Accelerator_Engine/actions/workflows/ci.yml/badge.svg)](https://github.com/LoneWolfDen/Project_Delivery_Accelerator_Engine/actions/workflows/ci.yml)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
-## What it does
+## Legacy app (being retired)
+
+Everything below describes the legacy Python app as it was before the rebuild. It is kept for reference only and will be removed.
+
+### What it does
 
 Most delivery teams review proposals and SoWs the same way every time: one person reads through, flags a few things they happen to notice, and the team moves on. Entire dimensions — governance, change management, commercial risk, key-person dependencies — go unchecked because no single person holds every lens simultaneously.
 
@@ -20,30 +30,30 @@ This platform solves that by:
 3. **Tracking every version** so you can see how your risk profile changes as the proposal evolves
 4. **Running a Deep Dive** that surfaces missing areas, risk flags, and clarification questions your team needs to resolve before committing
 
-Everything runs in a single Docker container. No database. No external services required. Fully offline-capable.
+The legacy app is a Python web server that stores data in SQLite and JSON files under `projects_data/`.
 
 ---
 
-## Screenshots
+### Screenshots
 
 > _Screenshots will be added here. To contribute screenshots, run the app locally and capture the Dashboard, Review Detail (coverage assessment), and Deep Dive views._
 
 ---
 
-## Quick Start
+### Quick Start
 
-### First-run checklist
+#### First-run checklist
 
 Use these steps in order for a clean local setup.
 
-#### 1. Install dependencies
+##### 1. Install dependencies
 
 ```bash
 cd /path/to/Project_Delivery_Accelerator_Engine
 pip install -e .
 ```
 
-#### 2. Set a local admin PIN
+##### 2. Set a local admin PIN
 
 For a local/dev machine, any non-empty value is fine. This is only required for archive/delete actions.
 
@@ -53,7 +63,7 @@ export ADMIN_PIN=dev-pin-1234
 
 > You do not need a production-grade PIN for local testing, and there is no critical data in the repo by default.
 
-#### 3. Seed the demo/test projects
+##### 3. Seed the demo/test projects
 
 The UI does not show the sample projects until the database has been created.
 
@@ -66,7 +76,7 @@ This creates demo projects such as:
 - `proj-test-001` — Cloud Platform Migration (Test)
 - `proj-test-002` — Digital Transformation Programme (Test)
 
-#### 4. Start the app with the same data directory
+##### 4. Start the app with the same data directory
 
 ```bash
 export PROJECTS_DATA_DIR="$PWD/projects_data"
@@ -78,7 +88,7 @@ Then open:
 - http://localhost:8080
 - or http://localhost:8080/?ui=v2
 
-#### 5. Verify the projects are visible
+##### 5. Verify the projects are visible
 
 ```bash
 curl http://localhost:8080/api/projects
@@ -88,7 +98,7 @@ You should see JSON including the seeded project IDs.
 
 If you do not see any projects, the usual cause is that the app started in a different data folder than the one used to seed the database.
 
-### Reset demo data
+#### Reset demo data
 
 ```bash
 rm -rf projects_data
@@ -97,7 +107,7 @@ export ADMIN_PIN=dev-pin-1234
 python scripts/seed_sqlite.py
 ```
 
-### Troubleshooting: no test projects in the UI
+#### Troubleshooting: no test projects in the UI
 
 If the project list is empty, check these in order:
 
@@ -127,31 +137,16 @@ python scripts/seed_sqlite.py
 python server.py
 ```
 
-- If you are using Docker or a different machine, make sure the mounted volume points to the same `/data` or `projects_data` location.
 - If you are prompted for a PIN during archive/delete, set it again in the terminal before starting the app:
 
 ```bash
 export ADMIN_PIN=dev-pin-1234
 ```
 
----
-
-### Docker option
-
-```bash
-docker run -d \
-  --name delivery-accelerator \
-  -p 8080:8080 \
-  -v $(pwd)/data:/data \
-  -e ADMIN_PIN=your-secure-pin \
-  delivery-accelerator
-```
-
-Then open http://localhost:8080.
 
 ---
 
-## User Workflow
+### User Workflow
 
 ```
   ┌─────────────────────────────────────────────────────────┐
@@ -192,7 +187,7 @@ Then open http://localhost:8080.
 
 ---
 
-## Review Roles (Personas)
+### Review Roles (Personas)
 
 Each persona applies a distinct professional lens with its own PM coverage dimensions:
 
@@ -207,7 +202,7 @@ All personas also assess 6 **baseline dimensions** present in every review: Risk
 
 ---
 
-## PM Coverage Assessment
+### PM Coverage Assessment
 
 Every Review Full Details page shows a **Coverage Assessment** specific to the persona used:
 
@@ -227,7 +222,7 @@ Coverage expands as AI models mature and more document context is provided.
 
 ---
 
-## AI Backends
+### AI Backends
 
 The platform is fully operational without any AI key — `Files Only` mode gives instant, deterministic, heuristic-based analysis.
 
@@ -242,12 +237,12 @@ The platform is fully operational without any AI key — `Files Only` mode gives
 
 ---
 
-## Environment Variables
+### Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ADMIN_PIN` | **Yes** (for archive/delete) | _(none)_ | PIN for destructive operations. For local development you can safely set a temporary value such as `dev-pin-1234`. |
-| `PROJECTS_DATA_DIR` | No | `projects_data/` | Override data directory (e.g. Docker volume mount) |
+| `PROJECTS_DATA_DIR` | No | `projects_data/` | Override data directory |
 | `HOST` | No | `localhost` | Server bind address |
 | `PORT` | No | `8080` | Server port |
 | `APP_NAME` | No | `Project Delivery Accelerator Engine` | Displayed in UI header and health endpoint |
@@ -265,47 +260,16 @@ export PROJECTS_DATA_DIR="$PWD/projects_data"
 python server.py
 ```
 
----
-
-## Docker Compose Example
-
-```yaml
-# docker-compose.yml
-services:
-  delivery-accelerator:
-    image: delivery-accelerator:latest
-    build: .
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./data:/data
-    environment:
-      - ADMIN_PIN=${ADMIN_PIN}
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - PROJECTS_DATA_DIR=/data
-    restart: unless-stopped
-```
-
-```bash
-# .env
-ADMIN_PIN=your-secure-pin
-GROQ_API_KEY=gsk_...
-```
-
-```bash
-docker compose up -d
-```
 
 ---
 
-## Project Structure
+### Project Structure
 
 ```
 Project_Delivery_Accelerator_Engine/
 ├── server.py               # HTTP API server + static file serving
 ├── project_manager.py      # Orchestration: project CRUD + business logic
 ├── cli.py                  # CLI (13+ commands)
-├── Dockerfile
 ├── pyproject.toml
 │
 ├── admin/                  # Config, guardrails, health, lifecycle
@@ -332,7 +296,7 @@ Project_Delivery_Accelerator_Engine/
 
 ---
 
-## API Reference
+### API Reference
 
 Full API documentation: [`docs/api-reference.md`](docs/api-reference.md)
 
@@ -353,7 +317,7 @@ GET  /api/projects/{id}/hierarchy/reviews/{id} Review full detail
 
 ---
 
-## Contributing
+### Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - How to add a new persona (YAML + engine + coverage dimensions)
@@ -363,12 +327,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ---
 
-## Roadmap
+### Roadmap
 
 | Version | Status | Focus |
 |---------|--------|-------|
 | **v2** | ✅ Done | Context packs, persona engine, 180 tests |
-| **v3** | ✅ Done | Hierarchy model, Deep Dive, Admin, UI/UX, Docker |
+| **v3** | ✅ Done | Hierarchy model, Deep Dive, Admin, UI/UX |
 | **v3.3** | ✅ Current | Persona-aware coverage, Deep Dive UX, open-source ready |
 | **v4** | 🔜 Planned | PDF/DOCX ingestion, AI-powered extraction, diagram generation, export to Word/PPTX |
 | **v5** | 💭 Vision | Multi-project intelligence, RAG pipeline, copilot assistant |

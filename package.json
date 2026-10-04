@@ -1,0 +1,21 @@
+{
+  "name": "project-delivery-accelerator-pwa",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Development and test tooling for the browser-only PWA in app/. Nothing here is shipped to users.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node tools/check-syntax.mjs",
+    "test:unit": "node --test \"tests/unit/**/*.test.mjs\"",
+    "test:e2e": "playwright test --pass-with-no-tests",
+    "test": "npm run check && npm run test:unit && npm run test:e2e",
+    "serve": "node tools/serve-dev.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

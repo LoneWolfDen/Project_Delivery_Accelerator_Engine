@@ -1,0 +1,34 @@
+AnyCompany is a forward-thinking organisation specialising in revolutionising enterprise data management through intelligent automation and a comprehensive semantic data platform. The company's principal offering empowers organisations to consolidate, analyse, and act upon data from varied sources with remarkable speed and efficiency, thereby removing the constraints inherent in traditional manual data engineering processes. AnyCompany's platform is engineered to support large multinational corporations with intricate data ecosystems whilst also serving non-profit healthcare organisations, delivering bespoke solutions that tackle challenges related to scale, regulatory compliance, and cost optimisation.
+
+Migration Drivers
+- 5 legacy/EOL applications (Java 8, COBOL, ASP.NET 4.8, C# 6.0/.NET 4.6) requiring modernisation
+- Healthcare compliance and data sovereignty requirements
+- Scalability for clinical workloads (EHR, analytics, real-time device integration)
+- Cost optimisation of on-premises infrastructure (800TB+ storage, VMware licensing)
+
+Application Portfolio Summary
+- 20 applications total
+- Critical/Tier 1: 7 (EHR, Patient Portal, Clinical Data Warehouse, Revenue Cycle, HIE, EHR Analytics, Claims Processing, Medical Device Hub)
+- High/Tier 2: 8
+- Medium/Tier 3: 5
+- Types: 12 Home Grown, 5 Legacy, 2 Third Party, 1 SaaS
+
+Key Technology Domains
+- Databases: Oracle 19c, MS SQL Server 2019/2022, PostgreSQL 15, MySQL 8.0, MongoDB 6.0, Cassandra 4.1, InfluxDB 2.7
+- Big Data: Hadoop 3.3, Apache Spark 3.4, Apache Airflow 2.7
+- Middleware: Apache Kafka 3.2, IBM MQ 9.2, MuleSoft 4.5, WebLogic 12c, JBoss EAP 7.4
+- Cache: Redis 7.0
+- Storage: SAN 100TB, NAS 200TB, Object (MinIO) 500TB
+- Clinical Integrations: HL7 FHIR R4, HL7 v2.8, DICOM 3.0, EDI X12
+
+Compliance/Regulatory
+- HIPAA (patient data protection)
+- HL7 FHIR R4 / HL7 v2.8 (clinical interoperability standards)
+- DICOM 3.0 (medical imaging)
+- EDI X12 (claims and billing)
+
+Third-Party Systems (retain/integrate)
+- McKesson — Pharmacy Management
+- Sectra — Radiology Information System
+- Agfa HealthCare — Medical Imaging & PACS
+- Cerner — Laboratory Information System

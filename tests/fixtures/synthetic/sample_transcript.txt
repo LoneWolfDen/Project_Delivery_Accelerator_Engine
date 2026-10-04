@@ -1,0 +1,28 @@
+[00:00] James Wilson: Good morning everyone. Let's start with the sprint review for the migration workstream.
+
+[00:15] Sarah Chen: Thanks James. From the client side, we've completed the network assessment and the results are concerning. Latency between on-prem and the target VPC is higher than expected.
+
+[01:02] Raj Kumar: I can confirm that. Our testing shows 45ms average latency, which exceeds the 20ms threshold for real-time clinical data sync. We need to either co-locate a relay or re-architect the sync pattern.
+
+[01:45] James Wilson: That's a significant risk. Raj, can you scope out both options by end of week? We need cost and timeline for each.
+
+[02:10] Sarah Chen: Agreed. Also, the compliance team has raised a concern about the data residency. Some patient records cannot leave the AU region under current regulations.
+
+[02:35] Priya Patel: I've been working on the data classification. We have approximately 200TB that's region-locked. My recommendation is to deploy a dedicated AU node for those workloads rather than trying to get an exemption.
+
+[03:15] James Wilson: Good thinking. Let's add that to the architecture decision record. What about the resource gap we discussed last week?
+
+[03:30] Raj Kumar: We still need two more senior cloud engineers. Current team is stretched across three workstreams. If we don't get additional resources by end of month, Phase 2 timeline slips by 3-4 weeks.
+
+[04:00] Sarah Chen: I'll escalate the resourcing request internally. We may be able to second someone from the platform team temporarily.
+
+[04:20] James Wilson: Perfect. Let me summarise the action items.
+
+Action Items:
+- Raj Kumar: Scope relay vs re-architecture options by Friday
+- Priya Patel: Complete data classification for AU-region-locked records by Wednesday
+- Sarah Chen: Escalate resourcing request by end of day
+- James Wilson: Update architecture decision record with AU node recommendation
+- James Wilson: Raise latency risk in project risk register with mitigation options
+
+[05:00] James Wilson: Thanks everyone. Same time next week.
