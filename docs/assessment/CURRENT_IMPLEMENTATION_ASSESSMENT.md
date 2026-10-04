@@ -176,3 +176,23 @@ An interactive Copilot licence is **not** a JavaScript API (charter §8). Nothin
 - No minified-code recovery is needed. The source of truth is already readable.
 - The real maintainability problem is **two monolithic inline-script HTML files plus a set of orphaned modular files that tests and docs treat as live**. The safe path is to pick **one** UI, delete or archive the orphan set only after verification, and extract inline scripts into ES modules (charter model A, no-build). Compatibility tests should drive real HTTP endpoints and a real browser, not source-string checks.
 - Moving to a genuine browser-first PWA (charter §1) would mean relocating storage and processing from the Python server into the browser (IndexedDB/OPFS) or accepting the local server as a documented constraint. That decision belongs to the target-architecture step and depends on whether Python may run on the managed laptop (see unresolved questions).
+
+---
+
+## 14. Owner decisions recorded after the assessment (2026-10-02)
+
+These are the repository owner's answers to the open questions from the assessment. They are inputs for the target-architecture step (`.claude/prompts/02-target-architecture.md`).
+
+| ID | Question | Owner answer | Consequence for the target architecture |
+|---|---|---|---|
+| OD-1 | May Python run on the managed laptop? | Yes, **but users are mostly non-technical**: start-up and every operation must happen through UI interaction, not a terminal. | Terminal steps (`pip install`, `export`, `python server.py`, `seed_sqlite.py`) aren't acceptable for users. The target must either run entirely in the browser or have a one-click start that needs no command line. Prefer the option with the fewest user steps. |
+| OD-2 | Which UI survives, V1 or V2? | **Neither is valued.** Both were scaffolding produced while experimenting with a coding agent; the owner doesn't remember which features work. | Treat both UIs as disposable reference material, not as code to preserve. Use the assessment to identify the *behaviours* worth keeping. Don't spend effort extracting or refactoring the inline scripts. The back-end domain logic (extraction, personas, review/proposal model) is the main asset to evaluate. |
+| OD-3 | Is the external-reviewer feedback link (`/feedback?token=`) needed? | Not now. Ignore. | Out of scope for the first target. Don't design network exposure for it. |
+| OD-4 | Are Docker and Compose in scope? | **No.** | `Dockerfile`, `docker-compose.yml`, `.dockerignore` become removal candidates; no container start-up path in the target. |
+| OD-5 | Licence | **MIT**, as stated in the README. The repo is intended to become public, but is still in development. | Add a `LICENSE` file. Before making the repository public: fix security BLOCKER/HIGH items, keep demo data synthetic, and note that commit author names and e-mail addresses in Git history become public. |
+| OD-6 | Approved AI providers | **OpenRouter** as the single generic API provider. Ideally the app works with **Microsoft 365 Copilot licences without any API**. | Keep exactly one external AI provider slot (OpenRouter), off by default, with a visible notice before data leaves the device. Other provider adapters (Groq, Gemini, Bedrock, Ollama) are removal candidates. Copilot support means charter §8 **Pattern A**: the app produces a copy-ready package, the user pastes or uploads it into Copilot themselves, and the reply is brought back labelled Draft. No Copilot API or browser automation. |
+| OD-7 | Commit the charter and `.claude/prompts/`? | Yes. | Done on branch `assessment/pwa-readiness-2026-10`. |
+| OD-8 | Do browser protections block the cross-site attack (security H-3)? | Owner can't assess. | Treat it as **not mitigated**. The target must not rely on browser protections; remove the cause (no unauthenticated local API, or strict origin checks). |
+| OD-9 | Real test pass rate | Unknown. | Measure it only if existing tests are kept; given OD-2, prefer new tests written against the target behaviours. |
+
+**Context from the owner:** the current code is an early experiment in using a coding agent to bring an idea to life. The owner is a project manager with an interest in technology, not a software engineer. Target-architecture choices should favour the fewest moving parts, plain-language operation, and steps a non-specialist can verify.
