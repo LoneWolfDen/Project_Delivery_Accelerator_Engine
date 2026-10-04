@@ -58,7 +58,7 @@ Nothing blocks Phase 0.
 
 ## Next task
 
-Next build item: **SEC-01**. CHT-01, CHT-01, BAS-03, BAS-04 and CLN-01 are also unblocked. See `NEXT_ACTIONS.md`.
+**CHT-01** (see `NEXT_ACTIONS.md`, executed in order).
 
 ## Backlog item status
 
@@ -72,7 +72,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Not started | — | — |
 | 0 | TST-01 | Add dev-only Node test tooling and static dev server | P0 | Done | 2026-10-04 | `npm run check` (2 files, 0 failed); `npm run test:unit` 11/11 pass; `npm run test:e2e` exit 0 (no specs yet); clean-copy `npm ci && npm run check && npm run test:unit` pass; traversal mutation makes tests fail; uncommitted until owner commits |
 | 0 | TST-02 | Replace permanently failing CI with the new checks | P0 | Done | 2026-10-04 | GitHub Actions green: run 37240068817 (push, `3c61716`), 37240069799 (pull_request #119), 37240197509 (push to `main` after merge `ed645db`); no pytest/ruff; planted failures exit 1 locally |
-| 0 | SEC-01 | Forbidden-API and fabrication guard checker | P0 | Not started | — | — |
+| 0 | SEC-01 | Forbidden-API and fabrication guard checker | P0 | Done | 2026-10-04 | `npm run test:unit` 80/80 (69 SEC-01: failing+passing sample per rule, allow-lists, vendor skip, CLI); `npm run check` exit 0 on empty app/; planted `el.innerHTML = x` in app/scratch.js → exit 1 with `app/scratch.js:1: FA-01`; mutation (allow-all network) → 6 tests fail |
 | 0 | CHT-01 | Statement, label and citation domain model | P0 | Not started | — | — |
 | 0 | DOC-01 | Add MIT LICENSE and a truthful README status banner | P1 | Done | 2026-10-04 | `LICENSE` matches SPDX MIT text (whitespace-normalised) with `2026 Vamsi Yedlapalli / LoneWolfDen`; README `## Status` is first section; `grep -n -i docker README.md` → nothing; CI badge removed; `npm run check` + `npm run test:unit` 11/11 pass |
 | 0 | CLN-01 | Remove Docker and Compose files | P1 | Not started | — | — |
