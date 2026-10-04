@@ -58,7 +58,7 @@ Nothing blocks Phase 0.
 
 ## Next task
 
-**BAS-04** (see `NEXT_ACTIONS.md`, executed in order).
+**CLN-01** (see `NEXT_ACTIONS.md`, executed in order).
 
 ## Backlog item status
 
@@ -69,7 +69,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 0 | BAS-01 | Record the legacy baseline tag and execution log | P0 | Done | 2026-10-04 | `git tag --list legacy-baseline` → `legacy-baseline`; tag object → commit `fffe2e70d6e25b7db4d1baf0762140024f80d957`; on origin; log commit `b61df6f` |
 | 0 | BAS-02 | Copy synthetic sample documents into test fixtures | P0 | Done | 2026-10-04 | 10/10 `shasum -a 256` pairs match `sample_data/`; README lists all 10 hashes, first line SYNTHETIC; only additions under `tests/fixtures/synthetic/`; `npm run check` + `npm run test:unit` 11/11 still pass |
 | 0 | BAS-03 | Capture legacy extraction and persona outputs as golden files | P0 | Done | 2026-10-04 | 10 golden JSON (one per synthetic fixture), each with `_generated` and `legacy_commit` bdd4d5a; three consecutive runs byte-identical (shasum); only new paths `tools/legacy-golden.py` + `tests/fixtures/legacy-golden/`; spot check: call-notes/transcript risks, constraints, actions verbatim in fixture; artefact risks come from a table row reformatted as 'X (impact: …, likelihood: …)' |
-| 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Not started | — | — |
+| 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Done | 2026-10-04 | 10 persona JSON + index.json (sorted ids); `tools/personas-to-json.py --verify` exit 0 (deep equality YAML↔JSON); tampered JSON → verify exit 1; `git diff --stat -- personas` empty; prompt_template multi-line text intact (newlines preserved, checked solution_architect) |
 | 0 | TST-01 | Add dev-only Node test tooling and static dev server | P0 | Done | 2026-10-04 | `npm run check` (2 files, 0 failed); `npm run test:unit` 11/11 pass; `npm run test:e2e` exit 0 (no specs yet); clean-copy `npm ci && npm run check && npm run test:unit` pass; traversal mutation makes tests fail; uncommitted until owner commits |
 | 0 | TST-02 | Replace permanently failing CI with the new checks | P0 | Done | 2026-10-04 | GitHub Actions green: run 37240068817 (push, `3c61716`), 37240069799 (pull_request #119), 37240197509 (push to `main` after merge `ed645db`); no pytest/ruff; planted failures exit 1 locally |
 | 0 | SEC-01 | Forbidden-API and fabrication guard checker | P0 | Done | 2026-10-04 | `npm run test:unit` 80/80 (69 SEC-01: failing+passing sample per rule, allow-lists, vendor skip, CLI); `npm run check` exit 0 on empty app/; planted `el.innerHTML = x` in app/scratch.js → exit 1 with `app/scratch.js:1: FA-01`; mutation (allow-all network) → 6 tests fail |
