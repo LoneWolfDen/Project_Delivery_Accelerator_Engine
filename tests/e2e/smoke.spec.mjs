@@ -28,7 +28,11 @@ test('CSP blocks an injected inline script', async ({ page }) => {
   const ran = await page.evaluate(async () => {
     window.__inlineRan = false;
     const s = document.createElement('script');
-    s.textContent = 'window.__inlineRan = true;';
+    try {
+      s.textContent = 'window.__inlineRan = true;';
+    } catch {
+      return window.__inlineRan; // rejected by Trusted Types (SEC-02) before CSP is reached
+    }
     const blocked = new Promise((resolve) => document.addEventListener('securitypolicyviolation', () => resolve(true), { once: true }));
     document.body.append(s);
     await Promise.race([blocked, new Promise((r) => setTimeout(r, 1000))]);

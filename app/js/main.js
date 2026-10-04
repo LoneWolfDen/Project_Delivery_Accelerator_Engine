@@ -1,4 +1,6 @@
 // Application entry point (BLD-01). Later items add: diagnostics → storage → router → views.
+// The Trusted Types policy is created first, before anything else can claim a sink (SEC-02).
+import './core/trusted-types.js';
 import { APP_VERSION } from '../version.js';
 
 const APP_NAME = 'Project Delivery Accelerator';
