@@ -58,7 +58,7 @@ Nothing blocks Phase 0.
 
 ## Next task
 
-**BLD-01** (see `NEXT_ACTIONS.md`, executed in order).
+**SEC-02** (see `NEXT_ACTIONS.md`, executed in order).
 
 ## Backlog item status
 
@@ -76,7 +76,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 0 | CHT-01 | Statement, label and citation domain model | P0 | Done | 2026-10-04 | `npm run test:unit` 96/96 (16 CHT-01: FACT w/o citation throws, unverified quote → NEEDS_CONFIRMATION, whitespace variants verify, NOT_FOUND needs scope, import boundary); `npm run check` 0 violations; `npm run test:e2e` exit 0 (no specs yet); mutation (remove FACT guard) → test fails |
 | 0 | DOC-01 | Add MIT LICENSE and a truthful README status banner | P1 | Done | 2026-10-04 | `LICENSE` matches SPDX MIT text (whitespace-normalised) with `2026 Vamsi Yedlapalli / LoneWolfDen`; README `## Status` is first section; `grep -n -i docker README.md` → nothing; CI badge removed; `npm run check` + `npm run test:unit` 11/11 pass |
 | 0 | CLN-01 | Remove Docker and Compose files | P1 | Done | 2026-10-04 | `git ls-files \| grep -i docker` → nothing; `grep -i docker README.md .github/workflows/*.yml` → nothing; check + unit pass |
-| 1 | BLD-01 | Application shell skeleton with CSP and file:// guard | P0 | Not started | — | — |
+| 1 | BLD-01 | Application shell skeleton with CSP and file:// guard | P0 | Done | 2026-10-04 | `npx playwright test` 8/8 (chromium + webkit): title+version visible, #boot-msg hidden, zero CSP violations/console errors, CSP origin list = openrouter.ai only, injected inline script blocked, file:// keeps boot message; `npm run check` 0 violations; unit 96/96; mutation: planted console.error and style= attribute each fail the smoke test; screenshots light/dark in both engines reviewed. UNVERIFIED: Edge (not installed on dev Mac) — owner manual check |
 | 1 | SEC-02 | Enforce Trusted Types with a single script-URL policy | P0 | Not started | — | — |
 | 1 | UI-01 | Safe DOM builder | P0 | Not started | — | — |
 | 1 | UI-02 | App frame: store, hash router, header, live region, skip link | P1 | Not started | — | — |
