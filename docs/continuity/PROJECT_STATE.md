@@ -58,7 +58,7 @@ Nothing blocks Phase 0.
 
 ## Next task
 
-**TST-02** (replace the failing CI workflow). SEC-01, CHT-01, BAS-03, BAS-04 and CLN-01 are also unblocked. See `NEXT_ACTIONS.md`.
+**TST-02** awaits the owner's check of a green GitHub Actions run after push; then mark Done. Next build item: **SEC-01**. CHT-01, CHT-01, BAS-03, BAS-04 and CLN-01 are also unblocked. See `NEXT_ACTIONS.md`.
 
 ## Backlog item status
 
@@ -71,7 +71,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 0 | BAS-03 | Capture legacy extraction and persona outputs as golden files | P0 | Not started | — | — |
 | 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Not started | — | — |
 | 0 | TST-01 | Add dev-only Node test tooling and static dev server | P0 | Done | 2026-10-04 | `npm run check` (2 files, 0 failed); `npm run test:unit` 11/11 pass; `npm run test:e2e` exit 0 (no specs yet); clean-copy `npm ci && npm run check && npm run test:unit` pass; traversal mutation makes tests fail; uncommitted until owner commits |
-| 0 | TST-02 | Replace permanently failing CI with the new checks | P0 | Not started | — | — |
+| 0 | TST-02 | Replace permanently failing CI with the new checks | P0 | In progress | 2026-10-04 | Local: workflow parses (3 jobs check/unit/e2e, Node 22); no `pytest`/`ruff` in workflow; clean-copy `npm ci`, `npm run check`, `npm run test:unit`, `npm run test:e2e` all exit 0; planted syntax error, failing unit test and failing e2e spec each exit 1. **Awaiting owner:** green run on GitHub Actions after push (criterion 1) |
 | 0 | SEC-01 | Forbidden-API and fabrication guard checker | P0 | Not started | — | — |
 | 0 | CHT-01 | Statement, label and citation domain model | P0 | Not started | — | — |
 | 0 | DOC-01 | Add MIT LICENSE and a truthful README status banner | P1 | Done | 2026-10-04 | `LICENSE` matches SPDX MIT text (whitespace-normalised) with `2026 Vamsi Yedlapalli / LoneWolfDen`; README `## Status` is first section; `grep -n -i docker README.md` → nothing; CI badge removed; `npm run check` + `npm run test:unit` 11/11 pass |
