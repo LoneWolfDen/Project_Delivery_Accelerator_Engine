@@ -50,15 +50,15 @@ See `docs/backlog/RISK_REGISTER.md`.
 
 | Blocker | Affects | Needed from |
 |---|---|---|
-| Copyright holder name for `LICENSE` (BD-01) | DOC-01 | Owner |
+| ~~Copyright holder name for `LICENSE` (BD-01)~~ Resolved by BD-01a; DOC-01 Done 2026-10-04 | DOC-01 | — |
 | Tenant prerequisites P1–P8 | GRA-01–04, CPL-05 (Phase 4 only) | Tenant administrator |
 | A Copilot API (none available, Q-E) | CPL-05 | Microsoft / organisation |
 
-Nothing blocks Phase 0 except BD-01 for DOC-01.
+Nothing blocks Phase 0.
 
 ## Next task
 
-**DOC-01** (LICENSE + README status banner; copyright holder decided: BD-01a). TST-02, SEC-01, CHT-01, BAS-03 and BAS-04 are also unblocked. See `NEXT_ACTIONS.md`.
+**TST-02** (replace the failing CI workflow). SEC-01, CHT-01, BAS-03, BAS-04 and CLN-01 are also unblocked. See `NEXT_ACTIONS.md`.
 
 ## Backlog item status
 
@@ -74,7 +74,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 0 | TST-02 | Replace permanently failing CI with the new checks | P0 | Not started | — | — |
 | 0 | SEC-01 | Forbidden-API and fabrication guard checker | P0 | Not started | — | — |
 | 0 | CHT-01 | Statement, label and citation domain model | P0 | Not started | — | — |
-| 0 | DOC-01 | Add MIT LICENSE and a truthful README status banner | P1 | Not started | — | — |
+| 0 | DOC-01 | Add MIT LICENSE and a truthful README status banner | P1 | Done | 2026-10-04 | `LICENSE` matches SPDX MIT text (whitespace-normalised) with `2026 Vamsi Yedlapalli / LoneWolfDen`; README `## Status` is first section; `grep -n -i docker README.md` → nothing; CI badge removed; `npm run check` + `npm run test:unit` 11/11 pass |
 | 0 | CLN-01 | Remove Docker and Compose files | P1 | Not started | — | — |
 | 1 | BLD-01 | Application shell skeleton with CSP and file:// guard | P0 | Not started | — | — |
 | 1 | SEC-02 | Enforce Trusted Types with a single script-URL policy | P0 | Not started | — | — |
