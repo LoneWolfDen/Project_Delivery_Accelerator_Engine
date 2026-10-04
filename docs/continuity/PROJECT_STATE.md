@@ -58,7 +58,7 @@ Nothing blocks Phase 0.
 
 ## Next task
 
-**UI-02** (see `NEXT_ACTIONS.md`, executed in order).
+**DGN-01** (see `NEXT_ACTIONS.md`, executed in order).
 
 ## Backlog item status
 
@@ -79,7 +79,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 1 | BLD-01 | Application shell skeleton with CSP and file:// guard | P0 | Done | 2026-10-04 | `npx playwright test` 8/8 (chromium + webkit): title+version visible, #boot-msg hidden, zero CSP violations/console errors, CSP origin list = openrouter.ai only, injected inline script blocked, file:// keeps boot message; `npm run check` 0 violations; unit 96/96; mutation: planted console.error and style= attribute each fail the smoke test; screenshots light/dark in both engines reviewed. UNVERIFIED: Edge (not installed on dev Mac) — owner manual check |
 | 1 | SEC-02 | Enforce Trusted Types with a single script-URL policy | P0 | Done | 2026-10-04 | `npx playwright test` 16/16 (chromium + webkit): CSP has require-trusted-types-for + trusted-types pdae-script-url; `document.body.innerHTML='<b>x</b>'` throws TypeError; `scriptURL('./evil.js')` throws, './sw.js' returns TrustedScriptURL; allow-list frozen = ['./sw.js']; second policy creation throws; smoke still passes with no CSP violation; mutation (drop require-trusted-types-for) → 4 tests fail. UNVERIFIED: Edge devtools manual check |
 | 1 | UI-01 | Safe DOM builder | P0 | Done | 2026-10-04 | `npx playwright test tests/e2e/dom.spec.mjs` 12/12 (chromium + webkit): '<img src=x onerror=…>' string renders as literal text (0 img, no script ran); on* attrs throw; javascript:/data:/external/protocol-relative URLs throw, './', '#', 'blob:' allowed; style/srcdoc/script/iframe/unknown props throw; listeners fire (click + keyboard); full e2e 28/28; check 0 violations; mutation (drop URL check) → 2 tests fail |
-| 1 | UI-02 | App frame: store, hash router, header, live region, skip link | P1 | Not started | — | — |
+| 1 | UI-02 | App frame: store, hash router, header, live region, skip link | P1 | Done | 2026-10-04 | unit 103/103 (7 store); e2e 43 passed + 1 skipped (chromium + webkit): opens on #/projects with aria-current; Tab→skip link (Option+Tab in WebKit)→Enter focuses view h1; Chromium Tab order skip→Projects→Trash→Settings→Help then Enter navigates; nav buttons change hash, focus h1, live region announces '<Title> page'; placeholders contain only title + 'This part isn't built yet.'; unknown/malformed hashes → #/projects via replace; Back works; every focusable element is A or BUTTON; screenshots at 1000px light/dark and 320px (no horizontal scroll) reviewed. UNVERIFIED: keyboard-only pass in Edge |
 | 1 | DGN-01 | Diagnostics log, error codes and visible error banner | P0 | Not started | — | — |
 | 1 | DAT-01 | IndexedDB open, schema v1, migration runner and downgrade guard | P0 | Not started | — | — |
 | 1 | DAT-02 | Record validators and generic repositories with optimistic concurrency | P0 | Not started | — | — |
