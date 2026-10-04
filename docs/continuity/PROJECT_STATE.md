@@ -58,7 +58,7 @@ Nothing blocks Phase 0 except BD-01 for DOC-01.
 
 ## Next task
 
-**TST-01** (dev-only test tooling) or **BAS-02** (synthetic fixtures): both have no prerequisites. Run one at a time with `.claude/prompts/IMPLEMENT_ONE_ITEM_TEMPLATE.md`. See `NEXT_ACTIONS.md`.
+**BAS-02** (synthetic fixtures). After it, TST-02, SEC-01 and CHT-01 are unblocked by TST-01. See `NEXT_ACTIONS.md`.
 
 ## Backlog item status
 
@@ -70,7 +70,7 @@ Status values: Not started · In progress · Done · Stopped (reason in Evidence
 | 0 | BAS-02 | Copy synthetic sample documents into test fixtures | P0 | Not started | — | — |
 | 0 | BAS-03 | Capture legacy extraction and persona outputs as golden files | P0 | Not started | — | — |
 | 0 | BAS-04 | Convert persona YAML definitions to JSON for the new app | P0 | Not started | — | — |
-| 0 | TST-01 | Add dev-only Node test tooling and static dev server | P0 | Not started | — | — |
+| 0 | TST-01 | Add dev-only Node test tooling and static dev server | P0 | Done | 2026-10-04 | `npm run check` (2 files, 0 failed); `npm run test:unit` 11/11 pass; `npm run test:e2e` exit 0 (no specs yet); clean-copy `npm ci && npm run check && npm run test:unit` pass; traversal mutation makes tests fail; uncommitted until owner commits |
 | 0 | TST-02 | Replace permanently failing CI with the new checks | P0 | Not started | — | — |
 | 0 | SEC-01 | Forbidden-API and fabrication guard checker | P0 | Not started | — | — |
 | 0 | CHT-01 | Statement, label and citation domain model | P0 | Not started | — | — |
