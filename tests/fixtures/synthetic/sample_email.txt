@@ -1,0 +1,25 @@
+From: sarah.chen@clientcorp.com
+To: james.wilson@consultingfirm.com
+Cc: priya.patel@clientcorp.com
+Date: 2024-03-15
+Subject: Re: Cloud Migration - Updated Requirements
+
+Hi James,
+
+Following our call yesterday, I wanted to confirm the updated requirements for Phase 2 of the cloud migration:
+
+1. The data warehouse migration must be completed before the analytics platform cutover
+2. We need to maintain read-only access to legacy systems during the transition period (minimum 30 days)
+3. The compliance team has flagged that all PII data must be encrypted at rest AND in transit during migration
+4. Our SLA requires 99.95% uptime for the patient portal - no exceptions during migration windows
+
+Additional constraints from the security review:
+- No data can traverse public internet during migration
+- All access credentials must be rotated post-migration
+- Audit logs must capture every data movement operation
+
+Can we schedule a follow-up with the architecture team next Tuesday to walk through the dependency map?
+
+Thanks,
+Sarah Chen
+VP Engineering, ClientCorp
